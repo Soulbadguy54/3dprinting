@@ -1,18 +1,36 @@
 # 3dprinting
 
-Репозиторий для разработки проекта по 3D-печати.
+Сейчас в репозитории находится первый mobile-first прототип интерфейса каталога игр.
 
-## Статус
+## Frontend
 
-Проект находится на ранней стадии разработки.
+- React
+- TypeScript
+- Vite
+- PWA (vite-plugin-pwa)
+- mock-данные без backend
 
-## Рабочий процесс
+### Локальный запуск
 
-- `main` — стабильная основная ветка.
-- Новые изменения желательно делать в отдельных ветках.
-- Значимые изменения объединять через Pull Request.
-- Задачи и идеи фиксировать в GitHub Issues.
+    npm install
+    npm run dev
 
-## Структура
+### Production build
 
-Структура проекта будет дополняться по мере выбора архитектуры и технологического стека.
+    npm run build
+
+Результат сборки находится в dist/.
+
+## Деплой на Cloudflare Pages
+
+Репозиторий готов к Git integration:
+
+- Production branch: main
+- Build command: npm run build
+- Build output directory: dist
+
+После подключения репозитория Cloudflare Pages будет автоматически пересобирать тестовый сайт после push в main.
+
+## Следующие этапы
+
+Позже добавим Python/FastAPI backend, PostgreSQL и интеграцию с IGDB.
