@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import AuthScreen, { type AuthUser } from './AuthScreen'
 import {
-  collections as initialCollections,
   games,
-  initialLibrary,
-  profile,
   type Game,
   type GameCollection,
   type LibraryEntry,
@@ -172,8 +170,10 @@ function GameCard({
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('library')
-  const [entries, setEntries] = useState<LibraryEntry[]>(initialLibrary)
-  const [collections, setCollections] = useState<GameCollection[]>(initialCollections)
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [entries, setEntries] = useState<LibraryEntry[]>([])
+  const [collections, setCollections] = useState<GameCollection[]>([])
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [genreFilter, setGenreFilter] = useState('all')
@@ -194,12 +194,50 @@ function App() {
   useEffect(() => {
     let cancelled = false
 
+    const restoreSession = async () => {
+      try {
+        const response = await fetch('/api/auth/me')
+        if (!response.ok) {
+          if (!cancelled) setAuthUser(null)
+          return
+        }
+
+        const user = await response.json() as AuthUser
+        if (!cancelled) setAuthUser(user)
+      } catch {
+        if (!cancelled) setAuthUser(null)
+      } finally {
+        if (!cancelled) setAuthReady(true)
+      }
+    }
+
+    void restoreSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!authUser) {
+      setEntries([])
+      setCollections([])
+      return
+    }
+
+    let cancelled = false
+
     const loadLibrary = async () => {
       try {
         const [libraryResponse, collectionsResponse] = await Promise.all([
           fetch('/api/library'),
           fetch('/api/collections'),
         ])
+
+        if (libraryResponse.status === 401 || collectionsResponse.status === 401) {
+          if (!cancelled) setAuthUser(null)
+          return
+        }
 
         if (!libraryResponse.ok || !collectionsResponse.ok) return
 
@@ -213,7 +251,7 @@ function App() {
           setCollections(collectionsData)
         }
       } catch {
-        // Keep local demo data when the API is temporarily unavailable.
+        // Keep the last loaded user data if the API is temporarily unavailable.
       }
     }
 
@@ -222,7 +260,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authUser?.id])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -480,7 +518,9 @@ function App() {
         <div>
           <h1>Мои игры</h1>
         </div>
-        <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">S</button>
+        <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">
+          {authUser?.nickname.slice(0, 1).toUpperCase()}
+        </button>
       </header>
 
       <section className="library-summary">
@@ -622,8 +662,8 @@ function App() {
       <section className="prototype-note">
         <span className="prototype-note__dot" />
         <div>
-          <strong>Прототип на тестовых данных</strong>
-          <p>Карточки, статусы и оценки уже ведут себя как будущая личная библиотека.</p>
+          <strong>Данные сохраняются в аккаунте</strong>
+          <p>Статусы, оценки и коллекции загружаются из Postgres через RateApp API.</p>
         </div>
       </section>
     </>
@@ -855,10 +895,10 @@ function App() {
         </div>
 
         <section className="profile-hero">
-          <div className="profile-avatar">S</div>
+          <div className="profile-avatar">{authUser?.nickname.slice(0, 1).toUpperCase()}</div>
           <span className="public-badge"><Icon name="globe" size={14} />Публичный профиль</span>
-          <h1>{profile.displayName}</h1>
-          <p>@{profile.nickname}</p>
+          <h1>@{authUser?.nickname}</h1>
+          <p>rateapp / {authUser?.nickname}</p>
           <div className="profile-stats">
             <div><strong>{entries.length}</strong><span>игр</span></div>
             <div><strong>{counts.completed}</strong><span>пройдено</span></div>
@@ -891,7 +931,7 @@ function App() {
           <span className="eyebrow">АККАУНТ</span>
           <h2>Вход и восстановление</h2>
           <div className="account-row">
-            <span><Icon name="mail" size={18} /><span><small>Email</small>{profile.email}</span></span>
+            <span><Icon name="mail" size={18} /><span><small>Email</small>{authUser?.email}</span></span>
             <button>Изменить</button>
           </div>
           <div className="account-row">
@@ -899,6 +939,18 @@ function App() {
             <button>Изменить</button>
           </div>
           <p className="privacy-note">Email и настройки входа видны только вам. Игровой профиль и коллекции публичные.</p>
+          <button
+            className="logout-button"
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' })
+              setAuthUser(null)
+              setEntries([])
+              setCollections([])
+              setActiveTab('library')
+            }}
+          >
+            Выйти из аккаунта
+          </button>
         </section>
       </>
     )
@@ -910,6 +962,19 @@ function App() {
     { id: 'collections', label: 'Коллекции', icon: 'layers' },
     { id: 'profile', label: 'Профиль', icon: 'user' },
   ]
+
+  if (!authReady) {
+    return (
+      <div className="session-loading">
+        <span className="session-loading__mark">R</span>
+        <p>Загружаем RateApp…</p>
+      </div>
+    )
+  }
+
+  if (!authUser) {
+    return <AuthScreen onAuthenticated={setAuthUser} />
+  }
 
   return (
     <div className="app-shell">

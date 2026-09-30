@@ -54,14 +54,17 @@ def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
 
     with SessionLocal() as session:
-        existing = session.scalar(select(User).where(User.nickname == "soulbadguy"))
+        existing = session.scalar(select(User).where(User.email == "demo@rateapp.local"))
         if existing is not None:
+            if existing.nickname == "soulbadguy":
+                existing.nickname = "demo_archive"
+                session.commit()
             return
 
         try:
             user = User(
                 email="demo@rateapp.local",
-                nickname="soulbadguy",
+                nickname="demo_archive",
                 pin_hash="auth-not-enabled-yet",
             )
             session.add(user)
