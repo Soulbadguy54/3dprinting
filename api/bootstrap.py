@@ -53,6 +53,17 @@ def initialize_database() -> None:
 
     Base.metadata.create_all(bind=engine)
 
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS developer VARCHAR(255)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS genres_json TEXT"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS platforms_json TEXT"
+        )
+
     with SessionLocal() as session:
         existing = session.scalar(select(User).where(User.email == "demo@rateapp.local"))
         if existing is not None:

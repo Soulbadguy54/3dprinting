@@ -35,6 +35,7 @@ type ApiLibraryEntry = Omit<LibraryEntry, 'platform' | 'completedAt' | 'startedA
   startedAt: string | null
   score: number | null
   review: string | null
+  game?: Game
 }
 
 const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => ({
@@ -110,10 +111,11 @@ function Cover({
 
   return (
     <div className={compact ? 'cover cover--compact' : 'cover'} style={style}>
-      <div className="cover__orb cover__orb--one" />
-      <div className="cover__orb cover__orb--two" />
-      <span className="cover__noise" />
-      <span className="cover__glyph">{game.glyph}</span>
+      {game.coverUrl && <img className="cover__image" src={game.coverUrl} alt="" loading="lazy" />}
+      {!game.coverUrl && <div className="cover__orb cover__orb--one" />}
+      {!game.coverUrl && <div className="cover__orb cover__orb--two" />}
+      {!game.coverUrl && <span className="cover__noise" />}
+      {!game.coverUrl && <span className="cover__glyph">{game.glyph}</span>}
       {markers.length > 0 && (
         <span className="cover__markers" aria-label="Коллекции">
           {markers.slice(0, 2).map((collection) => (
@@ -174,6 +176,10 @@ function App() {
   const [authReady, setAuthReady] = useState(false)
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [collections, setCollections] = useState<GameCollection[]>([])
+  const [catalogGames, setCatalogGames] = useState<Game[]>(games)
+  const [addResults, setAddResults] = useState<Game[]>([])
+  const [addSearchLoading, setAddSearchLoading] = useState(false)
+  const [addSearchError, setAddSearchError] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [genreFilter, setGenreFilter] = useState('all')
@@ -249,6 +255,12 @@ function App() {
         if (!cancelled) {
           setEntries(libraryData.map(normalizeEntry))
           setCollections(collectionsData)
+          const libraryMetadata = libraryData.flatMap((entry) => entry.game ? [entry.game] : [])
+          setCatalogGames((current) => {
+            const merged = new Map(current.map((game) => [game.id, game]))
+            libraryMetadata.forEach((game) => merged.set(game.id, game))
+            return Array.from(merged.values())
+          })
         }
       } catch {
         // Keep the last loaded user data if the API is temporarily unavailable.
@@ -271,12 +283,12 @@ function App() {
     const libraryGameIds = new Set(entries.map((entry) => entry.gameId))
     return Array.from(
       new Set(
-        games
+        catalogGames
           .filter((game) => libraryGameIds.has(game.id))
           .flatMap((game) => game.genres),
       ),
     ).sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [entries])
+  }, [entries, catalogGames])
 
   const availablePlatforms = useMemo(() => {
     return Array.from(
@@ -289,7 +301,7 @@ function App() {
 
     const result = entries
       .filter((entry) => statusFilter === 'all' || entry.status === statusFilter)
-      .map((entry) => ({ entry, game: games.find((game) => game.id === entry.gameId)! }))
+      .map((entry) => ({ entry, game: catalogGames.find((game) => game.id === entry.gameId)! }))
       .filter(({ game, entry }) => {
         const queryMatch =
           !normalized ||
@@ -321,7 +333,7 @@ function App() {
       const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
       return dateB.localeCompare(dateA)
     })
-  }, [entries, query, statusFilter, genreFilter, platformFilter, sortMode])
+  }, [entries, query, statusFilter, genreFilter, platformFilter, sortMode, catalogGames])
 
   const activeExtraFilters =
     (genreFilter !== 'all' ? 1 : 0) +
@@ -334,13 +346,54 @@ function App() {
     setSortMode('activity')
   }
 
-  const addResults = useMemo(() => {
-    const normalized = addQuery.trim().toLowerCase()
-    return games.filter((game) =>
-      !normalized ||
-      game.title.toLowerCase().includes(normalized) ||
-      game.genres.some((genre) => genre.toLowerCase().includes(normalized)),
-    )
+  useEffect(() => {
+    const query = addQuery.trim()
+    if (query.length < 2) {
+      setAddResults([])
+      setAddSearchError('')
+      setAddSearchLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setAddSearchLoading(true)
+      setAddSearchError('')
+
+      try {
+        const response = await fetch(`/api/games/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => null) as Game[] | { detail?: string } | null
+
+        if (!response.ok) {
+          const detail = payload && !Array.isArray(payload) && payload.detail
+          setAddResults([])
+          setAddSearchError(detail || 'Не удалось выполнить поиск.')
+          return
+        }
+
+        const results = Array.isArray(payload) ? payload : []
+        setAddResults(results)
+        setCatalogGames((current) => {
+          const merged = new Map(current.map((game) => [game.id, game]))
+          results.forEach((game) => merged.set(game.id, game))
+          return Array.from(merged.values())
+        })
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setAddResults([])
+          setAddSearchError('Не удалось связаться с IGDB.')
+        }
+      } finally {
+        if (!controller.signal.aborted) setAddSearchLoading(false)
+      }
+    }, 400)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
   }, [addQuery])
 
   const counts = useMemo(() => ({
@@ -378,7 +431,7 @@ function App() {
   }
 
   const saveGame = async () => {
-    const game = games.find((item) => item.id === addGameId)
+    const game = catalogGames.find((item) => item.id === addGameId)
     if (!game) return
 
     const today = new Date().toISOString().slice(0, 10)
@@ -425,7 +478,7 @@ function App() {
   }
 
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
-  const selectedGame = selectedGameId ? games.find((game) => game.id === selectedGameId) : undefined
+  const selectedGame = selectedGameId ? catalogGames.find((game) => game.id === selectedGameId) : undefined
 
   const renderDetail = () => {
     if (!selectedGame || !selectedEntry) return null
@@ -460,8 +513,8 @@ function App() {
           </div>
           <div className="rating-card">
             <span>RateApp</span>
-            <strong>{selectedGame.communityRating.toFixed(1)}</strong>
-            <small>{selectedGame.communityRatings.toLocaleString('ru-RU')} оценок</small>
+            <strong>{selectedGame.communityRatings > 0 ? selectedGame.communityRating.toFixed(1) : '—'}</strong>
+            <small>{selectedGame.communityRatings > 0 ? `${selectedGame.communityRatings.toLocaleString('ru-RU')} оценок` : 'оценок пока нет'}</small>
           </div>
           <div className="rating-card">
             <span>IGDB</span>
@@ -670,7 +723,7 @@ function App() {
   )
 
   const renderAdd = () => {
-    const addGame = addGameId ? games.find((game) => game.id === addGameId) : undefined
+    const addGame = addGameId ? catalogGames.find((game) => game.id === addGameId) : undefined
     const editingEntry = addGame ? entryMap.get(addGame.id) : undefined
 
     if (addGame) {
@@ -785,6 +838,12 @@ function App() {
           <span className="source-badge">IGDB</span>
         </div>
 
+        {addQuery.trim().length < 2 && (
+          <div className="search-hint">Введи хотя бы 2 символа — поиск идёт по каталогу IGDB.</div>
+        )}
+        {addSearchLoading && <div className="search-hint">Ищем в IGDB…</div>}
+        {addSearchError && <div className="search-hint search-hint--error">{addSearchError}</div>}
+
         <section className="search-results">
           {addResults.map((game) => {
             const existing = entryMap.get(game.id)
@@ -834,7 +893,7 @@ function App() {
           <p className="page-lead">{collection.description}</p>
           <div className="game-grid">
             {collectionEntries.map((entry) => {
-              const game = games.find((item) => item.id === entry.gameId)!
+              const game = catalogGames.find((item) => item.id === entry.gameId)!
               return <GameCard key={game.id} game={game} entry={entry} collections={collections} onOpen={() => setSelectedGameId(game.id)} />
             })}
           </div>
@@ -857,7 +916,7 @@ function App() {
           {collections.map((collection) => {
             const items = entries
               .filter((entry) => entry.collectionIds.includes(collection.id))
-              .map((entry) => games.find((game) => game.id === entry.gameId)!)
+              .map((entry) => catalogGames.find((game) => game.id === entry.gameId)!)
             return (
               <button className="collection-card" key={collection.id} onClick={() => setSelectedCollectionId(collection.id)}>
                 <div className="collection-card__mosaic">
@@ -915,7 +974,7 @@ function App() {
           </div>
           <div className="activity-list">
             {recent.map((entry) => {
-              const game = games.find((item) => item.id === entry.gameId)!
+              const game = catalogGames.find((item) => item.id === entry.gameId)!
               return (
                 <button key={game.id} onClick={() => setSelectedGameId(game.id)}>
                   <span className="activity-cover"><Cover game={game} compact /></span>

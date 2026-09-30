@@ -1142,3 +1142,27 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .collection-grid { grid-template-columns: repeat(4, 1fr); }
   .collection-card__mosaic { height: 205px; }
 }
+
+.cover__image {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.search-hint {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: #737b89;
+  background: rgba(18, 21, 28, .55);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.search-hint--error {
+  color: #ffb1b1;
+  border-color: rgba(255, 120, 120, .2);
+  background: rgba(255, 90, 90, .05);
+}

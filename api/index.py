@@ -1,10 +1,13 @@
 import hashlib
+import json
 import os
 import re
 import secrets
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
+import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -40,6 +43,8 @@ SESSION_DAYS = 30
 MAX_LOGIN_FAILURES = 5
 LOCK_MINUTES = 15
 password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+_igdb_token: str | None = None
+_igdb_token_expires_at = 0.0
 
 
 class RegisterPayload(BaseModel):
@@ -164,6 +169,132 @@ def _clear_throttle(session, identifier: str) -> None:
         session.commit()
 
 
+def _igdb_credentials() -> tuple[str, str]:
+    client_id = os.getenv("IGDB_CLIENT_ID", "").strip()
+    client_secret = os.getenv("IGDB_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="IGDB ещё не настроен. Добавьте IGDB_CLIENT_ID и IGDB_CLIENT_SECRET в Vercel.",
+        )
+    return client_id, client_secret
+
+
+def _igdb_access_token() -> tuple[str, str]:
+    global _igdb_token, _igdb_token_expires_at
+
+    client_id, client_secret = _igdb_credentials()
+    if _igdb_token and time.time() < _igdb_token_expires_at - 60:
+        return client_id, _igdb_token
+
+    try:
+        response = httpx.post(
+            "https://id.twitch.tv/oauth2/token",
+            params={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "client_credentials",
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Не удалось авторизоваться в IGDB.") from exc
+
+    token = payload.get("access_token")
+    if not token:
+        raise HTTPException(status_code=502, detail="IGDB не вернул access token.")
+
+    _igdb_token = str(token)
+    _igdb_token_expires_at = time.time() + int(payload.get("expires_in", 3600))
+    return client_id, _igdb_token
+
+
+def _igdb_cover(image_id: str | None) -> str | None:
+    if not image_id:
+        return None
+    return f"https://images.igdb.com/igdb/image/upload/t_cover_big_2x/{image_id}.jpg"
+
+
+def _game_payload(game: Game) -> dict[str, object]:
+    release_date = game.release_date.isoformat() if game.release_date else ""
+    genres = json.loads(game.genres_json) if game.genres_json else []
+    platforms = json.loads(game.platforms_json) if game.platforms_json else []
+    title_parts = [part for part in re.split(r"\\s+", game.title.strip()) if part]
+    glyph = "".join(part[0].upper() for part in title_parts[:2]) or "G"
+
+    return {
+        "id": game.igdb_id,
+        "title": game.title,
+        "genres": genres,
+        "year": game.release_date.year if game.release_date else 0,
+        "releaseDate": release_date,
+        "developer": game.developer or "—",
+        "platforms": platforms,
+        "igdbRating": round(float(game.igdb_rating or 0)),
+        "communityRating": 0,
+        "communityRatings": 0,
+        "accent": "#8cf27d",
+        "accent2": "#2c6bff",
+        "glyph": glyph,
+        "coverUrl": game.cover_url,
+    }
+
+
+def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    with _session() as session:
+        cached: list[dict[str, object]] = []
+
+        for row in rows:
+            igdb_id = int(row["id"])
+            game = session.scalar(select(Game).where(Game.igdb_id == igdb_id))
+            if game is None:
+                game = Game(igdb_id=igdb_id, title=str(row.get("name") or "Unknown"))
+                session.add(game)
+
+            first_release = row.get("first_release_date")
+            release_date = (
+                datetime.fromtimestamp(int(first_release), tz=timezone.utc).date()
+                if first_release
+                else None
+            )
+            genres = [
+                str(item.get("name"))
+                for item in (row.get("genres") or [])
+                if isinstance(item, dict) and item.get("name")
+            ]
+            platforms = [
+                str(item.get("name"))
+                for item in (row.get("platforms") or [])
+                if isinstance(item, dict) and item.get("name")
+            ]
+            developers = []
+            for item in row.get("involved_companies") or []:
+                if not isinstance(item, dict) or not item.get("developer"):
+                    continue
+                company = item.get("company")
+                if isinstance(company, dict) and company.get("name"):
+                    developers.append(str(company["name"]))
+
+            cover = row.get("cover")
+            image_id = cover.get("image_id") if isinstance(cover, dict) else None
+
+            game.title = str(row.get("name") or game.title)
+            game.release_date = release_date
+            game.igdb_rating = row.get("rating")
+            game.cover_url = _igdb_cover(str(image_id)) if image_id else None
+            game.developer = developers[0] if developers else None
+            game.genres_json = json.dumps(genres, ensure_ascii=False)
+            game.platforms_json = json.dumps(platforms, ensure_ascii=False)
+
+            session.flush()
+            cached.append(_game_payload(game))
+
+        session.commit()
+        return cached
+
+
 def _collection_slugs(session, user_game_id: int) -> list[str]:
     return list(
         session.scalars(
@@ -186,6 +317,7 @@ def _serialize_entry(session, entry: UserGame) -> dict[str, object]:
         "review": entry.review,
         "collectionIds": _collection_slugs(session, entry.id),
         "addedAt": entry.added_at.date().isoformat(),
+        "game": _game_payload(entry.game),
     }
 
 
@@ -352,6 +484,63 @@ def public_profile(nickname: str) -> dict[str, object]:
                 "wishlist": wishlist,
             },
         }
+
+
+@app.get("/api/games/igdb-status")
+def igdb_status(request: Request) -> dict[str, bool]:
+    with _session() as session:
+        _current_user(request, session)
+    return {
+        "configured": bool(
+            os.getenv("IGDB_CLIENT_ID", "").strip()
+            and os.getenv("IGDB_CLIENT_SECRET", "").strip()
+        )
+    }
+
+
+@app.get("/api/games/search")
+def search_games(q: str, request: Request) -> list[dict[str, object]]:
+    query = q.strip()
+    if len(query) < 2:
+        return []
+
+    with _session() as session:
+        _current_user(request, session)
+
+    client_id, token = _igdb_access_token()
+    safe_query = query.replace("\\", "\\\\").replace('"', '\\"')
+    body = (
+        f'search "{safe_query}"; '
+        "fields id,name,first_release_date,rating,cover.image_id,"
+        "genres.name,platforms.name,involved_companies.developer,"
+        "involved_companies.company.name; "
+        "where version_parent = null; "
+        "limit 20;"
+    )
+
+    try:
+        response = httpx.post(
+            "https://api.igdb.com/v4/games",
+            headers={
+                "Client-ID": client_id,
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+            content=body,
+            timeout=12.0,
+        )
+        if response.status_code == 429:
+            raise HTTPException(status_code=429, detail="IGDB занят. Повторите поиск через секунду.")
+        response.raise_for_status()
+        rows = response.json()
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Не удалось получить игры из IGDB.") from exc
+
+    if not isinstance(rows, list):
+        return []
+    return _cache_igdb_games(rows)
 
 
 @app.get("/api/collections")

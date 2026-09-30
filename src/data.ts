@@ -14,6 +14,7 @@ export type Game = {
   accent: string
   accent2: string
   glyph: string
+  coverUrl?: string
 }
 
 export type LibraryEntry = {
