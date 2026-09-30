@@ -307,6 +307,19 @@ function App() {
     setAddDate(new Date().toISOString().slice(0, 10))
     setAddScore('8.0')
     setAddCollectionIds([])
+    setSelectedGameId(null)
+    setActiveTab('add')
+  }
+
+  const startEditing = (game: Game, entry: LibraryEntry) => {
+    setAddGameId(game.id)
+    setAddStatus(entry.status)
+    setAddPlatform(entry.platform ?? game.platforms[0] ?? '')
+    setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
+    setAddScore(entry.score !== undefined ? entry.score.toFixed(1) : '8.0')
+    setAddCollectionIds(entry.collectionIds)
+    setSelectedGameId(null)
+    setActiveTab('add')
   }
 
   const saveGame = async () => {
@@ -375,7 +388,12 @@ function App() {
             <span className="eyebrow">{statusMeta[selectedEntry.status].label}</span>
             <h1>{selectedGame.title}</h1>
             <p>{selectedGame.genres.join(' · ')} · {selectedGame.year}</p>
-            <button className="secondary-button">Редактировать запись</button>
+            <button
+              className="secondary-button"
+              onClick={() => startEditing(selectedGame, selectedEntry)}
+            >
+              Редактировать запись
+            </button>
           </div>
         </section>
 
@@ -596,6 +614,7 @@ function App() {
 
   const renderAdd = () => {
     const addGame = addGameId ? games.find((game) => game.id === addGameId) : undefined
+    const editingEntry = addGame ? entryMap.get(addGame.id) : undefined
 
     if (addGame) {
       return (
@@ -603,8 +622,8 @@ function App() {
           <header className="subpage-header">
             <button className="icon-button" onClick={() => setAddGameId(null)}><Icon name="back" size={20} /></button>
             <div>
-              <span className="eyebrow">НОВАЯ ЗАПИСЬ</span>
-              <h1>Добавить игру</h1>
+              <span className="eyebrow">{editingEntry ? 'РЕДАКТИРОВАНИЕ' : 'НОВАЯ ЗАПИСЬ'}</span>
+              <h1>{editingEntry ? 'Изменить игру' : 'Добавить игру'}</h1>
             </div>
           </header>
 
@@ -679,7 +698,9 @@ function App() {
               </div>
             </div>
 
-            <button className="primary-button" onClick={saveGame}>Сохранить в библиотеку</button>
+            <button className="primary-button" onClick={saveGame}>
+              {editingEntry ? 'Сохранить изменения' : 'Сохранить в библиотеку'}
+            </button>
           </section>
         </>
       )
@@ -722,14 +743,13 @@ function App() {
                   className={existing ? 'result-action result-action--existing' : 'result-action'}
                   onClick={() => {
                     if (existing) {
-                      setSelectedGameId(game.id)
-                      setActiveTab('library')
+                      startEditing(game, existing)
                     } else {
                       startAdding(game)
                     }
                   }}
                 >
-                  {existing ? 'Открыть' : <Icon name="plus" size={18} />}
+                  {existing ? 'Изменить' : <Icon name="plus" size={18} />}
                 </button>
               </div>
             )
