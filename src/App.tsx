@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   collections as initialCollections,
@@ -156,7 +156,7 @@ function GameCard({
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('library')
   const [entries, setEntries] = useState<LibraryEntry[]>(initialLibrary)
-  const [collections] = useState<GameCollection[]>(initialCollections)
+  const [collections, setCollections] = useState<GameCollection[]>(initialCollections)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [genreFilter, setGenreFilter] = useState('all')
@@ -173,6 +173,39 @@ function App() {
   const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [addScore, setAddScore] = useState('8.0')
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadLibrary = async () => {
+      try {
+        const [libraryResponse, collectionsResponse] = await Promise.all([
+          fetch('/api/library'),
+          fetch('/api/collections'),
+        ])
+
+        if (!libraryResponse.ok || !collectionsResponse.ok) return
+
+        const [libraryData, collectionsData] = await Promise.all([
+          libraryResponse.json() as Promise<LibraryEntry[]>,
+          collectionsResponse.json() as Promise<GameCollection[]>,
+        ])
+
+        if (!cancelled) {
+          setEntries(libraryData)
+          setCollections(collectionsData)
+        }
+      } catch {
+        // Keep local demo data when the API is temporarily unavailable.
+      }
+    }
+
+    void loadLibrary()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -276,7 +309,7 @@ function App() {
     setAddCollectionIds([])
   }
 
-  const saveGame = () => {
+  const saveGame = async () => {
     const game = games.find((item) => item.id === addGameId)
     if (!game) return
 
@@ -292,7 +325,23 @@ function App() {
       addedAt: entryMap.get(game.id)?.addedAt ?? today,
     }
 
-    setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
+    try {
+      const response = await fetch(`/api/library/${game.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextEntry),
+      })
+
+      if (response.ok) {
+        const savedEntry = await response.json() as LibraryEntry
+        setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
+      } else {
+        setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
+      }
+    } catch {
+      setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
+    }
+
     setAddGameId(null)
     setAddQuery('')
     setSelectedGameId(game.id)
