@@ -1,8 +1,40 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { games, genres, type Game } from './data'
+import {
+  collections as initialCollections,
+  games,
+  initialLibrary,
+  profile,
+  type Game,
+  type GameCollection,
+  type LibraryEntry,
+  type LibraryStatus,
+} from './data'
 
-type IconName = 'home' | 'search' | 'bookmark' | 'user' | 'heart' | 'star' | 'arrow' | 'filter'
+type IconName =
+  | 'library'
+  | 'plus'
+  | 'layers'
+  | 'user'
+  | 'search'
+  | 'filter'
+  | 'star'
+  | 'arrow'
+  | 'back'
+  | 'calendar'
+  | 'gamepad'
+  | 'globe'
+  | 'mail'
+  | 'lock'
+
+type Tab = 'library' | 'add' | 'collections' | 'profile'
+type StatusFilter = 'all' | LibraryStatus
+
+const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
+  completed: { label: 'Пройдено', short: 'Пройдено' },
+  playing: { label: 'Прохожу', short: 'Прохожу' },
+  wishlist: { label: 'Хочу пройти', short: 'Хочу' },
+}
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   const common = {
@@ -18,199 +50,679 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   }
 
   const paths: Record<IconName, ReactNode> = {
-    home: <><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></>,
-    search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
-    bookmark: <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4V4.5Z"/>,
+    library: <><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V4Z"/><path d="M7 20V6a2 2 0 0 0-2-2"/><path d="M9 8h6M9 12h6"/></>,
+    plus: <><path d="M12 5v14M5 12h14"/></>,
+    layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></>,
     user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.2 3.5-6.3 8-6.3s7.2 2.1 8 6.3"/></>,
-    heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
+    filter: <><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></>,
     star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"/>,
     arrow: <><path d="M5 12h14"/><path d="m14 7 5 5-5 5"/></>,
-    filter: <><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></>,
+    back: <><path d="M19 12H5"/><path d="m10 17-5-5 5-5"/></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></>,
+    gamepad: <><path d="M7 8h10a4 4 0 0 1 3.8 5.2l-1.4 4.2a2 2 0 0 1-3.2.9L14 16h-4l-2.2 2.3a2 2 0 0 1-3.2-.9l-1.4-4.2A4 4 0 0 1 7 8Z"/><path d="M8 11v4M6 13h4"/><circle cx="16.5" cy="12" r=".7" fill="currentColor"/><circle cx="18" cy="14" r=".7" fill="currentColor"/></>,
+    globe: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
 }
 
-function Cover({ game, large = false }: { game: Game; large?: boolean }) {
+function formatDate(value?: string) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(`${value}T12:00:00`))
+}
+
+function Cover({
+  game,
+  compact = false,
+  markers = [],
+}: {
+  game: Game
+  compact?: boolean
+  markers?: GameCollection[]
+}) {
   const style = {
-    '--accent': game.accent,
-    '--accent-2': game.accent2,
+    '--cover-accent': game.accent,
+    '--cover-accent-2': game.accent2,
   } as CSSProperties
 
   return (
-    <div className={large ? 'cover cover--hero' : 'cover'} style={style}>
+    <div className={compact ? 'cover cover--compact' : 'cover'} style={style}>
       <div className="cover__orb cover__orb--one" />
       <div className="cover__orb cover__orb--two" />
       <span className="cover__noise" />
       <span className="cover__glyph">{game.glyph}</span>
+      {markers.length > 0 && (
+        <span className="cover__markers" aria-label="Коллекции">
+          {markers.slice(0, 2).map((collection) => (
+            <span className="collection-marker" key={collection.id}>{collection.mark}</span>
+          ))}
+          {markers.length > 2 && <span className="collection-marker">+{markers.length - 2}</span>}
+        </span>
+      )}
     </div>
   )
 }
 
+function GameCard({
+  game,
+  entry,
+  collections,
+  onOpen,
+}: {
+  game: Game
+  entry: LibraryEntry
+  collections: GameCollection[]
+  onOpen: () => void
+}) {
+  const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
+  const activity =
+    entry.status === 'completed' && entry.completedAt
+      ? formatDate(entry.completedAt)
+      : entry.status === 'playing' && entry.startedAt
+        ? `с ${formatDate(entry.startedAt)}`
+        : `добавлено ${formatDate(entry.addedAt)}`
+
+  return (
+    <button className="game-card" onClick={onOpen}>
+      <div className="game-card__cover-wrap">
+        <Cover game={game} markers={markers} />
+        {entry.score !== undefined && (
+          <span className="score-badge"><Icon name="star" size={13} />{entry.score.toFixed(1)}</span>
+        )}
+        <span className={`status-badge status-badge--${entry.status}`}>
+          {statusMeta[entry.status].short}
+        </span>
+      </div>
+      <div className="game-card__body">
+        <h3>{game.title}</h3>
+        <div className="game-card__meta">
+          {entry.platform && <span>{entry.platform}</span>}
+          {entry.platform && <span>·</span>}
+          <span>{activity}</span>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('library')
+  const [entries, setEntries] = useState<LibraryEntry[]>(initialLibrary)
+  const [collections] = useState<GameCollection[]>(initialCollections)
   const [query, setQuery] = useState('')
-  const [activeGenre, setActiveGenre] = useState('Все')
-  const [saved, setSaved] = useState<Set<number>>(new Set([4]))
-  const [activeTab, setActiveTab] = useState('Главная')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
 
-  const featured = games.find((game) => game.featured) ?? games[0]
+  const [addQuery, setAddQuery] = useState('')
+  const [addGameId, setAddGameId] = useState<number | null>(null)
+  const [addStatus, setAddStatus] = useState<LibraryStatus>('completed')
+  const [addPlatform, setAddPlatform] = useState('')
+  const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [addScore, setAddScore] = useState('8.0')
+  const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
 
-  const filtered = useMemo(() => {
+  const entryMap = useMemo(
+    () => new Map(entries.map((entry) => [entry.gameId, entry])),
+    [entries],
+  )
+
+  const libraryGames = useMemo(() => {
     const normalized = query.trim().toLowerCase()
 
-    return games.filter((game) => {
-      const genreMatch = activeGenre === 'Все' || game.genres.includes(activeGenre)
-      const queryMatch =
+    return entries
+      .filter((entry) => statusFilter === 'all' || entry.status === statusFilter)
+      .map((entry) => ({ entry, game: games.find((game) => game.id === entry.gameId)! }))
+      .filter(({ game }) =>
         !normalized ||
         game.title.toLowerCase().includes(normalized) ||
-        game.subtitle.toLowerCase().includes(normalized) ||
-        game.genres.some((genre) => genre.toLowerCase().includes(normalized))
+        game.genres.some((genre) => genre.toLowerCase().includes(normalized)) ||
+        game.developer.toLowerCase().includes(normalized),
+      )
+      .sort((a, b) => {
+        const dateA = a.entry.completedAt ?? a.entry.startedAt ?? a.entry.addedAt
+        const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
+        return dateB.localeCompare(dateA)
+      })
+  }, [entries, query, statusFilter])
 
-      return genreMatch && queryMatch
-    })
-  }, [query, activeGenre])
+  const addResults = useMemo(() => {
+    const normalized = addQuery.trim().toLowerCase()
+    return games.filter((game) =>
+      !normalized ||
+      game.title.toLowerCase().includes(normalized) ||
+      game.genres.some((genre) => genre.toLowerCase().includes(normalized)),
+    )
+  }, [addQuery])
 
-  const toggleSaved = (id: number) => {
-    setSaved((current) => {
-      const next = new Set(current)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+  const counts = useMemo(() => ({
+    completed: entries.filter((entry) => entry.status === 'completed').length,
+    playing: entries.filter((entry) => entry.status === 'playing').length,
+    wishlist: entries.filter((entry) => entry.status === 'wishlist').length,
+  }), [entries])
+
+  const openTab = (tab: Tab) => {
+    setActiveTab(tab)
+    setSelectedGameId(null)
+    setSelectedCollectionId(null)
   }
 
-  const nav = [
-    { label: 'Главная', icon: 'home' as IconName },
-    { label: 'Поиск', icon: 'search' as IconName },
-    { label: 'Сохранено', icon: 'bookmark' as IconName },
-    { label: 'Профиль', icon: 'user' as IconName },
+  const startAdding = (game: Game) => {
+    setAddGameId(game.id)
+    setAddStatus('completed')
+    setAddPlatform(game.platforms[0] ?? '')
+    setAddDate(new Date().toISOString().slice(0, 10))
+    setAddScore('8.0')
+    setAddCollectionIds([])
+  }
+
+  const saveGame = () => {
+    const game = games.find((item) => item.id === addGameId)
+    if (!game) return
+
+    const today = new Date().toISOString().slice(0, 10)
+    const nextEntry: LibraryEntry = {
+      gameId: game.id,
+      status: addStatus,
+      platform: addStatus === 'wishlist' ? undefined : addPlatform,
+      completedAt: addStatus === 'completed' ? addDate : undefined,
+      startedAt: addStatus === 'playing' ? today : undefined,
+      score: addStatus === 'completed' ? Number(addScore) : undefined,
+      collectionIds: addCollectionIds,
+      addedAt: entryMap.get(game.id)?.addedAt ?? today,
+    }
+
+    setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
+    setAddGameId(null)
+    setAddQuery('')
+    setSelectedGameId(game.id)
+    setActiveTab('library')
+  }
+
+  const toggleAddCollection = (collectionId: string) => {
+    setAddCollectionIds((current) =>
+      current.includes(collectionId)
+        ? current.filter((id) => id !== collectionId)
+        : [...current, collectionId],
+    )
+  }
+
+  const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
+  const selectedGame = selectedGameId ? games.find((game) => game.id === selectedGameId) : undefined
+
+  const renderDetail = () => {
+    if (!selectedGame || !selectedEntry) return null
+    const gameCollections = collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
+
+    return (
+      <div className="detail-page">
+        <button className="icon-button detail-back" onClick={() => setSelectedGameId(null)}>
+          <Icon name="back" size={20} />
+        </button>
+
+        <section className="detail-hero">
+          <div className="detail-hero__cover"><Cover game={selectedGame} markers={gameCollections} /></div>
+          <div className="detail-hero__info">
+            <span className="eyebrow">{statusMeta[selectedEntry.status].label}</span>
+            <h1>{selectedGame.title}</h1>
+            <p>{selectedGame.genres.join(' · ')} · {selectedGame.year}</p>
+            <button className="secondary-button">Редактировать запись</button>
+          </div>
+        </section>
+
+        <section className="rating-grid">
+          <div className="rating-card rating-card--mine">
+            <span>Моя оценка</span>
+            <strong>{selectedEntry.score !== undefined ? selectedEntry.score.toFixed(1) : '—'}</strong>
+            <small>из 10</small>
+          </div>
+          <div className="rating-card">
+            <span>RateApp</span>
+            <strong>{selectedGame.communityRating.toFixed(1)}</strong>
+            <small>{selectedGame.communityRatings.toLocaleString('ru-RU')} оценок</small>
+          </div>
+          <div className="rating-card">
+            <span>IGDB</span>
+            <strong>{selectedGame.igdbRating}</strong>
+            <small>из 100</small>
+          </div>
+        </section>
+
+        <section className="info-card">
+          <div className="section-heading section-heading--tight">
+            <div>
+              <span className="eyebrow">МОЯ ЗАПИСЬ</span>
+              <h2>Прохождение</h2>
+            </div>
+          </div>
+          <div className="info-list">
+            <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
+            <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
+            <div><span><Icon name="layers" size={17} />Коллекции</span><strong>{gameCollections.length || '—'}</strong></div>
+          </div>
+          {selectedEntry.review && (
+            <div className="review-box">
+              <span>Мой отзыв</span>
+              <p>{selectedEntry.review}</p>
+            </div>
+          )}
+          {gameCollections.length > 0 && (
+            <div className="tag-list">
+              {gameCollections.map((collection) => (
+                <span className="collection-tag" key={collection.id}>
+                  <b>{collection.mark}</b>{collection.title}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="info-card">
+          <span className="eyebrow">ОБ ИГРЕ</span>
+          <h2>{selectedGame.developer}</h2>
+          <div className="facts-grid">
+            <div><span>Релиз</span><strong>{formatDate(selectedGame.releaseDate)}</strong></div>
+            <div><span>Платформы</span><strong>{selectedGame.platforms.join(', ')}</strong></div>
+            <div><span>Жанры</span><strong>{selectedGame.genres.join(', ')}</strong></div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  const renderLibrary = () => (
+    <>
+      <header className="topbar">
+        <div>
+          <span className="eyebrow">@{profile.nickname}</span>
+          <h1>Мои игры</h1>
+        </div>
+        <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">S</button>
+      </header>
+
+      <section className="library-summary">
+        <div><strong>{counts.completed}</strong><span>пройдено</span></div>
+        <div><strong>{counts.playing}</strong><span>прохожу</span></div>
+        <div><strong>{counts.wishlist}</strong><span>хочу пройти</span></div>
+      </section>
+
+      <div className="search-wrap">
+        <Icon name="search" size={20} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск в моей библиотеке..."
+          aria-label="Поиск в библиотеке"
+        />
+        <button className="search-action" aria-label="Дополнительные фильтры">
+          <Icon name="filter" size={18} />
+        </button>
+      </div>
+
+      <section className="status-strip" aria-label="Статус игры">
+        {([
+          ['all', 'Все'],
+          ['playing', 'Прохожу'],
+          ['completed', 'Пройдено'],
+          ['wishlist', 'Хочу пройти'],
+        ] as [StatusFilter, string][]).map(([value, label]) => (
+          <button
+            key={value}
+            className={statusFilter === value ? 'status-chip status-chip--active' : 'status-chip'}
+            onClick={() => setStatusFilter(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </section>
+
+      <section className="catalog">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">БИБЛИОТЕКА</span>
+            <h2>{query ? `Найдено: ${libraryGames.length}` : 'Последняя активность'}</h2>
+          </div>
+          <button className="round-add" onClick={() => openTab('add')} aria-label="Добавить игру"><Icon name="plus" size={20} /></button>
+        </div>
+
+        {libraryGames.length > 0 ? (
+          <div className="game-grid">
+            {libraryGames.map(({ game, entry }) => (
+              <GameCard
+                key={game.id}
+                game={game}
+                entry={entry}
+                collections={collections}
+                onOpen={() => setSelectedGameId(game.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>Здесь пока пусто</strong>
+            <p>Смени фильтр или добавь новую игру в библиотеку.</p>
+            <button onClick={() => openTab('add')}>Добавить игру</button>
+          </div>
+        )}
+      </section>
+
+      <section className="prototype-note">
+        <span className="prototype-note__dot" />
+        <div>
+          <strong>Прототип на тестовых данных</strong>
+          <p>Карточки, статусы и оценки уже ведут себя как будущая личная библиотека.</p>
+        </div>
+      </section>
+    </>
+  )
+
+  const renderAdd = () => {
+    const addGame = addGameId ? games.find((game) => game.id === addGameId) : undefined
+
+    if (addGame) {
+      return (
+        <>
+          <header className="subpage-header">
+            <button className="icon-button" onClick={() => setAddGameId(null)}><Icon name="back" size={20} /></button>
+            <div>
+              <span className="eyebrow">НОВАЯ ЗАПИСЬ</span>
+              <h1>Добавить игру</h1>
+            </div>
+          </header>
+
+          <section className="add-selected">
+            <div className="add-selected__cover"><Cover game={addGame} compact /></div>
+            <div>
+              <strong>{addGame.title}</strong>
+              <span>{addGame.year} · {addGame.genres.join(' · ')}</span>
+            </div>
+          </section>
+
+          <section className="form-card">
+            <label className="field-label">Статус</label>
+            <div className="choice-grid">
+              {(['completed', 'playing', 'wishlist'] as LibraryStatus[]).map((status) => (
+                <button
+                  key={status}
+                  className={addStatus === status ? 'choice-button choice-button--active' : 'choice-button'}
+                  onClick={() => setAddStatus(status)}
+                >
+                  {statusMeta[status].label}
+                </button>
+              ))}
+            </div>
+
+            {addStatus !== 'wishlist' && (
+              <label className="form-field">
+                <span>Платформа</span>
+                <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
+                  {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
+                </select>
+              </label>
+            )}
+
+            {addStatus === 'completed' && (
+              <>
+                <label className="form-field">
+                  <span>Дата прохождения</span>
+                  <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
+                  <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
+                </label>
+                <label className="form-field">
+                  <span>Моя оценка</span>
+                  <div className="score-input">
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      step="0.1"
+                      value={addScore}
+                      onChange={(event) => setAddScore(event.target.value)}
+                    />
+                    <b>/ 10</b>
+                  </div>
+                </label>
+              </>
+            )}
+
+            <div className="form-field">
+              <span>Коллекции <small>необязательно</small></span>
+              <div className="collection-choices">
+                {collections.map((collection) => (
+                  <button
+                    key={collection.id}
+                    className={addCollectionIds.includes(collection.id) ? 'collection-choice collection-choice--active' : 'collection-choice'}
+                    onClick={() => toggleAddCollection(collection.id)}
+                  >
+                    <b>{collection.mark}</b>
+                    <span>{collection.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button className="primary-button" onClick={saveGame}>Сохранить в библиотеку</button>
+          </section>
+        </>
+      )
+    }
+
+    return (
+      <>
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">IGDB + RATEAPP</span>
+            <h1>Добавить игру</h1>
+          </div>
+        </header>
+
+        <p className="page-lead">Найди игру, а затем укажи статус, платформу, дату и свою оценку.</p>
+
+        <div className="search-wrap">
+          <Icon name="search" size={20} />
+          <input
+            value={addQuery}
+            onChange={(event) => setAddQuery(event.target.value)}
+            placeholder="Название игры..."
+            aria-label="Поиск игры"
+          />
+          <span className="source-badge">IGDB</span>
+        </div>
+
+        <section className="search-results">
+          {addResults.map((game) => {
+            const existing = entryMap.get(game.id)
+            return (
+              <div className="search-result" key={game.id}>
+                <div className="search-result__cover"><Cover game={game} compact /></div>
+                <div className="search-result__copy">
+                  <strong>{game.title}</strong>
+                  <span>{game.year} · {game.genres.slice(0, 2).join(' · ')}</span>
+                  <small>{game.platforms.join(' · ')}</small>
+                </div>
+                <button
+                  className={existing ? 'result-action result-action--existing' : 'result-action'}
+                  onClick={() => {
+                    if (existing) {
+                      setSelectedGameId(game.id)
+                      setActiveTab('library')
+                    } else {
+                      startAdding(game)
+                    }
+                  }}
+                >
+                  {existing ? 'Открыть' : <Icon name="plus" size={18} />}
+                </button>
+              </div>
+            )
+          })}
+        </section>
+      </>
+    )
+  }
+
+  const renderCollections = () => {
+    if (selectedCollectionId) {
+      const collection = collections.find((item) => item.id === selectedCollectionId)
+      if (!collection) return null
+      const collectionEntries = entries.filter((entry) => entry.collectionIds.includes(collection.id))
+
+      return (
+        <>
+          <header className="subpage-header">
+            <button className="icon-button" onClick={() => setSelectedCollectionId(null)}><Icon name="back" size={20} /></button>
+            <div>
+              <span className="eyebrow">КОЛЛЕКЦИЯ</span>
+              <h1>{collection.title}</h1>
+            </div>
+          </header>
+          <p className="page-lead">{collection.description}</p>
+          <div className="game-grid">
+            {collectionEntries.map((entry) => {
+              const game = games.find((item) => item.id === entry.gameId)!
+              return <GameCard key={game.id} game={game} entry={entry} collections={collections} onOpen={() => setSelectedGameId(game.id)} />
+            })}
+          </div>
+        </>
+      )
+    }
+
+    return (
+      <>
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">МОИ СПИСКИ</span>
+            <h1>Коллекции</h1>
+          </div>
+          <button className="round-add" aria-label="Создать коллекцию"><Icon name="plus" size={20} /></button>
+        </header>
+        <p className="page-lead">Собирай игры в свои списки. Одна игра может быть сразу в нескольких коллекциях.</p>
+
+        <section className="collection-grid">
+          {collections.map((collection) => {
+            const items = entries
+              .filter((entry) => entry.collectionIds.includes(collection.id))
+              .map((entry) => games.find((game) => game.id === entry.gameId)!)
+            return (
+              <button className="collection-card" key={collection.id} onClick={() => setSelectedCollectionId(collection.id)}>
+                <div className="collection-card__mosaic">
+                  {items.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
+                  {items.length === 0 && <div className="collection-card__empty">{collection.mark}</div>}
+                </div>
+                <div className="collection-card__footer">
+                  <div>
+                    <strong>{collection.title}</strong>
+                    <span>{items.length} {items.length === 1 ? 'игра' : 'игр'}</span>
+                  </div>
+                  <span className="collection-card__mark">{collection.mark}</span>
+                </div>
+              </button>
+            )
+          })}
+        </section>
+      </>
+    )
+  }
+
+  const renderProfile = () => {
+    const recent = entries
+      .filter((entry) => entry.status === 'completed' && entry.completedAt)
+      .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
+      .slice(0, 3)
+
+    return (
+      <>
+        <section className="profile-hero">
+          <div className="profile-avatar">S</div>
+          <span className="public-badge"><Icon name="globe" size={14} />Публичный профиль</span>
+          <h1>{profile.displayName}</h1>
+          <p>@{profile.nickname}</p>
+          <div className="profile-stats">
+            <div><strong>{entries.length}</strong><span>игр</span></div>
+            <div><strong>{counts.completed}</strong><span>пройдено</span></div>
+            <div><strong>{collections.length}</strong><span>коллекции</span></div>
+          </div>
+        </section>
+
+        <section className="info-card">
+          <div className="section-heading section-heading--tight">
+            <div>
+              <span className="eyebrow">ПОСЛЕДНЕЕ</span>
+              <h2>Недавно пройдено</h2>
+            </div>
+          </div>
+          <div className="activity-list">
+            {recent.map((entry) => {
+              const game = games.find((item) => item.id === entry.gameId)!
+              return (
+                <button key={game.id} onClick={() => setSelectedGameId(game.id)}>
+                  <span className="activity-cover"><Cover game={game} compact /></span>
+                  <span><strong>{game.title}</strong><small>{formatDate(entry.completedAt)}</small></span>
+                  <b>{entry.score?.toFixed(1)}</b>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="info-card account-card">
+          <span className="eyebrow">АККАУНТ</span>
+          <h2>Вход и восстановление</h2>
+          <div className="account-row">
+            <span><Icon name="mail" size={18} /><span><small>Email</small>{profile.email}</span></span>
+            <button>Изменить</button>
+          </div>
+          <div className="account-row">
+            <span><Icon name="lock" size={18} /><span><small>PIN-код</small>••••••</span></span>
+            <button>Изменить</button>
+          </div>
+          <p className="privacy-note">Email и настройки входа видны только вам. Игровой профиль и коллекции публичные.</p>
+        </section>
+      </>
+    )
+  }
+
+  const nav: { id: Tab; label: string; icon: IconName }[] = [
+    { id: 'library', label: 'Мои игры', icon: 'library' },
+    { id: 'add', label: 'Добавить', icon: 'plus' },
+    { id: 'collections', label: 'Коллекции', icon: 'layers' },
+    { id: 'profile', label: 'Профиль', icon: 'user' },
   ]
 
   return (
     <div className="app-shell">
       <main className="page">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">ПРОТОТИП</span>
-            <h1>Найди следующую игру</h1>
-          </div>
-          <button className="avatar" aria-label="Профиль">S</button>
-        </header>
-
-        <div className="search-wrap">
-          <Icon name="search" size={20} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Игра, жанр, настроение..."
-            aria-label="Поиск игр"
-          />
-          <button className="search-action" aria-label="Фильтры">
-            <Icon name="filter" size={18} />
-          </button>
-        </div>
-
-        {activeTab === 'Главная' && !query && activeGenre === 'Все' && (
-          <section className="hero-card">
-            <Cover game={featured} large />
-            <div className="hero-card__scrim" />
-            <div className="hero-card__content">
-              <div className="hero-card__badges">
-                <span className="pill pill--bright">{featured.match}% подходит</span>
-                <span className="pill">{featured.year}</span>
-              </div>
-              <h2>{featured.title}</h2>
-              <p>{featured.subtitle}</p>
-              <div className="hero-card__footer">
-                <span>{featured.genres.join(' · ')}</span>
-                <button>
-                  Подробнее <Icon name="arrow" size={17} />
-                </button>
-              </div>
-            </div>
-          </section>
+        {selectedGameId ? renderDetail() : (
+          <>
+            {activeTab === 'library' && renderLibrary()}
+            {activeTab === 'add' && renderAdd()}
+            {activeTab === 'collections' && renderCollections()}
+            {activeTab === 'profile' && renderProfile()}
+          </>
         )}
-
-        <section className="genre-strip" aria-label="Жанры">
-          {genres.map((genre) => (
-            <button
-              key={genre}
-              className={activeGenre === genre ? 'genre-chip genre-chip--active' : 'genre-chip'}
-              onClick={() => setActiveGenre(genre)}
-            >
-              {genre}
-            </button>
-          ))}
-        </section>
-
-        <section className="catalog">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">{query ? 'РЕЗУЛЬТАТЫ' : 'ДЛЯ ТЕБЯ'}</span>
-              <h2>{query ? 'Нашли: ' + filtered.length : 'Стоит попробовать'}</h2>
-            </div>
-            <button className="text-button">Все</button>
-          </div>
-
-          {filtered.length > 0 ? (
-            <div className="game-grid">
-              {filtered.map((game) => (
-                <article className="game-card" key={game.id}>
-                  <div className="game-card__cover-wrap">
-                    <Cover game={game} />
-                    <button
-                      className={saved.has(game.id) ? 'save-button save-button--active' : 'save-button'}
-                      onClick={() => toggleSaved(game.id)}
-                      aria-label={saved.has(game.id) ? 'Убрать из сохранённых' : 'Сохранить'}
-                    >
-                      <Icon name="heart" size={18} />
-                    </button>
-                    <span className="match-badge">{game.match}%</span>
-                  </div>
-                  <div className="game-card__body">
-                    <div className="game-card__title-row">
-                      <h3>{game.title}</h3>
-                      <span className="rating"><Icon name="star" size={14} /> {game.rating}</span>
-                    </div>
-                    <p>{game.subtitle}</p>
-                    <div className="game-card__meta">
-                      <span>{game.genres[0]}</span>
-                      <span>•</span>
-                      <span>{game.year}</span>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <span>Ничего не нашли</span>
-              <p>Попробуй другой запрос или сбрось фильтр жанра.</p>
-              <button onClick={() => { setQuery(''); setActiveGenre('Все') }}>Сбросить фильтры</button>
-            </div>
-          )}
-        </section>
-
-        <section className="prototype-note">
-          <span className="prototype-note__dot" />
-          <div>
-            <strong>Сейчас используются тестовые данные</strong>
-            <p>Позже заменим их на данные из IGDB через наш Python API.</p>
-          </div>
-        </section>
       </main>
 
-      <nav className="bottom-nav" aria-label="Основная навигация">
-        {nav.map((item) => (
-          <button
-            key={item.label}
-            onClick={() => setActiveTab(item.label)}
-            className={activeTab === item.label ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'}
-          >
-            <Icon name={item.icon} />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
+      {!selectedGameId && (
+        <nav className="bottom-nav" aria-label="Основная навигация">
+          {nav.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => openTab(item.id)}
+              className={activeTab === item.id ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'}
+            >
+              <Icon name={item.icon} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   )
 }

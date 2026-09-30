@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'GameShelf Prototype',
-        short_name: 'GameShelf',
-        description: 'Mobile-first game discovery prototype',
+        name: 'RateApp',
+        short_name: 'RateApp',
+        description: 'Личная коллекция, оценки и игровой дневник',
         theme_color: '#0b0d12',
         background_color: '#0b0d12',
         display: 'standalone',
