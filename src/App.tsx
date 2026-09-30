@@ -31,6 +31,23 @@ type Tab = 'library' | 'add' | 'collections' | 'profile'
 type StatusFilter = 'all' | LibraryStatus
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
 
+type ApiLibraryEntry = Omit<LibraryEntry, 'platform' | 'completedAt' | 'startedAt' | 'score' | 'review'> & {
+  platform: string | null
+  completedAt: string | null
+  startedAt: string | null
+  score: number | null
+  review: string | null
+}
+
+const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => ({
+  ...entry,
+  platform: entry.platform ?? undefined,
+  completedAt: entry.completedAt ?? undefined,
+  startedAt: entry.startedAt ?? undefined,
+  score: entry.score ?? undefined,
+  review: entry.review ?? undefined,
+})
+
 const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   completed: { label: 'Пройдено', short: 'Пройдено' },
   playing: { label: 'Прохожу', short: 'Прохожу' },
@@ -134,7 +151,7 @@ function GameCard({
     <button className="game-card" onClick={onOpen}>
       <div className="game-card__cover-wrap">
         <Cover game={game} markers={markers} />
-        {entry.score !== undefined && (
+        {entry.score != null && (
           <span className="score-badge"><Icon name="star" size={13} />{entry.score.toFixed(1)}</span>
         )}
         <span className={`status-badge status-badge--${entry.status}`}>
@@ -187,12 +204,12 @@ function App() {
         if (!libraryResponse.ok || !collectionsResponse.ok) return
 
         const [libraryData, collectionsData] = await Promise.all([
-          libraryResponse.json() as Promise<LibraryEntry[]>,
+          libraryResponse.json() as Promise<ApiLibraryEntry[]>,
           collectionsResponse.json() as Promise<GameCollection[]>,
         ])
 
         if (!cancelled) {
-          setEntries(libraryData)
+          setEntries(libraryData.map(normalizeEntry))
           setCollections(collectionsData)
         }
       } catch {
@@ -316,7 +333,7 @@ function App() {
     setAddStatus(entry.status)
     setAddPlatform(entry.platform ?? game.platforms[0] ?? '')
     setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
-    setAddScore(entry.score !== undefined ? entry.score.toFixed(1) : '8.0')
+    setAddScore(entry.score != null ? entry.score.toFixed(1) : '8.0')
     setAddCollectionIds(entry.collectionIds)
     setSelectedGameId(null)
     setActiveTab('add')
@@ -346,7 +363,7 @@ function App() {
       })
 
       if (response.ok) {
-        const savedEntry = await response.json() as LibraryEntry
+        const savedEntry = normalizeEntry(await response.json() as ApiLibraryEntry)
         setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
       } else {
         setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
@@ -400,7 +417,7 @@ function App() {
         <section className="rating-grid">
           <div className="rating-card rating-card--mine">
             <span>Моя оценка</span>
-            <strong>{selectedEntry.score !== undefined ? selectedEntry.score.toFixed(1) : '—'}</strong>
+            <strong>{selectedEntry.score != null ? selectedEntry.score.toFixed(1) : '—'}</strong>
             <small>из 10</small>
           </div>
           <div className="rating-card">
