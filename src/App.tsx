@@ -29,6 +29,7 @@ type IconName =
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
 type StatusFilter = 'all' | LibraryStatus
+type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
 
 const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   completed: { label: 'Пройдено', short: 'Пройдено' },
@@ -158,6 +159,10 @@ function App() {
   const [collections] = useState<GameCollection[]>(initialCollections)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [genreFilter, setGenreFilter] = useState('all')
+  const [platformFilter, setPlatformFilter] = useState('all')
+  const [sortMode, setSortMode] = useState<SortMode>('activity')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
 
@@ -174,24 +179,72 @@ function App() {
     [entries],
   )
 
+  const availableGenres = useMemo(() => {
+    const libraryGameIds = new Set(entries.map((entry) => entry.gameId))
+    return Array.from(
+      new Set(
+        games
+          .filter((game) => libraryGameIds.has(game.id))
+          .flatMap((game) => game.genres),
+      ),
+    ).sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [entries])
+
+  const availablePlatforms = useMemo(() => {
+    return Array.from(
+      new Set(entries.map((entry) => entry.platform).filter((platform): platform is string => Boolean(platform))),
+    ).sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [entries])
+
   const libraryGames = useMemo(() => {
     const normalized = query.trim().toLowerCase()
 
-    return entries
+    const result = entries
       .filter((entry) => statusFilter === 'all' || entry.status === statusFilter)
       .map((entry) => ({ entry, game: games.find((game) => game.id === entry.gameId)! }))
-      .filter(({ game }) =>
-        !normalized ||
-        game.title.toLowerCase().includes(normalized) ||
-        game.genres.some((genre) => genre.toLowerCase().includes(normalized)) ||
-        game.developer.toLowerCase().includes(normalized),
-      )
-      .sort((a, b) => {
-        const dateA = a.entry.completedAt ?? a.entry.startedAt ?? a.entry.addedAt
-        const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
-        return dateB.localeCompare(dateA)
+      .filter(({ game, entry }) => {
+        const queryMatch =
+          !normalized ||
+          game.title.toLowerCase().includes(normalized) ||
+          game.genres.some((genre) => genre.toLowerCase().includes(normalized)) ||
+          game.developer.toLowerCase().includes(normalized)
+        const genreMatch = genreFilter === 'all' || game.genres.includes(genreFilter)
+        const platformMatch = platformFilter === 'all' || entry.platform === platformFilter
+
+        return queryMatch && genreMatch && platformMatch
       })
-  }, [entries, query, statusFilter])
+
+    return result.sort((a, b) => {
+      if (sortMode === 'score-desc') {
+        return (b.entry.score ?? -1) - (a.entry.score ?? -1)
+      }
+
+      if (sortMode === 'score-asc') {
+        const scoreA = a.entry.score ?? Number.POSITIVE_INFINITY
+        const scoreB = b.entry.score ?? Number.POSITIVE_INFINITY
+        return scoreA - scoreB
+      }
+
+      if (sortMode === 'title') {
+        return a.game.title.localeCompare(b.game.title, 'ru')
+      }
+
+      const dateA = a.entry.completedAt ?? a.entry.startedAt ?? a.entry.addedAt
+      const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
+      return dateB.localeCompare(dateA)
+    })
+  }, [entries, query, statusFilter, genreFilter, platformFilter, sortMode])
+
+  const activeExtraFilters =
+    (genreFilter !== 'all' ? 1 : 0) +
+    (platformFilter !== 'all' ? 1 : 0) +
+    (sortMode !== 'activity' ? 1 : 0)
+
+  const resetExtraFilters = () => {
+    setGenreFilter('all')
+    setPlatformFilter('all')
+    setSortMode('activity')
+  }
 
   const addResults = useMemo(() => {
     const normalized = addQuery.trim().toLowerCase()
@@ -341,7 +394,6 @@ function App() {
     <>
       <header className="topbar">
         <div>
-          <span className="eyebrow">@{profile.nickname}</span>
           <h1>Мои игры</h1>
         </div>
         <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">S</button>
@@ -361,10 +413,80 @@ function App() {
           placeholder="Поиск в моей библиотеке..."
           aria-label="Поиск в библиотеке"
         />
-        <button className="search-action" aria-label="Дополнительные фильтры">
+        <button
+          className={filtersOpen || activeExtraFilters > 0 ? 'search-action search-action--active' : 'search-action'}
+          aria-label="Дополнительные фильтры"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((current) => !current)}
+        >
           <Icon name="filter" size={18} />
+          {activeExtraFilters > 0 && <span className="filter-count">{activeExtraFilters}</span>}
         </button>
       </div>
+
+      {filtersOpen && (
+        <section className="filter-panel">
+          <div className="filter-panel__header">
+            <div>
+              <span className="eyebrow">ФИЛЬТРЫ</span>
+              <strong>Показать нужное</strong>
+            </div>
+            {activeExtraFilters > 0 && <button onClick={resetExtraFilters}>Сбросить</button>}
+          </div>
+
+          <div className="filter-group">
+            <span>Жанр</span>
+            <div className="filter-options">
+              <button
+                className={genreFilter === 'all' ? 'filter-option filter-option--active' : 'filter-option'}
+                onClick={() => setGenreFilter('all')}
+              >
+                Все
+              </button>
+              {availableGenres.map((genre) => (
+                <button
+                  key={genre}
+                  className={genreFilter === genre ? 'filter-option filter-option--active' : 'filter-option'}
+                  onClick={() => setGenreFilter(genre)}
+                >
+                  {genre}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="filter-group">
+            <span>Платформа</span>
+            <div className="filter-options">
+              <button
+                className={platformFilter === 'all' ? 'filter-option filter-option--active' : 'filter-option'}
+                onClick={() => setPlatformFilter('all')}
+              >
+                Все
+              </button>
+              {availablePlatforms.map((platform) => (
+                <button
+                  key={platform}
+                  className={platformFilter === platform ? 'filter-option filter-option--active' : 'filter-option'}
+                  onClick={() => setPlatformFilter(platform)}
+                >
+                  {platform}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="sort-field">
+            <span>Сортировка</span>
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+              <option value="activity">По последней активности</option>
+              <option value="score-desc">Оценка: сначала высокая</option>
+              <option value="score-asc">Оценка: сначала низкая</option>
+              <option value="title">По названию</option>
+            </select>
+          </label>
+        </section>
+      )}
 
       <section className="status-strip" aria-label="Статус игры">
         {([
@@ -639,6 +761,13 @@ function App() {
 
     return (
       <>
+        <div className="profile-back-row">
+          <button className="profile-back" onClick={() => openTab('library')}>
+            <Icon name="back" size={18} />
+            <span>Мои игры</span>
+          </button>
+        </div>
+
         <section className="profile-hero">
           <div className="profile-avatar">S</div>
           <span className="public-badge"><Icon name="globe" size={14} />Публичный профиль</span>
