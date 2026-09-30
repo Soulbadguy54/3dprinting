@@ -190,17 +190,38 @@ def _igdb_access_token() -> tuple[str, str]:
     try:
         response = httpx.post(
             "https://id.twitch.tv/oauth2/token",
-            params={
+            data={
                 "client_id": client_id,
                 "client_secret": client_secret,
                 "grant_type": "client_credentials",
             },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=10.0,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            message = ""
+            try:
+                message = str(response.json().get("message") or "")
+            except ValueError:
+                pass
+
+            if response.status_code == 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Twitch отклонил Client ID/Secret. Создайте новый Client Secret и обновите переменные Vercel.",
+                )
+
+            raise HTTPException(
+                status_code=502,
+                detail=f"Ошибка Twitch OAuth ({response.status_code})"
+                + (f": {message}" if message else "."),
+            )
+
         payload = response.json()
+    except HTTPException:
+        raise
     except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Не удалось авторизоваться в IGDB.") from exc
+        raise HTTPException(status_code=502, detail="Не удалось связаться с Twitch OAuth.") from exc
 
     token = payload.get("access_token")
     if not token:
