@@ -338,6 +338,12 @@ def health() -> dict[str, object]:
         "ok": True,
         "service": "rateapp-api",
         "database": {"configured": database_configured, "reachable": database_ok},
+        "igdb": {
+            "configured": bool(
+                os.getenv("IGDB_CLIENT_ID", "").strip()
+                and os.getenv("IGDB_CLIENT_SECRET", "").strip()
+            )
+        },
         "environment": os.getenv("VERCEL_ENV", "local"),
     }
 
