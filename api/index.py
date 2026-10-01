@@ -416,20 +416,18 @@ def _igdb_search_rank(row: dict[str, object], query: str) -> float:
     elif query_text and all(token in name_text for token in query_text.split()):
         score += 8_000
 
-    category = int(row.get("category") or 0)
-    if category in {0, 4, 8, 9, 10, 11}:
-        score += 25_000
-    elif category in {1, 2, 3, 5, 6, 7, 13, 14}:
-        score -= 120_000
-
     ratings = max(
         int(row.get("total_rating_count") or 0),
         int(row.get("rating_count") or 0),
     )
     hypes = int(row.get("hypes") or 0)
+    rating = float(row.get("rating") or 0)
 
-    score += math.log1p(ratings) * 70_000
-    score += math.log1p(hypes) * 8_000
+    # IGDB already sorted candidates by total_rating_count in the query.
+    # Keep popularity dominant; use quality/hype/text only as tie-breakers.
+    score += math.log1p(ratings) * 100_000
+    score += rating * 250
+    score += math.log1p(hypes) * 5_000
     return score
 
 
@@ -637,14 +635,30 @@ def search_games(q: str, request: Request) -> list[dict[str, object]]:
         _current_user(request, session)
 
     client_id, token = _igdb_access_token()
-    safe_query = query.replace("\\", "\\\\").replace('"', '\\"')
+    query_tokens = [
+        token
+        for token in _normalized_search_text(query).split()
+        if len(token) >= 2
+    ]
+    if not query_tokens:
+        return []
+
+    escaped_tokens = [
+        token.replace("\\", "\\\\").replace('"', '\\"')
+        for token in query_tokens[:6]
+    ]
+    name_filters = " & ".join(
+        f'name ~ *"{token}"*'
+        for token in escaped_tokens
+    )
+
     body = (
-        f'search "{safe_query}"; '
-        "fields id,name,category,first_release_date,rating,rating_count,"
+        "fields id,name,game_type,first_release_date,rating,rating_count,"
         "total_rating_count,hypes,cover.image_id,"
         "genres.name,platforms.name,involved_companies.developer,"
         "involved_companies.company.name; "
-        "where version_parent = null; "
+        f"where {name_filters} & version_parent = null; "
+        "sort total_rating_count desc; "
         "limit 50;"
     )
 
