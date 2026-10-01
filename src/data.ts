@@ -1,4 +1,4 @@
-export type LibraryStatus = 'completed' | 'playing' | 'wishlist'
+export type LibraryStatus = 'completed' | 'playing' | 'wishlist' | 'dropped'
 
 export type Game = {
   id: number

@@ -69,6 +69,28 @@ const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   completed: { label: 'Пройдено', short: 'Пройдено' },
   playing: { label: 'Прохожу', short: 'Прохожу' },
   wishlist: { label: 'Хочу пройти', short: 'Хочу' },
+  dropped: { label: 'Дропнул', short: 'Дроп' },
+}
+
+const ratedStatuses = new Set<LibraryStatus>(['completed', 'dropped'])
+
+const preferredPlatform = (platforms: string[]) => {
+  const priorities = [
+    /^(pc|pc \(microsoft windows\))$/i,
+    /windows/i,
+    /(playstation 5|\bps5\b)/i,
+    /xbox series/i,
+    /(playstation 4|\bps4\b)/i,
+    /xbox one/i,
+    /(nintendo )?switch/i,
+  ]
+
+  for (const pattern of priorities) {
+    const match = platforms.find((platform) => pattern.test(platform))
+    if (match) return match
+  }
+
+  return platforms[0] ?? ''
 }
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
@@ -447,6 +469,7 @@ function App() {
     completed: entries.filter((entry) => entry.status === 'completed').length,
     playing: entries.filter((entry) => entry.status === 'playing').length,
     wishlist: entries.filter((entry) => entry.status === 'wishlist').length,
+    dropped: entries.filter((entry) => entry.status === 'dropped').length,
   }), [entries])
 
   const openTab = (tab: Tab) => {
@@ -458,7 +481,7 @@ function App() {
   const startAdding = (game: Game) => {
     setAddGameId(game.id)
     setAddStatus('completed')
-    setAddPlatform(game.platforms[0] ?? '')
+    setAddPlatform(preferredPlatform(game.platforms))
     setAddDate(new Date().toISOString().slice(0, 10))
     setAddAtmosphereScore(8)
     setAddStoryScore(8)
@@ -474,7 +497,7 @@ function App() {
   const startEditing = (game: Game, entry: LibraryEntry) => {
     setAddGameId(game.id)
     setAddStatus(entry.status)
-    setAddPlatform(entry.platform ?? game.platforms[0] ?? '')
+    setAddPlatform(entry.platform ?? preferredPlatform(game.platforms))
     setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
     const fallbackScore = entry.score ?? 8
     setAddAtmosphereScore(entry.atmosphereScore ?? fallbackScore)
@@ -499,11 +522,11 @@ function App() {
       platform: addStatus === 'wishlist' ? undefined : addPlatform,
       completedAt: addStatus === 'completed' ? addDate : undefined,
       startedAt: addStatus === 'playing' ? today : undefined,
-      score: addStatus === 'completed' ? calculatedAddScore : undefined,
-      atmosphereScore: addStatus === 'completed' ? addAtmosphereScore : undefined,
-      storyScore: addStatus === 'completed' ? addStoryScore : undefined,
-      technologyScore: addStatus === 'completed' ? addTechnologyScore : undefined,
-      gameplayScore: addStatus === 'completed' ? addGameplayScore : undefined,
+      score: ratedStatuses.has(addStatus) ? calculatedAddScore : undefined,
+      atmosphereScore: ratedStatuses.has(addStatus) ? addAtmosphereScore : undefined,
+      storyScore: ratedStatuses.has(addStatus) ? addStoryScore : undefined,
+      technologyScore: ratedStatuses.has(addStatus) ? addTechnologyScore : undefined,
+      gameplayScore: ratedStatuses.has(addStatus) ? addGameplayScore : undefined,
       review: addReview.trim() || undefined,
       collectionIds: addCollectionIds,
       addedAt: entryMap.get(game.id)?.addedAt ?? today,
@@ -574,7 +597,6 @@ function App() {
         <section className="detail-hero">
           <div className="detail-hero__cover"><Cover game={selectedGame} markers={gameCollections} /></div>
           <div className="detail-hero__info">
-            <span className="eyebrow">{statusMeta[selectedEntry.status].label}</span>
             <h1>{selectedGame.title}</h1>
             <p>{selectedGame.genres.join(' · ')} · {selectedGame.year}</p>
             <button
@@ -604,7 +626,7 @@ function App() {
           </div>
         </section>
 
-        {selectedEntry.status === 'completed' && (
+        {ratedStatuses.has(selectedEntry.status) && (
           <section className="criteria-card">
             <div className="criteria-card__header">
               <span className="eyebrow">МОЯ ОЦЕНКА</span>
@@ -680,6 +702,7 @@ function App() {
         <div><strong>{counts.completed}</strong><span>пройдено</span></div>
         <div><strong>{counts.playing}</strong><span>прохожу</span></div>
         <div><strong>{counts.wishlist}</strong><span>хочу пройти</span></div>
+        <div><strong>{counts.dropped}</strong><span>дропнул</span></div>
       </section>
 
       <div className="search-wrap">
@@ -770,6 +793,7 @@ function App() {
           ['all', 'Все'],
           ['playing', 'Прохожу'],
           ['completed', 'Пройдено'],
+          ['dropped', 'Дропнул'],
           ['wishlist', 'Хочу пройти'],
         ] as [StatusFilter, string][]).map(([value, label]) => (
           <button
@@ -832,8 +856,7 @@ function App() {
           <header className="subpage-header">
             <button className="icon-button" onClick={() => setAddGameId(null)}><Icon name="back" size={20} /></button>
             <div>
-              <span className="eyebrow">{statusMeta[addStatus].label}</span>
-              <h1>{editingEntry ? 'Изменить игру' : 'Добавить игру'}</h1>
+              <h1>{editingEntry ? 'Изменить игру' : statusMeta[addStatus].label}</h1>
             </div>
           </header>
 
@@ -848,7 +871,7 @@ function App() {
           <section className="form-card">
             <label className="field-label">Статус</label>
             <div className="choice-grid">
-              {(['completed', 'playing', 'wishlist'] as LibraryStatus[]).map((status) => (
+              {(['completed', 'playing', 'dropped', 'wishlist'] as LibraryStatus[]).map((status) => (
                 <button
                   key={status}
                   className={addStatus === status ? 'choice-button choice-button--active' : 'choice-button'}
@@ -869,13 +892,15 @@ function App() {
             )}
 
             {addStatus === 'completed' && (
-              <>
-                <label className="form-field">
-                  <span>Дата прохождения</span>
-                  <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
-                  <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
-                </label>
-                <div className="rating-builder">
+              <label className="form-field">
+                <span>Дата прохождения</span>
+                <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
+                <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
+              </label>
+            )}
+
+            {ratedStatuses.has(addStatus) && (
+              <div className="rating-builder">
                   <div className="rating-builder__summary">
                     <span>Итоговая оценка</span>
                     <strong>{calculatedAddScore.toFixed(1)}</strong>
@@ -884,9 +909,8 @@ function App() {
                   <RatingSlider label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
                   <RatingSlider label="Сюжет" value={addStoryScore} onChange={setAddStoryScore} />
                   <RatingSlider label="Технологичность" value={addTechnologyScore} onChange={setAddTechnologyScore} />
-                  <RatingSlider label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
-                </div>
-              </>
+                <RatingSlider label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
+              </div>
             )}
 
             <details
@@ -944,7 +968,6 @@ function App() {
       <>
         <header className="topbar">
           <div>
-            <span className="eyebrow">IGDB + RATEAPP</span>
             <h1>Добавить игру</h1>
           </div>
         </header>
@@ -1010,7 +1033,6 @@ function App() {
           <header className="subpage-header">
             <button className="icon-button" onClick={() => setSelectedCollectionId(null)}><Icon name="back" size={20} /></button>
             <div>
-              <span className="eyebrow">КОЛЛЕКЦИЯ</span>
               <h1>{collection.title}</h1>
             </div>
           </header>
@@ -1029,7 +1051,6 @@ function App() {
       <>
         <header className="topbar">
           <div>
-            <span className="eyebrow">МОИ СПИСКИ</span>
             <h1>Коллекции</h1>
           </div>
           <button className="round-add" aria-label="Создать коллекцию"><Icon name="plus" size={20} /></button>
@@ -1140,7 +1161,7 @@ function App() {
   }
 
   const nav: { id: Tab; label: string; icon: IconName }[] = [
-    { id: 'library', label: 'Мои игры', icon: 'library' },
+    { id: 'library', label: 'Мои игры', icon: 'gamepad' },
     { id: 'add', label: 'Добавить', icon: 'plus' },
     { id: 'collections', label: 'Коллекции', icon: 'layers' },
     { id: 'profile', label: 'Профиль', icon: 'user' },
@@ -1180,7 +1201,13 @@ function App() {
               onClick={() => openTab(item.id)}
               className={activeTab === item.id ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'}
             >
-              <Icon name={item.icon} />
+              {item.id === 'profile' ? (
+                <span className="bottom-nav__avatar" aria-hidden="true">
+                  {authUser.nickname.slice(0, 1).toUpperCase()}
+                </span>
+              ) : (
+                <Icon name={item.icon} />
+              )}
               <span>{item.label}</span>
             </button>
           ))}

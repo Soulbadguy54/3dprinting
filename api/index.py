@@ -61,7 +61,7 @@ class LoginPayload(BaseModel):
 
 class LibraryPayload(BaseModel):
     gameId: int | None = None
-    status: Literal["completed", "playing", "wishlist"]
+    status: Literal["completed", "playing", "wishlist", "dropped"]
     platform: str | None = None
     completedAt: date | None = None
     startedAt: date | None = None
@@ -600,6 +600,12 @@ def public_profile(nickname: str) -> dict[str, object]:
                 UserGame.status == "wishlist",
             )
         ) or 0
+        dropped = session.scalar(
+            select(func.count(UserGame.id)).where(
+                UserGame.user_id == user.id,
+                UserGame.status == "dropped",
+            )
+        ) or 0
 
         return {
             "nickname": user.nickname,
@@ -609,6 +615,7 @@ def public_profile(nickname: str) -> dict[str, object]:
                 "completed": completed,
                 "playing": playing,
                 "wishlist": wishlist,
+                "dropped": dropped,
             },
         }
 
@@ -734,7 +741,7 @@ def upsert_library_game(
         entry.platform = None if payload.status == "wishlist" else payload.platform
         entry.completed_at = payload.completedAt if payload.status == "completed" else None
         entry.started_at = payload.startedAt if payload.status == "playing" else None
-        if payload.status == "completed":
+        if payload.status in {"completed", "dropped"}:
             criteria = [
                 payload.atmosphereScore,
                 payload.storyScore,
