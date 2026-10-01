@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -327,7 +328,11 @@ def _collection_slugs(session, user_game_id: int) -> list[str]:
     )
 
 
-def _serialize_entry(session, entry: UserGame) -> dict[str, object]:
+def _serialize_entry(
+    session,
+    entry: UserGame,
+    collection_ids: list[str] | None = None,
+) -> dict[str, object]:
     return {
         "gameId": entry.game.igdb_id,
         "status": entry.status,
@@ -336,10 +341,82 @@ def _serialize_entry(session, entry: UserGame) -> dict[str, object]:
         "startedAt": entry.started_at.isoformat() if entry.started_at else None,
         "score": float(entry.score) if entry.score is not None else None,
         "review": entry.review,
-        "collectionIds": _collection_slugs(session, entry.id),
+        "collectionIds": collection_ids if collection_ids is not None else _collection_slugs(session, entry.id),
         "addedAt": entry.added_at.date().isoformat(),
         "game": _game_payload(entry.game),
     }
+
+
+def _collections_payload(session, user: User) -> list[dict[str, object]]:
+    rows = session.scalars(
+        select(Collection)
+        .where(Collection.user_id == user.id)
+        .order_by(Collection.id)
+    ).all()
+    return [
+        {
+            "id": row.slug,
+            "title": row.title,
+            "description": row.description or "",
+            "mark": row.mark or "",
+        }
+        for row in rows
+    ]
+
+
+def _library_payload(session, user: User) -> list[dict[str, object]]:
+    rows = session.scalars(
+        select(UserGame)
+        .where(UserGame.user_id == user.id)
+        .order_by(UserGame.added_at.desc())
+    ).all()
+
+    memberships: dict[int, list[str]] = {row.id: [] for row in rows}
+    if rows:
+        pairs = session.execute(
+            select(CollectionGame.user_game_id, Collection.slug)
+            .join(Collection, Collection.id == CollectionGame.collection_id)
+            .where(CollectionGame.user_game_id.in_([row.id for row in rows]))
+            .order_by(CollectionGame.user_game_id, Collection.id)
+        ).all()
+        for user_game_id, slug in pairs:
+            memberships.setdefault(user_game_id, []).append(slug)
+
+    return [
+        _serialize_entry(session, row, memberships.get(row.id, []))
+        for row in rows
+    ]
+
+
+def _normalized_search_text(value: str) -> str:
+    return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
+
+
+def _igdb_search_rank(row: dict[str, object], query: str) -> float:
+    query_text = _normalized_search_text(query)
+    name_text = _normalized_search_text(str(row.get("name") or ""))
+    score = 0.0
+
+    if name_text == query_text:
+        score += 1_000_000
+    elif name_text.startswith(query_text):
+        score += 300_000
+    elif query_text and query_text in name_text:
+        score += 150_000
+    elif query_text and all(token in name_text for token in query_text.split()):
+        score += 80_000
+
+    category = int(row.get("category") or 0)
+    if category in {0, 4, 8, 9, 10, 11}:
+        score += 60_000
+    elif category in {1, 2, 3, 5, 6, 7, 13, 14}:
+        score -= 100_000
+
+    ratings = int(row.get("total_rating_count") or row.get("rating_count") or 0)
+    hypes = int(row.get("hypes") or 0)
+    score += math.log1p(ratings) * 12_000
+    score += math.log1p(hypes) * 4_000
+    return score
 
 
 @app.get("/api/health")
@@ -474,6 +551,17 @@ def profile(request: Request) -> dict[str, object]:
         return _user_payload(_current_user(request, session))
 
 
+@app.get("/api/bootstrap")
+def bootstrap(request: Request) -> dict[str, object]:
+    with _session() as session:
+        user = _current_user(request, session)
+        return {
+            "user": _user_payload(user),
+            "library": _library_payload(session, user),
+            "collections": _collections_payload(session, user),
+        }
+
+
 @app.get("/api/users/{nickname}")
 def public_profile(nickname: str) -> dict[str, object]:
     with _session() as session:
@@ -528,7 +616,7 @@ def igdb_status(request: Request) -> dict[str, bool]:
 @app.get("/api/games/search")
 def search_games(q: str, request: Request) -> list[dict[str, object]]:
     query = q.strip()
-    if len(query) < 2:
+    if len(query) < 3:
         return []
 
     with _session() as session:
@@ -538,11 +626,12 @@ def search_games(q: str, request: Request) -> list[dict[str, object]]:
     safe_query = query.replace("\\", "\\\\").replace('"', '\\"')
     body = (
         f'search "{safe_query}"; '
-        "fields id,name,first_release_date,rating,cover.image_id,"
+        "fields id,name,category,first_release_date,rating,rating_count,"
+        "total_rating_count,hypes,cover.image_id,"
         "genres.name,platforms.name,involved_companies.developer,"
         "involved_companies.company.name; "
         "where version_parent = null; "
-        "limit 20;"
+        "limit 50;"
     )
 
     try:
@@ -567,39 +656,27 @@ def search_games(q: str, request: Request) -> list[dict[str, object]]:
 
     if not isinstance(rows, list):
         return []
-    return _cache_igdb_games(rows)
+
+    ranked_rows = sorted(
+        rows,
+        key=lambda row: _igdb_search_rank(row, query),
+        reverse=True,
+    )[:20]
+    return _cache_igdb_games(ranked_rows)
 
 
 @app.get("/api/collections")
 def collections(request: Request) -> list[dict[str, object]]:
     with _session() as session:
         user = _current_user(request, session)
-        rows = session.scalars(
-            select(Collection)
-            .where(Collection.user_id == user.id)
-            .order_by(Collection.id)
-        ).all()
-        return [
-            {
-                "id": row.slug,
-                "title": row.title,
-                "description": row.description or "",
-                "mark": row.mark or "",
-            }
-            for row in rows
-        ]
+        return _collections_payload(session, user)
 
 
 @app.get("/api/library")
 def library(request: Request) -> list[dict[str, object]]:
     with _session() as session:
         user = _current_user(request, session)
-        rows = session.scalars(
-            select(UserGame)
-            .where(UserGame.user_id == user.id)
-            .order_by(UserGame.added_at.desc())
-        ).all()
-        return [_serialize_entry(session, row) for row in rows]
+        return _library_payload(session, user)
 
 
 @app.put("/api/library/{game_id}")

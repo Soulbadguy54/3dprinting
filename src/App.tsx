@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import {
@@ -36,6 +36,12 @@ type ApiLibraryEntry = Omit<LibraryEntry, 'platform' | 'completedAt' | 'startedA
   score: number | null
   review: string | null
   game?: Game
+}
+
+type BootstrapPayload = {
+  user: AuthUser
+  library: ApiLibraryEntry[]
+  collections: GameCollection[]
 }
 
 const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => ({
@@ -180,6 +186,7 @@ function App() {
   const [addResults, setAddResults] = useState<Game[]>([])
   const [addSearchLoading, setAddSearchLoading] = useState(false)
   const [addSearchError, setAddSearchError] = useState('')
+  const addSearchCache = useRef(new Map<string, Game[]>())
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [genreFilter, setGenreFilter] = useState('all')
@@ -197,19 +204,45 @@ function App() {
   const [addScore, setAddScore] = useState('8.0')
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
 
+  const applyBootstrap = (payload: BootstrapPayload) => {
+    setAuthUser(payload.user)
+    setEntries(payload.library.map(normalizeEntry))
+    setCollections(payload.collections)
+
+    const libraryMetadata = payload.library.flatMap((entry) => entry.game ? [entry.game] : [])
+    setCatalogGames((current) => {
+      const merged = new Map(current.map((game) => [game.id, game]))
+      libraryMetadata.forEach((game) => merged.set(game.id, game))
+      return Array.from(merged.values())
+    })
+  }
+
+  const hydrateAfterLogin = async (fallbackUser: AuthUser) => {
+    setAuthUser(fallbackUser)
+    setAuthReady(true)
+
+    try {
+      const response = await fetch('/api/bootstrap')
+      if (!response.ok) return
+      applyBootstrap(await response.json() as BootstrapPayload)
+    } catch {
+      // Login itself succeeded; keep the authenticated shell and retry on refresh.
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
 
     const restoreSession = async () => {
       try {
-        const response = await fetch('/api/auth/me')
+        const response = await fetch('/api/bootstrap')
         if (!response.ok) {
           if (!cancelled) setAuthUser(null)
           return
         }
 
-        const user = await response.json() as AuthUser
-        if (!cancelled) setAuthUser(user)
+        const payload = await response.json() as BootstrapPayload
+        if (!cancelled) applyBootstrap(payload)
       } catch {
         if (!cancelled) setAuthUser(null)
       } finally {
@@ -223,56 +256,6 @@ function App() {
       cancelled = true
     }
   }, [])
-
-  useEffect(() => {
-    if (!authUser) {
-      setEntries([])
-      setCollections([])
-      return
-    }
-
-    let cancelled = false
-
-    const loadLibrary = async () => {
-      try {
-        const [libraryResponse, collectionsResponse] = await Promise.all([
-          fetch('/api/library'),
-          fetch('/api/collections'),
-        ])
-
-        if (libraryResponse.status === 401 || collectionsResponse.status === 401) {
-          if (!cancelled) setAuthUser(null)
-          return
-        }
-
-        if (!libraryResponse.ok || !collectionsResponse.ok) return
-
-        const [libraryData, collectionsData] = await Promise.all([
-          libraryResponse.json() as Promise<ApiLibraryEntry[]>,
-          collectionsResponse.json() as Promise<GameCollection[]>,
-        ])
-
-        if (!cancelled) {
-          setEntries(libraryData.map(normalizeEntry))
-          setCollections(collectionsData)
-          const libraryMetadata = libraryData.flatMap((entry) => entry.game ? [entry.game] : [])
-          setCatalogGames((current) => {
-            const merged = new Map(current.map((game) => [game.id, game]))
-            libraryMetadata.forEach((game) => merged.set(game.id, game))
-            return Array.from(merged.values())
-          })
-        }
-      } catch {
-        // Keep the last loaded user data if the API is temporarily unavailable.
-      }
-    }
-
-    void loadLibrary()
-
-    return () => {
-      cancelled = true
-    }
-  }, [authUser?.id])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -348,8 +331,18 @@ function App() {
 
   useEffect(() => {
     const query = addQuery.trim()
-    if (query.length < 2) {
+    const cacheKey = query.toLocaleLowerCase('ru-RU')
+
+    if (query.length < 3) {
       setAddResults([])
+      setAddSearchError('')
+      setAddSearchLoading(false)
+      return
+    }
+
+    const cached = addSearchCache.current.get(cacheKey)
+    if (cached) {
+      setAddResults(cached)
       setAddSearchError('')
       setAddSearchLoading(false)
       return
@@ -374,6 +367,12 @@ function App() {
         }
 
         const results = Array.isArray(payload) ? payload : []
+        addSearchCache.current.set(cacheKey, results)
+        if (addSearchCache.current.size > 30) {
+          const oldestKey = addSearchCache.current.keys().next().value
+          if (oldestKey) addSearchCache.current.delete(oldestKey)
+        }
+
         setAddResults(results)
         setCatalogGames((current) => {
           const merged = new Map(current.map((game) => [game.id, game]))
@@ -388,7 +387,7 @@ function App() {
       } finally {
         if (!controller.signal.aborted) setAddSearchLoading(false)
       }
-    }, 400)
+    }, 650)
 
     return () => {
       window.clearTimeout(timer)
@@ -838,8 +837,8 @@ function App() {
           <span className="source-badge">IGDB</span>
         </div>
 
-        {addQuery.trim().length < 2 && (
-          <div className="search-hint">Введи хотя бы 2 символа — поиск идёт по каталогу IGDB.</div>
+        {addQuery.trim().length < 3 && (
+          <div className="search-hint">Введи хотя бы 3 символа — поиск начнётся после короткой паузы.</div>
         )}
         {addSearchLoading && <div className="search-hint">Ищем в IGDB…</div>}
         {addSearchError && <div className="search-hint search-hint--error">{addSearchError}</div>}
@@ -1032,7 +1031,7 @@ function App() {
   }
 
   if (!authUser) {
-    return <AuthScreen onAuthenticated={setAuthUser} />
+    return <AuthScreen onAuthenticated={(user) => { void hydrateAfterLogin(user) }} />
   }
 
   return (
