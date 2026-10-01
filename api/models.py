@@ -63,6 +63,10 @@ class UserGame(Base):
     completed_at: Mapped[date | None] = mapped_column(Date, index=True)
     started_at: Mapped[date | None] = mapped_column(Date)
     score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    atmosphere_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    story_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    technology_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    gameplay_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     review: Mapped[str | None] = mapped_column(Text)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

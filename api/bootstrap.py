@@ -63,6 +63,18 @@ def initialize_database() -> None:
         connection.exec_driver_sql(
             "ALTER TABLE games ADD COLUMN IF NOT EXISTS platforms_json TEXT"
         )
+        connection.exec_driver_sql(
+            "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS atmosphere_score NUMERIC(3, 1)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS story_score NUMERIC(3, 1)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS technology_score NUMERIC(3, 1)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS gameplay_score NUMERIC(3, 1)"
+        )
 
     with SessionLocal() as session:
         existing = session.scalar(select(User).where(User.email == "demo@rateapp.local"))

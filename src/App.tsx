@@ -29,11 +29,19 @@ type Tab = 'library' | 'add' | 'collections' | 'profile'
 type StatusFilter = 'all' | LibraryStatus
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
 
-type ApiLibraryEntry = Omit<LibraryEntry, 'platform' | 'completedAt' | 'startedAt' | 'score' | 'review'> & {
+type ApiLibraryEntry = Omit<
+  LibraryEntry,
+  'platform' | 'completedAt' | 'startedAt' | 'score' |
+  'atmosphereScore' | 'storyScore' | 'technologyScore' | 'gameplayScore' | 'review'
+> & {
   platform: string | null
   completedAt: string | null
   startedAt: string | null
   score: number | null
+  atmosphereScore: number | null
+  storyScore: number | null
+  technologyScore: number | null
+  gameplayScore: number | null
   review: string | null
   game?: Game
 }
@@ -50,6 +58,10 @@ const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => 
   completedAt: entry.completedAt ?? undefined,
   startedAt: entry.startedAt ?? undefined,
   score: entry.score ?? undefined,
+  atmosphereScore: entry.atmosphereScore ?? undefined,
+  storyScore: entry.storyScore ?? undefined,
+  technologyScore: entry.technologyScore ?? undefined,
+  gameplayScore: entry.gameplayScore ?? undefined,
   review: entry.review ?? undefined,
 })
 
@@ -176,6 +188,34 @@ function GameCard({
   )
 }
 
+function RatingSlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="rating-slider">
+      <span className="rating-slider__header">
+        <strong>{label}</strong>
+        <b>{value.toFixed(1)}</b>
+      </span>
+      <input
+        type="range"
+        min="1"
+        max="10"
+        step="0.1"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span className="rating-slider__scale"><i>1</i><i>5</i><i>10</i></span>
+    </label>
+  )
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('library')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
@@ -201,8 +241,15 @@ function App() {
   const [addStatus, setAddStatus] = useState<LibraryStatus>('completed')
   const [addPlatform, setAddPlatform] = useState('')
   const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [addScore, setAddScore] = useState('8.0')
+  const [addAtmosphereScore, setAddAtmosphereScore] = useState(8)
+  const [addStoryScore, setAddStoryScore] = useState(8)
+  const [addTechnologyScore, setAddTechnologyScore] = useState(8)
+  const [addGameplayScore, setAddGameplayScore] = useState(8)
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
+
+  const calculatedAddScore = Number((
+    (addAtmosphereScore + addStoryScore + addTechnologyScore + addGameplayScore) / 4
+  ).toFixed(1))
 
   const applyBootstrap = (payload: BootstrapPayload) => {
     setAuthUser(payload.user)
@@ -412,7 +459,10 @@ function App() {
     setAddStatus('completed')
     setAddPlatform(game.platforms[0] ?? '')
     setAddDate(new Date().toISOString().slice(0, 10))
-    setAddScore('8.0')
+    setAddAtmosphereScore(8)
+    setAddStoryScore(8)
+    setAddTechnologyScore(8)
+    setAddGameplayScore(8)
     setAddCollectionIds([])
     setSelectedGameId(null)
     setActiveTab('add')
@@ -423,7 +473,11 @@ function App() {
     setAddStatus(entry.status)
     setAddPlatform(entry.platform ?? game.platforms[0] ?? '')
     setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
-    setAddScore(entry.score != null ? entry.score.toFixed(1) : '8.0')
+    const fallbackScore = entry.score ?? 8
+    setAddAtmosphereScore(entry.atmosphereScore ?? fallbackScore)
+    setAddStoryScore(entry.storyScore ?? fallbackScore)
+    setAddTechnologyScore(entry.technologyScore ?? fallbackScore)
+    setAddGameplayScore(entry.gameplayScore ?? fallbackScore)
     setAddCollectionIds(entry.collectionIds)
     setSelectedGameId(null)
     setActiveTab('add')
@@ -440,7 +494,11 @@ function App() {
       platform: addStatus === 'wishlist' ? undefined : addPlatform,
       completedAt: addStatus === 'completed' ? addDate : undefined,
       startedAt: addStatus === 'playing' ? today : undefined,
-      score: addStatus === 'completed' ? Number(addScore) : undefined,
+      score: addStatus === 'completed' ? calculatedAddScore : undefined,
+      atmosphereScore: addStatus === 'completed' ? addAtmosphereScore : undefined,
+      storyScore: addStatus === 'completed' ? addStoryScore : undefined,
+      technologyScore: addStatus === 'completed' ? addTechnologyScore : undefined,
+      gameplayScore: addStatus === 'completed' ? addGameplayScore : undefined,
       collectionIds: addCollectionIds,
       addedAt: entryMap.get(game.id)?.addedAt ?? today,
     }
@@ -466,6 +524,24 @@ function App() {
     setAddQuery('')
     setSelectedGameId(game.id)
     setActiveTab('library')
+  }
+
+  const deleteGame = async (game: Game) => {
+    if (!window.confirm(`Удалить «${game.title}» из моих игр?`)) return
+
+    try {
+      const response = await fetch(`/api/library/${game.id}`, { method: 'DELETE' })
+      if (!response.ok) {
+        window.alert('Не удалось удалить игру. Попробуйте ещё раз.')
+        return
+      }
+
+      setEntries((current) => current.filter((entry) => entry.gameId !== game.id))
+      setSelectedGameId(null)
+      if (addGameId === game.id) setAddGameId(null)
+    } catch {
+      window.alert('Не удалось удалить игру. Проверьте соединение и попробуйте ещё раз.')
+    }
   }
 
   const toggleAddCollection = (collectionId: string) => {
@@ -522,6 +598,21 @@ function App() {
           </div>
         </section>
 
+        {selectedEntry.status === 'completed' && (
+          <section className="criteria-card">
+            <div className="criteria-card__header">
+              <span className="eyebrow">МОЯ ОЦЕНКА</span>
+              <strong>{selectedEntry.score?.toFixed(1) ?? '—'}</strong>
+            </div>
+            <div className="criteria-breakdown">
+              <div><span>Атмосфера</span><b>{selectedEntry.atmosphereScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span>Сюжет</span><b>{selectedEntry.storyScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span>Технологичность</span><b>{selectedEntry.technologyScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span>Геймплей</span><b>{selectedEntry.gameplayScore?.toFixed(1) ?? '—'}</b></div>
+            </div>
+          </section>
+        )}
+
         <section className="info-card">
           <div className="section-heading section-heading--tight">
             <div>
@@ -560,6 +651,10 @@ function App() {
             <div><span>Жанры</span><strong>{selectedGame.genres.join(', ')}</strong></div>
           </div>
         </section>
+
+        <button className="danger-button" onClick={() => { void deleteGame(selectedGame) }}>
+          Удалить из моих игр
+        </button>
       </div>
     )
   }
@@ -774,20 +869,17 @@ function App() {
                   <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
                   <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
                 </label>
-                <label className="form-field">
-                  <span>Моя оценка</span>
-                  <div className="score-input">
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      step="0.1"
-                      value={addScore}
-                      onChange={(event) => setAddScore(event.target.value)}
-                    />
-                    <b>/ 10</b>
+                <div className="rating-builder">
+                  <div className="rating-builder__summary">
+                    <span>Итоговая оценка</span>
+                    <strong>{calculatedAddScore.toFixed(1)}</strong>
+                    <small>среднее четырёх критериев</small>
                   </div>
-                </label>
+                  <RatingSlider label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
+                  <RatingSlider label="Сюжет" value={addStoryScore} onChange={setAddStoryScore} />
+                  <RatingSlider label="Технологичность" value={addTechnologyScore} onChange={setAddTechnologyScore} />
+                  <RatingSlider label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
+                </div>
               </>
             )}
 
@@ -810,6 +902,11 @@ function App() {
             <button className="primary-button" onClick={saveGame}>
               {editingEntry ? 'Сохранить изменения' : 'Сохранить в библиотеку'}
             </button>
+            {editingEntry && (
+              <button className="danger-button danger-button--inside" onClick={() => { void deleteGame(addGame) }}>
+                Удалить из моих игр
+              </button>
+            )}
           </section>
         </>
       )

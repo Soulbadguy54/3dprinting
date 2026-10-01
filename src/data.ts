@@ -24,6 +24,10 @@ export type LibraryEntry = {
   completedAt?: string
   startedAt?: string
   score?: number
+  atmosphereScore?: number
+  storyScore?: number
+  technologyScore?: number
+  gameplayScore?: number
   review?: string
   collectionIds: string[]
   addedAt: string

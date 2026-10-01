@@ -66,6 +66,10 @@ class LibraryPayload(BaseModel):
     completedAt: date | None = None
     startedAt: date | None = None
     score: float | None = Field(default=None, ge=1, le=10)
+    atmosphereScore: float | None = Field(default=None, ge=1, le=10)
+    storyScore: float | None = Field(default=None, ge=1, le=10)
+    technologyScore: float | None = Field(default=None, ge=1, le=10)
+    gameplayScore: float | None = Field(default=None, ge=1, le=10)
     review: str | None = Field(default=None, max_length=5000)
     collectionIds: list[str] = Field(default_factory=list)
     addedAt: date | None = None
@@ -340,6 +344,10 @@ def _serialize_entry(
         "completedAt": entry.completed_at.isoformat() if entry.completed_at else None,
         "startedAt": entry.started_at.isoformat() if entry.started_at else None,
         "score": float(entry.score) if entry.score is not None else None,
+        "atmosphereScore": float(entry.atmosphere_score) if entry.atmosphere_score is not None else None,
+        "storyScore": float(entry.story_score) if entry.story_score is not None else None,
+        "technologyScore": float(entry.technology_score) if entry.technology_score is not None else None,
+        "gameplayScore": float(entry.gameplay_score) if entry.gameplay_score is not None else None,
         "review": entry.review,
         "collectionIds": collection_ids if collection_ids is not None else _collection_slugs(session, entry.id),
         "addedAt": entry.added_at.date().isoformat(),
@@ -397,25 +405,31 @@ def _igdb_search_rank(row: dict[str, object], query: str) -> float:
     name_text = _normalized_search_text(str(row.get("name") or ""))
     score = 0.0
 
+    # IGDB already returns textually similar candidates. Inside that set,
+    # popularity is a stronger signal of what the user probably meant.
     if name_text == query_text:
-        score += 1_000_000
+        score += 45_000
     elif name_text.startswith(query_text):
-        score += 300_000
+        score += 30_000
     elif query_text and query_text in name_text:
-        score += 150_000
+        score += 15_000
     elif query_text and all(token in name_text for token in query_text.split()):
-        score += 80_000
+        score += 8_000
 
     category = int(row.get("category") or 0)
     if category in {0, 4, 8, 9, 10, 11}:
-        score += 60_000
+        score += 25_000
     elif category in {1, 2, 3, 5, 6, 7, 13, 14}:
-        score -= 100_000
+        score -= 120_000
 
-    ratings = int(row.get("total_rating_count") or row.get("rating_count") or 0)
+    ratings = max(
+        int(row.get("total_rating_count") or 0),
+        int(row.get("rating_count") or 0),
+    )
     hypes = int(row.get("hypes") or 0)
-    score += math.log1p(ratings) * 12_000
-    score += math.log1p(hypes) * 4_000
+
+    score += math.log1p(ratings) * 70_000
+    score += math.log1p(hypes) * 8_000
     return score
 
 
@@ -706,7 +720,38 @@ def upsert_library_game(
         entry.platform = None if payload.status == "wishlist" else payload.platform
         entry.completed_at = payload.completedAt if payload.status == "completed" else None
         entry.started_at = payload.startedAt if payload.status == "playing" else None
-        entry.score = payload.score if payload.status == "completed" else None
+        if payload.status == "completed":
+            criteria = [
+                payload.atmosphereScore,
+                payload.storyScore,
+                payload.technologyScore,
+                payload.gameplayScore,
+            ]
+            rounded_criteria = [
+                round(value, 1) if value is not None else None
+                for value in criteria
+            ]
+            (
+                entry.atmosphere_score,
+                entry.story_score,
+                entry.technology_score,
+                entry.gameplay_score,
+            ) = rounded_criteria
+
+            if all(value is not None for value in rounded_criteria):
+                entry.score = round(
+                    sum(value for value in rounded_criteria if value is not None) / 4,
+                    1,
+                )
+            else:
+                entry.score = round(payload.score, 1) if payload.score is not None else None
+        else:
+            entry.score = None
+            entry.atmosphere_score = None
+            entry.story_score = None
+            entry.technology_score = None
+            entry.gameplay_score = None
+
         entry.review = payload.review
 
         session.flush()
@@ -749,6 +794,9 @@ def delete_library_game(game_id: int, request: Request) -> Response:
             )
         )
         if entry is not None:
+            session.execute(
+                delete(CollectionGame).where(CollectionGame.user_game_id == entry.id)
+            )
             session.delete(entry)
             session.commit()
 
