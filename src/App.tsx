@@ -256,6 +256,12 @@ function App() {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
+  const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
+  const [collectionTitle, setCollectionTitle] = useState('')
+  const [collectionDescription, setCollectionDescription] = useState('')
+  const [collectionMark, setCollectionMark] = useState('')
+  const [collectionSaving, setCollectionSaving] = useState(false)
+  const [collectionError, setCollectionError] = useState('')
 
   const [addQuery, setAddQuery] = useState('')
   const [addGameId, setAddGameId] = useState<number | null>(null)
@@ -527,7 +533,7 @@ function App() {
       storyScore: ratedStatuses.has(addStatus) ? addStoryScore : undefined,
       technologyScore: ratedStatuses.has(addStatus) ? addTechnologyScore : undefined,
       gameplayScore: ratedStatuses.has(addStatus) ? addGameplayScore : undefined,
-      review: addReview.trim() || undefined,
+      review: ratedStatuses.has(addStatus) ? (addReview.trim() || undefined) : undefined,
       collectionIds: addCollectionIds,
       addedAt: entryMap.get(game.id)?.addedAt ?? today,
     }
@@ -570,6 +576,47 @@ function App() {
       if (addGameId === game.id) setAddGameId(null)
     } catch {
       window.alert('Не удалось удалить игру. Проверьте соединение и попробуйте ещё раз.')
+    }
+  }
+
+  const createCollection = async () => {
+    const title = collectionTitle.trim()
+    if (!title || collectionSaving) return
+
+    setCollectionSaving(true)
+    setCollectionError('')
+
+    try {
+      const response = await fetch('/api/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description: collectionDescription.trim() || undefined,
+          mark: collectionMark.trim() || undefined,
+        }),
+      })
+      const payload = await response.json().catch(() => null) as GameCollection | { detail?: string } | null
+
+      if (!response.ok || !payload || 'detail' in payload) {
+        setCollectionError(
+          payload && 'detail' in payload && payload.detail
+            ? payload.detail
+            : 'Не удалось создать коллекцию.',
+        )
+        return
+      }
+
+      setCollections((current) => [...current, payload])
+      setCollectionTitle('')
+      setCollectionDescription('')
+      setCollectionMark('')
+      setCollectionCreatorOpen(false)
+      setSelectedCollectionId(payload.id)
+    } catch {
+      setCollectionError('Не удалось создать коллекцию. Проверьте соединение.')
+    } finally {
+      setCollectionSaving(false)
     }
   }
 
@@ -913,27 +960,29 @@ function App() {
               </div>
             )}
 
-            <details
-              className="review-editor"
-              open={addReviewOpen}
-              onToggle={(event) => setAddReviewOpen(event.currentTarget.open)}
-            >
-              <summary>
-                <span>
-                  <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
-                  <small>необязательно</small>
-                </span>
-                <b>{addReviewOpen ? '−' : '+'}</b>
-              </summary>
-              <textarea
-                value={addReview}
-                onChange={(event) => setAddReview(event.target.value)}
-                maxLength={5000}
-                placeholder="Что запомнилось, что понравилось или не понравилось?"
-                rows={5}
-              />
-              <small className="review-editor__counter">{addReview.length}/5000</small>
-            </details>
+            {ratedStatuses.has(addStatus) && (
+              <details
+                className="review-editor"
+                open={addReviewOpen}
+                onToggle={(event) => setAddReviewOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
+                    <small>необязательно</small>
+                  </span>
+                  <b>{addReviewOpen ? '−' : '+'}</b>
+                </summary>
+                <textarea
+                  value={addReview}
+                  onChange={(event) => setAddReview(event.target.value)}
+                  maxLength={5000}
+                  placeholder="Что запомнилось, что понравилось или не понравилось?"
+                  rows={5}
+                />
+                <small className="review-editor__counter">{addReview.length}/5000</small>
+              </details>
+            )}
 
             <div className="form-field">
               <span>Коллекции <small>необязательно</small></span>
@@ -1053,9 +1102,84 @@ function App() {
           <div>
             <h1>Коллекции</h1>
           </div>
-          <button className="round-add" aria-label="Создать коллекцию"><Icon name="plus" size={20} /></button>
+          <button
+            className="round-add"
+            aria-label="Создать коллекцию"
+            onClick={() => {
+              setCollectionCreatorOpen((current) => !current)
+              setCollectionError('')
+            }}
+          >
+            <Icon name="plus" size={20} />
+          </button>
         </header>
         <p className="page-lead">Собирай игры в свои списки. Одна игра может быть сразу в нескольких коллекциях.</p>
+
+        {collectionCreatorOpen && (
+          <section className="collection-create-card">
+            <div className="collection-create-card__heading">
+              <strong>Новая коллекция</strong>
+              <button
+                onClick={() => {
+                  setCollectionCreatorOpen(false)
+                  setCollectionError('')
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <label className="collection-create-field">
+              <span>Название</span>
+              <input
+                value={collectionTitle}
+                onChange={(event) => setCollectionTitle(event.target.value)}
+                maxLength={100}
+                placeholder="Например, Лучшие RPG"
+                autoFocus
+              />
+            </label>
+
+            <label className="collection-create-field">
+              <span>Описание <small>необязательно</small></span>
+              <textarea
+                value={collectionDescription}
+                onChange={(event) => setCollectionDescription(event.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="Коротко о том, что здесь собрано"
+              />
+            </label>
+
+            <label className="collection-create-field collection-create-field--mark">
+              <span>Метка <small>до 8 символов</small></span>
+              <input
+                value={collectionMark}
+                onChange={(event) => setCollectionMark(event.target.value)}
+                maxLength={8}
+                placeholder="RPG"
+              />
+            </label>
+
+            {collectionError && <p className="collection-create-error">{collectionError}</p>}
+
+            <button
+              className="primary-button collection-create-submit"
+              onClick={() => { void createCollection() }}
+              disabled={!collectionTitle.trim() || collectionSaving}
+            >
+              {collectionSaving ? 'Создаём…' : 'Создать коллекцию'}
+            </button>
+          </section>
+        )}
+
+        {collections.length === 0 && !collectionCreatorOpen && (
+          <div className="empty-state collection-empty-state">
+            <strong>Коллекций пока нет</strong>
+            <p>Создай первую — потом её можно будет выбрать при добавлении любой игры.</p>
+            <button onClick={() => setCollectionCreatorOpen(true)}>Создать коллекцию</button>
+          </div>
+        )}
 
         <section className="collection-grid">
           {collections.map((collection) => {

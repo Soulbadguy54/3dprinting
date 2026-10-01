@@ -59,6 +59,12 @@ class LoginPayload(BaseModel):
     pin: str = Field(min_length=4, max_length=8)
 
 
+class CollectionPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    mark: str | None = Field(default=None, max_length=8)
+
+
 class LibraryPayload(BaseModel):
     gameId: int | None = None
     status: Literal["completed", "playing", "wishlist", "dropped"]
@@ -705,6 +711,51 @@ def collections(request: Request) -> list[dict[str, object]]:
     with _session() as session:
         user = _current_user(request, session)
         return _collections_payload(session, user)
+
+
+@app.post("/api/collections", status_code=201)
+def create_collection(payload: CollectionPayload, request: Request) -> dict[str, object]:
+    title = payload.title.strip()
+    description = (payload.description or "").strip()
+    mark = (payload.mark or "").strip().upper()
+
+    if not title:
+        raise HTTPException(status_code=422, detail="Укажите название коллекции.")
+
+    if not mark:
+        mark = "".join(part[0] for part in title.split()[:2]).upper()[:3] or "★"
+
+    with _session() as session:
+        user = _current_user(request, session)
+
+        for _ in range(5):
+            slug = f"c-{secrets.token_hex(4)}"
+            if session.scalar(
+                select(Collection.id).where(
+                    Collection.user_id == user.id,
+                    Collection.slug == slug,
+                )
+            ) is None:
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Не удалось создать коллекцию.")
+
+        collection = Collection(
+            user_id=user.id,
+            slug=slug,
+            title=title,
+            description=description or None,
+            mark=mark[:8],
+        )
+        session.add(collection)
+        session.commit()
+
+        return {
+            "id": collection.slug,
+            "title": collection.title,
+            "description": collection.description or "",
+            "mark": collection.mark or "",
+        }
 
 
 @app.get("/api/library")

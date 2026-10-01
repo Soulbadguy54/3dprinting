@@ -1437,3 +1437,106 @@ button:focus-visible, input:focus-visible, select:focus-visible {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+.rating-slider input[type="range"] {
+  border: 0;
+  padding: 0;
+  background: transparent !important;
+  box-shadow: none;
+}
+.rating-slider input[type="range"]::-webkit-slider-container {
+  background: transparent;
+}
+.rating-slider input[type="range"]::-webkit-slider-runnable-track {
+  background: #303642;
+}
+.rating-slider input[type="range"]::-moz-range-track {
+  background: #303642;
+}
+
+.collection-create-card {
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid rgba(140, 242, 125, .18);
+  border-radius: 19px;
+  background: rgba(18, 21, 28, .88);
+}
+.collection-create-card__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.collection-create-card__heading strong {
+  color: var(--accent);
+  font-size: 14px;
+}
+.collection-create-card__heading button {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: #8c95a2;
+  background: #252a35;
+  font-size: 18px;
+  line-height: 1;
+}
+.collection-create-field {
+  display: block;
+  margin-top: 12px;
+}
+.collection-create-field > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #c3c8d1;
+  font-size: 9px;
+  font-weight: 800;
+}
+.collection-create-field small {
+  color: #68717e;
+  font-weight: 600;
+}
+.collection-create-field input,
+.collection-create-field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  color: #f4f6f8;
+  background: #0d1016;
+  font: inherit;
+  font-size: 11px;
+}
+.collection-create-field input {
+  height: 43px;
+  padding: 0 11px;
+}
+.collection-create-field textarea {
+  min-height: 76px;
+  padding: 10px 11px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.collection-create-field input:focus,
+.collection-create-field textarea:focus {
+  border-color: rgba(140,242,125,.36);
+  box-shadow: 0 0 0 3px rgba(140,242,125,.05);
+}
+.collection-create-field--mark {
+  max-width: 180px;
+}
+.collection-create-error {
+  margin: 10px 0 0;
+  color: #ff9c9c;
+  font-size: 9px;
+}
+.collection-create-submit {
+  margin-top: 15px;
+}
+.collection-create-submit:disabled {
+  cursor: default;
+  opacity: .45;
+}
+.collection-empty-state {
+  margin-bottom: 18px;
+}
