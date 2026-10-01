@@ -211,7 +211,6 @@ function RatingSlider({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <span className="rating-slider__scale"><i>1</i><i>5</i><i>10</i></span>
     </label>
   )
 }
@@ -245,6 +244,8 @@ function App() {
   const [addStoryScore, setAddStoryScore] = useState(8)
   const [addTechnologyScore, setAddTechnologyScore] = useState(8)
   const [addGameplayScore, setAddGameplayScore] = useState(8)
+  const [addReview, setAddReview] = useState('')
+  const [addReviewOpen, setAddReviewOpen] = useState(false)
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
 
   const calculatedAddScore = Number((
@@ -463,6 +464,8 @@ function App() {
     setAddStoryScore(8)
     setAddTechnologyScore(8)
     setAddGameplayScore(8)
+    setAddReview('')
+    setAddReviewOpen(false)
     setAddCollectionIds([])
     setSelectedGameId(null)
     setActiveTab('add')
@@ -478,6 +481,8 @@ function App() {
     setAddStoryScore(entry.storyScore ?? fallbackScore)
     setAddTechnologyScore(entry.technologyScore ?? fallbackScore)
     setAddGameplayScore(entry.gameplayScore ?? fallbackScore)
+    setAddReview(entry.review ?? '')
+    setAddReviewOpen(Boolean(entry.review))
     setAddCollectionIds(entry.collectionIds)
     setSelectedGameId(null)
     setActiveTab('add')
@@ -499,6 +504,7 @@ function App() {
       storyScore: addStatus === 'completed' ? addStoryScore : undefined,
       technologyScore: addStatus === 'completed' ? addTechnologyScore : undefined,
       gameplayScore: addStatus === 'completed' ? addGameplayScore : undefined,
+      review: addReview.trim() || undefined,
       collectionIds: addCollectionIds,
       addedAt: entryMap.get(game.id)?.addedAt ?? today,
     }
@@ -826,7 +832,7 @@ function App() {
           <header className="subpage-header">
             <button className="icon-button" onClick={() => setAddGameId(null)}><Icon name="back" size={20} /></button>
             <div>
-              <span className="eyebrow">{editingEntry ? 'РЕДАКТИРОВАНИЕ' : 'НОВАЯ ЗАПИСЬ'}</span>
+              <span className="eyebrow">{statusMeta[addStatus].label}</span>
               <h1>{editingEntry ? 'Изменить игру' : 'Добавить игру'}</h1>
             </div>
           </header>
@@ -882,6 +888,28 @@ function App() {
                 </div>
               </>
             )}
+
+            <details
+              className="review-editor"
+              open={addReviewOpen}
+              onToggle={(event) => setAddReviewOpen(event.currentTarget.open)}
+            >
+              <summary>
+                <span>
+                  <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
+                  <small>необязательно</small>
+                </span>
+                <b>{addReviewOpen ? '−' : '+'}</b>
+              </summary>
+              <textarea
+                value={addReview}
+                onChange={(event) => setAddReview(event.target.value)}
+                maxLength={5000}
+                placeholder="Что запомнилось, что понравилось или не понравилось?"
+                rows={5}
+              />
+              <small className="review-editor__counter">{addReview.length}/5000</small>
+            </details>
 
             <div className="form-field">
               <span>Коллекции <small>необязательно</small></span>

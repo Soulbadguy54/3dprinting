@@ -1263,15 +1263,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-radius: 50%;
   background: var(--accent);
 }
-.rating-slider__scale {
-  display: flex;
-  justify-content: space-between;
-  margin-top: -2px;
-  color: #555d69;
-  font-size: 7px;
-}
-.rating-slider__scale i { font-style: normal; }
-
 .criteria-card {
   margin: 12px 0;
   padding: 16px;
@@ -1327,4 +1318,89 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .danger-button--inside {
   margin-top: 9px;
+}
+
+.rating-builder,
+.rating-slider,
+.rating-slider * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.rating-slider input[type="range"] {
+  outline: none;
+  touch-action: pan-y;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.rating-slider input[type="range"]:focus,
+.rating-slider input[type="range"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.review-editor {
+  margin-top: 17px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0e1117;
+}
+.review-editor summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.review-editor summary::-webkit-details-marker {
+  display: none;
+}
+.review-editor summary > span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.review-editor summary strong {
+  color: #c3c8d1;
+  font-size: 10px;
+}
+.review-editor summary small {
+  color: #69717e;
+  font-size: 8px;
+}
+.review-editor summary > b {
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+}
+.review-editor textarea {
+  display: block;
+  width: calc(100% - 24px);
+  min-height: 118px;
+  margin: 0 12px;
+  padding: 12px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  color: #f4f6f8;
+  background: #0a0d12;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.review-editor textarea:focus {
+  border-color: rgba(140,242,125,.38);
+  box-shadow: 0 0 0 3px rgba(140,242,125,.06);
+}
+.review-editor__counter {
+  display: block;
+  padding: 7px 13px 11px;
+  color: #59616d;
+  font-size: 7px;
+  text-align: right;
 }
