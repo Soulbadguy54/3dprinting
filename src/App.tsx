@@ -598,7 +598,7 @@ function App() {
       })
       const payload = await response.json().catch(() => null) as GameCollection | { detail?: string } | null
 
-      if (!response.ok || !payload || 'detail' in payload) {
+      if (!response.ok || !payload || !('id' in payload)) {
         setCollectionError(
           payload && 'detail' in payload && payload.detail
             ? payload.detail
