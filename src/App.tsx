@@ -145,6 +145,13 @@ function formatDate(value?: string) {
   }).format(new Date(`${value}T12:00:00`))
 }
 
+function formatCardDate(value?: string) {
+  if (!value) return ''
+  const [year, month, day] = value.split('-')
+  if (!year || !month || !day) return value
+  return `${day}.${month}.${year}`
+}
+
 function Cover({
   game,
   compact = false,
@@ -190,12 +197,12 @@ function GameCard({
   onOpen: () => void
 }) {
   const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
-  const activity =
+  const activityDate =
     entry.status === 'completed' && entry.completedAt
-      ? formatDate(entry.completedAt)
+      ? entry.completedAt
       : entry.status === 'playing' && entry.startedAt
-        ? `с ${formatDate(entry.startedAt)}`
-        : `добавлено ${formatDate(entry.addedAt)}`
+        ? entry.startedAt
+        : entry.addedAt
 
   return (
     <button className="game-card" onClick={onOpen}>
@@ -211,9 +218,7 @@ function GameCard({
       <div className="game-card__body">
         <h3>{game.title}</h3>
         <div className="game-card__meta">
-          {entry.platform && <span>{entry.platform}</span>}
-          {entry.platform && <span>·</span>}
-          <span>{activity}</span>
+          <span>{formatCardDate(activityDate)}</span>
         </div>
       </div>
     </button>
@@ -771,8 +776,8 @@ function App() {
           >
             <Icon name="search" size={19} />
           </button>
-          <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">
-            {authUser?.nickname.slice(0, 1).toUpperCase()}
+          <button className="round-add" onClick={() => openTab('add')} aria-label="Добавить игру">
+            <Icon name="plus" size={20} />
           </button>
         </div>
       </header>
@@ -905,20 +910,11 @@ function App() {
       )}
 
       <section className="catalog">
-        <div className="section-heading library-section-heading">
-          <div>
-            <h2>
-              {query
-                ? `Найдено: ${libraryGames.length}`
-                : statusFilter === 'all'
-                  ? 'Последняя активность'
-                  : statusMeta[statusFilter].label}
-            </h2>
+        {(query || statusFilter !== 'all') && (
+          <div className="section-heading library-section-heading">
+            <h2>{query ? `Найдено: ${libraryGames.length}` : statusMeta[statusFilter as LibraryStatus].label}</h2>
           </div>
-          <button className="round-add" onClick={() => openTab('add')} aria-label="Добавить игру">
-            <Icon name="plus" size={20} />
-          </button>
-        </div>
+        )}
 
         {libraryGames.length > 0 ? (
           <div className="game-grid">
