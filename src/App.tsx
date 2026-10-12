@@ -1198,28 +1198,19 @@ function App() {
           whileTap={shouldReduceMotion ? undefined : { scale: .96 }}
         >
           <motion.span
-            key={libraryControlsCollapsed ? 'chevron-down' : 'chevron-up'}
             className="library-dock-chevron"
-            initial={
-              shouldReduceMotion
-                ? false
-                : {
-                    rotate: libraryControlsCollapsed ? -135 : 45,
-                    y: 0,
-                    opacity: .72,
-                  }
-            }
+            initial={false}
             animate={
               libraryControlsCollapsed
                 ? { rotate: 45, y: [-2, 2, -2], opacity: 1 }
                 : { rotate: -135, y: [2, -2, 2], opacity: 1 }
             }
             transition={{
-              rotate: { duration: .24, ease: [0.22, 1, 0.36, 1] },
-              opacity: { duration: .16 },
+              rotate: { type: 'spring', stiffness: 320, damping: 28, mass: .65 },
+              opacity: { duration: .12 },
               y: shouldReduceMotion
                 ? { duration: 0 }
-                : { duration: 1.45, repeat: Infinity, ease: 'easeInOut', delay: .18 },
+                : { duration: 1.45, repeat: Infinity, ease: 'easeInOut' },
             }}
             aria-hidden="true"
           />
