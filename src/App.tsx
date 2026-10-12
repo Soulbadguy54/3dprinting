@@ -401,7 +401,7 @@ function App() {
 
     if (lastY <= 24) {
       setLibraryControlsCollapsed(false)
-    } else if (lastY > 120) {
+    } else if (lastY > 220) {
       setLibraryControlsCollapsed(true)
       setFiltersOpen(false)
     }
@@ -412,7 +412,7 @@ function App() {
 
       if (currentY <= 24) {
         setLibraryControlsCollapsed(false)
-      } else if (currentY > 110 && delta > 4) {
+      } else if (currentY > 200 && delta > 4) {
         setLibraryControlsCollapsed(true)
         setFiltersOpen(false)
       }
