@@ -73,6 +73,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
     calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--page-bottom-gap))
     max(18px, calc(var(--safe-left) + 18px));
 }
+.page--library {
+  padding-top: 0;
+}
 
 .eyebrow {
   display: block;
@@ -135,24 +138,32 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .library-sticky-stack {
   position: sticky;
   z-index: 15;
-  top: var(--safe-top);
-  margin: 0 -8px;
-  padding: 2px 8px 7px;
+  top: 0;
+  margin: 0 -18px;
+  padding:
+    max(6px, var(--safe-top))
+    18px
+    0;
   border-bottom: 1px solid transparent;
   background: var(--bg);
-  transition: box-shadow .28s ease, border-color .28s ease;
+  transition: box-shadow .22s ease, border-color .22s ease;
 }
 .library-sticky-stack--collapsed {
   border-bottom-color: rgba(255,255,255,.055);
-  box-shadow: 0 12px 28px rgba(0,0,0,.2);
+  box-shadow: 0 10px 24px rgba(0,0,0,.18);
 }
 .library-topbar {
-  min-height: 50px;
-  margin: 0 0 12px;
+  min-height: 46px;
+  margin: 0 0 10px;
   align-items: center;
 }
 .library-sticky-stack--collapsed .library-topbar {
-  margin-bottom: 4px;
+  margin-bottom: 3px;
+}
+.library-title {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
 }
 .topbar-actions {
   display: flex;
@@ -219,48 +230,35 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .library-control-content {
   width: 100%;
 }
-.library-dock-handle {
-  position: absolute;
-  z-index: 2;
-  left: calc(50% - 32px);
-  bottom: -20px;
+.library-dock-toggle {
   display: flex;
-  width: 64px;
-  height: 22px;
+  width: 100%;
+  height: 24px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255,255,255,.1);
-  border-top: 0;
-  border-radius: 0 0 15px 15px;
-  background: #12151c;
-  box-shadow: 0 8px 18px rgba(0,0,0,.2);
-  cursor: grab;
-  touch-action: none;
+  padding: 0;
+  color: #8a93a0;
+  background: transparent;
 }
-.library-dock-handle:active {
-  cursor: grabbing;
+.library-dock-chevron {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
 }
-.library-dock-handle--expanded {
-  background: #10131a;
+.library-dock-chevron--down {
+  animation: library-chevron-down 1.45s ease-in-out infinite;
 }
-.library-dock-handle--collapsed {
-  background: #151922;
+.library-dock-chevron--up {
+  animation: library-chevron-up 1.45s ease-in-out infinite;
 }
-.library-dock-handle__grip {
-  width: 24px;
-  height: 3px;
-  border-radius: 999px;
-  background: #858e9b;
+@keyframes library-chevron-down {
+  0%, 100% { transform: translateY(-2px) rotate(45deg); }
+  50% { transform: translateY(2px) rotate(45deg); }
 }
-.library-dock-handle__dot {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 2px rgba(140,242,125,.08);
+@keyframes library-chevron-up {
+  0%, 100% { transform: translateY(2px) rotate(-135deg); }
+  50% { transform: translateY(-2px) rotate(-135deg); }
 }
 
 .library-overview {
@@ -644,7 +642,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: #fff;
 }
 
-.catalog { margin-top: 26px; }
+.catalog { margin-top: 10px; }
 .section-heading {
   display: flex;
   align-items: end;
@@ -1997,7 +1995,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 
 @media (min-width: 700px) {
   .library-sticky-stack {
-    top: max(var(--safe-top), 10px);
+    top: 0;
+    margin-inline: -28px;
+    padding:
+      max(10px, var(--safe-top))
+      28px
+      0;
     border-radius: 0 0 18px 18px;
   }
 }
@@ -2019,4 +2022,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 
 .library-sticky-stack--collapsed .library-control-dock {
   margin-bottom: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-dock-chevron--down,
+  .library-dock-chevron--up {
+    animation: none;
+  }
 }

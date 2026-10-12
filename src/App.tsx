@@ -1,6 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
+import {
+  AnimatePresence,
+  LayoutGroup,
+  animate,
+  motion,
+  useMotionValue,
+  useMotionValueEvent,
+  useReducedMotion,
+  useTransform,
+} from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import {
   games,
@@ -299,8 +308,16 @@ function App() {
   const focusLibrarySearchOnOpen = useRef(false)
   const [libraryControlsCollapsed, setLibraryControlsCollapsed] = useState(false)
   const libraryControlContentRef = useRef<HTMLDivElement>(null)
-  const [libraryControlsHeight, setLibraryControlsHeight] = useState(0)
-  const libraryLastScrollYRef = useRef(0)
+  const libraryCollapseProgress = useMotionValue(0)
+  const libraryMeasuredControlsHeight = useMotionValue(0)
+  const libraryControlClipHeight = useTransform(
+    () => libraryMeasuredControlsHeight.get() * (1 - libraryCollapseProgress.get()),
+  )
+  const libraryControlClipOpacity = useTransform(
+    () => Math.max(0, 1 - libraryCollapseProgress.get() * 1.18),
+  )
+  const libraryScrollAnchorRef = useRef(0)
+  const libraryForceCollapsedRef = useRef(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
@@ -322,6 +339,11 @@ function App() {
   const [addReview, setAddReview] = useState('')
   const [addReviewOpen, setAddReviewOpen] = useState(false)
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
+
+  useMotionValueEvent(libraryCollapseProgress, 'change', (latest) => {
+    const collapsed = latest >= 0.72
+    setLibraryControlsCollapsed((current) => current === collapsed ? current : collapsed)
+  })
 
   const calculatedAddScore = Number((
     (addAtmosphereScore + addStoryScore + addTechnologyScore + addGameplayScore) / 4
@@ -398,41 +420,43 @@ function App() {
   useEffect(() => {
     if (activeTab !== 'library' || selectedGameId != null) return
 
-    let lastY = window.scrollY
-    libraryLastScrollYRef.current = lastY
+    const collapseDistance = 210
+    const topStart = 4
+    libraryScrollAnchorRef.current = 0
+    libraryForceCollapsedRef.current = false
 
-    if (lastY <= 24) {
-      setLibraryControlsCollapsed(false)
-    } else if (lastY > 220) {
-      setLibraryControlsCollapsed(true)
-      setFiltersOpen(false)
-    }
-
-    const handleScroll = () => {
+    const syncControlsToScroll = () => {
       const currentY = window.scrollY
-      const delta = currentY - lastY
 
-      if (currentY <= 24) {
-        setLibraryControlsCollapsed(false)
-      } else if (currentY > 200 && delta > 4) {
-        setLibraryControlsCollapsed(true)
-        setFiltersOpen(false)
+      if (currentY <= topStart) {
+        libraryScrollAnchorRef.current = 0
+        libraryForceCollapsedRef.current = false
+        libraryCollapseProgress.set(0)
+        return
       }
 
-      lastY = currentY
-      libraryLastScrollYRef.current = currentY
+      if (libraryForceCollapsedRef.current) {
+        libraryCollapseProgress.set(1)
+        return
+      }
+
+      const anchor = libraryScrollAnchorRef.current || topStart
+      const progress = Math.min(1, Math.max(0, (currentY - anchor) / collapseDistance))
+      libraryCollapseProgress.set(progress)
     }
 
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [activeTab, selectedGameId])
+    syncControlsToScroll()
+    window.addEventListener('scroll', syncControlsToScroll, { passive: true })
+
+    return () => window.removeEventListener('scroll', syncControlsToScroll)
+  }, [activeTab, selectedGameId, libraryCollapseProgress])
 
   useLayoutEffect(() => {
     const node = libraryControlContentRef.current
     if (!node) return
 
     const updateHeight = () => {
-      setLibraryControlsHeight(node.getBoundingClientRect().height)
+      libraryMeasuredControlsHeight.set(node.getBoundingClientRect().height)
     }
 
     updateHeight()
@@ -440,7 +464,7 @@ function App() {
     observer.observe(node)
 
     return () => observer.disconnect()
-  }, [filtersOpen, entries.length])
+  }, [filtersOpen, entries.length, libraryMeasuredControlsHeight])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -954,16 +978,10 @@ function App() {
       <div className="library-control-dock">
         <motion.div
           className="library-control-clip"
-          initial={false}
-          animate={{
-            height: libraryControlsCollapsed ? 0 : libraryControlsHeight,
-            opacity: libraryControlsCollapsed ? 0 : 1,
+          style={{
+            height: shouldReduceMotion ? undefined : libraryControlClipHeight,
+            opacity: shouldReduceMotion ? undefined : libraryControlClipOpacity,
           }}
-          transition={
-            shouldReduceMotion
-              ? { duration: 0 }
-              : { type: 'spring', stiffness: 210, damping: 29, mass: .92 }
-          }
         >
           <div ref={libraryControlContentRef} className="library-control-content">
 
@@ -1130,43 +1148,44 @@ function App() {
         </motion.div>
 
         <motion.button
-          className={
-            libraryControlsCollapsed
-              ? 'library-dock-handle library-dock-handle--collapsed'
-              : 'library-dock-handle library-dock-handle--expanded'
-          }
+          className="library-dock-toggle"
           aria-label={
             libraryControlsCollapsed
               ? 'Развернуть управление библиотекой'
               : 'Свернуть управление библиотекой'
           }
-          drag={shouldReduceMotion ? false : 'y'}
-          dragConstraints={{ top: -34, bottom: 46 }}
-          dragElastic={0.14}
-          dragMomentum={false}
-          onTap={() => {
-            setLibraryControlsCollapsed((current) => {
-              if (!current) setFiltersOpen(false)
-              return !current
-            })
-          }}
-          onDragEnd={(_, info) => {
-            if (libraryControlsCollapsed) {
-              if (info.offset.y > 18 || info.velocity.y > 220) {
-                setLibraryControlsCollapsed(false)
-              }
-            } else if (info.offset.y < -18 || info.velocity.y < -220) {
-              setFiltersOpen(false)
-              setLibraryControlsCollapsed(true)
+          onClick={() => {
+            const currentProgress = libraryCollapseProgress.get()
+
+            if (currentProgress >= 0.5) {
+              libraryForceCollapsedRef.current = false
+              libraryScrollAnchorRef.current = window.scrollY
+              animate(libraryCollapseProgress, 0, {
+                type: 'spring',
+                stiffness: 230,
+                damping: 28,
+                mass: .85,
+              })
+            } else {
+              libraryForceCollapsedRef.current = true
+              animate(libraryCollapseProgress, 1, {
+                type: 'spring',
+                stiffness: 230,
+                damping: 28,
+                mass: .85,
+              })
             }
           }}
           whileTap={shouldReduceMotion ? undefined : { scale: .96 }}
-          transition={{ type: 'spring', stiffness: 360, damping: 30 }}
         >
-          <span className="library-dock-handle__grip" />
-          {(statusFilters.length > 0 || activeExtraFilters > 0) && (
-            <span className="library-dock-handle__dot" aria-hidden="true" />
-          )}
+          <span
+            className={
+              libraryControlsCollapsed
+                ? 'library-dock-chevron library-dock-chevron--down'
+                : 'library-dock-chevron library-dock-chevron--up'
+            }
+            aria-hidden="true"
+          />
         </motion.button>
       </div>
       </div>
@@ -1641,7 +1660,13 @@ function App() {
 
   return (
     <div className="app-shell">
-      <main className="page">
+      <main
+        className={
+          activeTab === 'library' && selectedGameId == null
+            ? 'page page--library'
+            : 'page'
+        }
+      >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={selectedGameId ? `detail-${selectedGameId}` : activeTab}
