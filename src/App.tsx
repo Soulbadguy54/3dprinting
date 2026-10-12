@@ -812,7 +812,7 @@ function App() {
       <header className="topbar library-topbar">
         <motion.button
           layout
-          className={statusFilters.length === 0 ? 'library-title library-title--active' : 'library-title'}
+          className="library-title"
           onClick={() => setStatusFilters([])}
           aria-label="Показать все игры"
           aria-pressed={statusFilters.length === 0}
@@ -956,16 +956,14 @@ function App() {
             <motion.span
               className="library-status-card__icon"
               animate={shouldReduceMotion ? undefined : {
-                scale: statusFilters.includes(status) ? 1.06 : 1,
+                scale: statusFilters.includes(status) ? 1.05 : 1,
                 rotate: statusFilters.includes(status) ? 2 : 0,
               }}
             >
-              <Icon name={statusIcons[status]} size={18} />
+              <Icon name={statusIcons[status]} size={15} />
             </motion.span>
-            <span className="library-status-card__copy">
-              <strong>{counts[status]}</strong>
-              <span>{label}</span>
-            </span>
+            <span className="library-status-card__label">{label}</span>
+            <span className="library-status-card__count">{counts[status]}</span>
           </motion.button>
         ))}
       </motion.section>

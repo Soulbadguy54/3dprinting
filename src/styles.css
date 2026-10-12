@@ -150,9 +150,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   letter-spacing: -.04em;
   text-align: left;
 }
-.library-title:not(.library-title--active) {
-  color: #c8ced7;
-}
 .library-title:active {
   transform: translateY(1px);
 }
@@ -167,16 +164,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .library-search {
   margin: -3px 0 14px;
-  border-color: rgba(140, 242, 125, .28);
+  border-color: rgba(145, 182, 255, .22);
   background: rgba(18, 21, 28, .92);
 }
+.library-search > svg {
+  color: #91b6ff;
+}
 .library-search-trigger {
-  color: #0b0d12;
-  border-color: var(--accent);
-  background: var(--accent);
+  color: #91b6ff;
+  border-color: rgba(145, 182, 255, .24);
+  background: linear-gradient(145deg, #242b38, #121720);
 }
 .library-search-trigger--active {
-  box-shadow: 0 0 0 3px rgba(140, 242, 125, .08);
+  color: #b8d0ff;
+  border-color: rgba(145, 182, 255, .52);
+  background: rgba(86, 126, 205, .16);
+  box-shadow: 0 0 0 3px rgba(91, 137, 230, .07);
 }
 .library-search__clear {
   display: grid;
@@ -243,62 +246,55 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .library-overview-card small {
   overflow: hidden;
-  color: #69717c;
-  font-size: 7px;
+  color: #c8ced7;
+  font-size: 8px;
   font-weight: 800;
-  letter-spacing: .04em;
+  letter-spacing: .035em;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
 }
 .library-overview-card strong {
   margin-top: 4px;
-  color: #dfe3e8;
-  font-size: 19px;
+  color: #f7f8fa;
+  font-size: 20px;
   line-height: 1;
   letter-spacing: -.04em;
 }
 
 .library-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
+  display: flex;
+  gap: 7px;
+  margin: 0 -18px 12px;
+  padding: 1px 18px 4px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.library-summary::-webkit-scrollbar {
+  display: none;
 }
 .library-status-card {
   --status-color: var(--accent);
-  position: relative;
-  display: flex;
-  min-width: 0;
+  display: inline-flex;
+  min-width: max-content;
+  height: 38px;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 10px;
-  padding: 12px 10px;
-  border: 1px solid color-mix(in srgb, var(--status-color) 18%, var(--line));
-  border-radius: 17px;
-  color: #c7cdd6;
-  background: rgba(18, 21, 28, .78);
-  box-shadow: 0 7px 18px rgba(0,0,0,.12);
-  text-align: left;
-  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
-}
-.library-status-card::after {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--status-color);
-  opacity: .45;
-  content: '';
+  gap: 7px;
+  padding: 0 10px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--status-color) 28%, transparent);
+  border-radius: 999px;
+  color: var(--status-color);
+  background: color-mix(in srgb, var(--status-color) 6%, #11141b);
+  box-shadow: 0 5px 14px rgba(0,0,0,.1);
+  scroll-snap-align: start;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
 }
 .library-status-card:hover {
-  border-color: color-mix(in srgb, var(--status-color) 34%, transparent);
-  background: color-mix(in srgb, var(--status-color) 5%, #12151c);
-}
-.library-status-card:active {
-  transform: scale(.975);
-  box-shadow: 0 3px 9px rgba(0,0,0,.14);
+  border-color: color-mix(in srgb, var(--status-color) 48%, transparent);
+  background: color-mix(in srgb, var(--status-color) 9%, #11141b);
 }
 .library-status-card--completed { --status-color: #8cf27d; }
 .library-status-card--playing { --status-color: #77a8ff; }
@@ -307,46 +303,47 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 
 .library-status-card__icon {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--status-color) 24%, transparent);
-  border-radius: 11px;
+  border-radius: 50%;
   color: var(--status-color);
-  background: color-mix(in srgb, var(--status-color) 9%, transparent);
+  background: color-mix(in srgb, var(--status-color) 12%, transparent);
 }
-.library-status-card__copy {
-  min-width: 0;
-}
-.library-status-card__copy strong {
-  display: block;
-  color: #f5f7f9;
-  font-size: 18px;
-  line-height: 1;
-}
-.library-status-card__copy span {
-  display: block;
-  margin-top: 5px;
-  overflow: hidden;
-  color: #7f8794;
-  font-size: 8px;
+.library-status-card__label {
+  color: #d8dde5;
+  font-size: 9px;
   font-weight: 800;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.library-status-card--active {
-  border-color: color-mix(in srgb, var(--status-color) 52%, transparent);
-  background: color-mix(in srgb, var(--status-color) 10%, #11141b);
-}
-.library-status-card--active .library-status-card__copy span,
-.library-status-card--active .library-status-card__copy strong {
+.library-status-card__count {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 999px;
   color: var(--status-color);
+  background: color-mix(in srgb, var(--status-color) 10%, transparent);
+  font-size: 8px;
+  font-weight: 900;
+}
+.library-status-card--active {
+  border-color: var(--status-color);
+  background: var(--status-color);
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--status-color) 12%, transparent);
 }
 .library-status-card--active .library-status-card__icon {
   color: #0b0d12;
-  border-color: var(--status-color);
-  background: var(--status-color);
+  background: rgba(11, 13, 18, .12);
+}
+.library-status-card--active .library-status-card__label,
+.library-status-card--active .library-status-card__count {
+  color: #0b0d12;
+}
+.library-status-card--active .library-status-card__count {
+  background: rgba(11, 13, 18, .12);
 }
 
 .library-controls {
@@ -633,6 +630,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: -.02em;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -663,9 +661,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .status-badge {
   --status-color: #8cf27d;
   bottom: 10px;
-  left: 10px;
+  left: 50%;
   min-height: 29px;
   max-width: calc(100% - 20px);
+  transform: translateX(-50%);
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--status-color) 42%, transparent);
   color: var(--status-color);
@@ -1859,9 +1858,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 @media (max-width: 430px) {
-  .library-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .library-status-card {
     padding: 11px;
   }
