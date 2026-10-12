@@ -11,6 +11,24 @@ export type AuthUser = {
 
 type Mode = 'login' | 'register'
 
+const apiErrorDetail = (data: unknown): string | null => {
+  if (!data || typeof data !== 'object' || !('detail' in data)) return null
+
+  const detail = (data as { detail?: unknown }).detail
+  if (typeof detail === 'string') return detail
+
+  if (Array.isArray(detail)) {
+    const firstMessage = detail.find(
+      (item) => item && typeof item === 'object' && 'msg' in item && typeof item.msg === 'string',
+    )
+    if (firstMessage && typeof firstMessage === 'object' && 'msg' in firstMessage) {
+      return String(firstMessage.msg)
+    }
+  }
+
+  return null
+}
+
 export default function AuthScreen({
   onAuthenticated,
 }: {
@@ -43,32 +61,60 @@ export default function AuthScreen({
 
     setBusy(true)
     try {
-      const response = await fetch(
-        mode === 'register' ? '/api/auth/register' : '/api/auth/login',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            mode === 'register'
-              ? { email, nickname, pin }
-              : { identifier, pin },
-          ),
+      const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
+      const response = await fetch(new URL(endpoint, window.location.origin), {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
         },
-      )
+        body: JSON.stringify(
+          mode === 'register'
+            ? { email, nickname, pin }
+            : { identifier, pin },
+        ),
+      })
 
-      const data = await response.json().catch(() => null) as
-        | AuthUser
-        | { detail?: string }
-        | null
+      const raw = await response.text()
+      let data: unknown = null
+      if (raw) {
+        try {
+          data = JSON.parse(raw)
+        } catch {
+          data = null
+        }
+      }
 
       if (!response.ok) {
-        setError(data && 'detail' in data && data.detail ? data.detail : 'Не удалось войти.')
+        setError(apiErrorDetail(data) ?? `Ошибка сервера (${response.status}). Попробуйте ещё раз.`)
+        return
+      }
+
+      if (!data || typeof data !== 'object' || !('id' in data)) {
+        setError('Сервер вернул некорректный ответ. Попробуйте ещё раз.')
         return
       }
 
       onAuthenticated(data as AuthUser)
     } catch {
-      setError('Не удалось связаться с сервером. Попробуйте ещё раз.')
+      let healthAvailable = false
+      try {
+        const healthResponse = await fetch('/api/health', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        })
+        healthAvailable = healthResponse.ok
+      } catch {
+        healthAvailable = false
+      }
+
+      setError(
+        healthAvailable
+          ? 'Сервер доступен, но запрос входа блокируется браузером или PWA. Полностью закрой приложение и открой снова.'
+          : 'Не удалось связаться с сервером. Проверь соединение и попробуй ещё раз.',
+      )
     } finally {
       setBusy(false)
     }

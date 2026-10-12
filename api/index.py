@@ -510,6 +510,7 @@ def register(payload: RegisterPayload, response: Response) -> dict[str, object]:
 
 @app.post("/api/auth/login")
 def login(payload: LoginPayload, response: Response) -> dict[str, object]:
+    print("[auth] login request received", flush=True)
     identifier = payload.identifier.strip().lower()
     pin = payload.pin.strip()
 
@@ -530,6 +531,7 @@ def login(payload: LoginPayload, response: Response) -> dict[str, object]:
                 verified = False
 
         if not verified or user is None:
+            print("[auth] login rejected", flush=True)
             _record_login_failure(session, identifier)
             raise HTTPException(status_code=401, detail="Неверный email/ник или PIN.")
 
@@ -539,6 +541,7 @@ def login(payload: LoginPayload, response: Response) -> dict[str, object]:
             session.commit()
 
         _create_session(session, user, response)
+        print("[auth] login succeeded", flush=True)
         return _user_payload(user)
 
 
