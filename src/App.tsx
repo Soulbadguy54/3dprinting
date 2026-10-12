@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   AnimatePresence,
@@ -201,20 +201,23 @@ function Cover({
   )
 }
 
-function GameCard({
-  game,
-  entry,
-  collections,
-  onOpen,
-  animationIndex = 0,
-}: {
+type GameCardProps = {
   game: Game
   entry: LibraryEntry
   collections: GameCollection[]
   onOpen: () => void
   animationIndex?: number
-}) {
+}
+
+const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
+  game,
+  entry,
+  collections,
+  onOpen,
+  animationIndex = 0,
+}, ref) {
   const shouldReduceMotion = useReducedMotion()
+  void animationIndex
   const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
   const activityDate =
     entry.status === 'completed' && entry.completedAt
@@ -225,7 +228,8 @@ function GameCard({
 
   return (
     <motion.button
-      layout
+      ref={ref}
+      layout="position"
       className="game-card"
       onClick={onOpen}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
@@ -233,11 +237,10 @@ function GameCard({
       exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
       whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
       transition={{
-        type: 'spring',
-        stiffness: 430,
-        damping: 34,
-        mass: .72,
-        delay: shouldReduceMotion ? 0 : Math.min(animationIndex * .025, .16),
+        layout: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
+        opacity: { duration: .16 },
+        scale: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
+        y: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
       }}
     >
       <div className="game-card__cover-wrap">
@@ -256,7 +259,7 @@ function GameCard({
       </div>
     </motion.button>
   )
-}
+})
 
 function RatingSlider({
   label,
@@ -1084,14 +1087,27 @@ function App() {
 
       <AnimatePresence initial={false}>
         {filtersOpen && (
-        <motion.section
-          className="filter-panel library-filter-panel"
-          initial={shouldReduceMotion ? false : { opacity: 0, y: -8, scaleY: .96 }}
-          animate={{ opacity: 1, y: 0, scaleY: 1 }}
-          exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6, scaleY: .97 }}
-          transition={{ type: 'spring', stiffness: 420, damping: 32, mass: .78 }}
-          style={{ transformOrigin: 'top center' }}
-        >
+          <motion.div
+            className="library-filter-panel-clip"
+            initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0 }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : {
+                    height: { duration: .24, ease: [0.22, 1, 0.36, 1] },
+                    opacity: { duration: .16 },
+                  }
+            }
+          >
+            <motion.section
+              className="filter-panel library-filter-panel"
+              initial={shouldReduceMotion ? false : { y: -6 }}
+              animate={{ y: 0 }}
+              exit={shouldReduceMotion ? undefined : { y: -4 }}
+              transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}
+            >
           <div className="filter-panel__header">
             <strong>Фильтры библиотеки</strong>
             <div className="filter-panel__actions">
@@ -1143,7 +1159,8 @@ function App() {
               ))}
             </div>
           </div>
-        </motion.section>
+            </motion.section>
+          </motion.div>
         )}
       </AnimatePresence>
 

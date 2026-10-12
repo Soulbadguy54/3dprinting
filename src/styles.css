@@ -448,6 +448,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 8px;
 }
 
+.library-filter-panel-clip {
+  overflow: hidden;
+}
 .library-filter-panel {
   margin-top: 9px;
 }
@@ -641,6 +644,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .section-heading h2, .info-card h2 { font-size: 21px; }
 
 .game-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 19px 11px;
