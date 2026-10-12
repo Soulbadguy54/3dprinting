@@ -157,9 +157,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   margin: 0 0 10px;
   align-items: center;
 }
-.library-sticky-stack--collapsed .library-topbar {
-  margin-bottom: 3px;
-}
 .library-title {
   display: flex;
   min-height: 42px;
@@ -245,20 +242,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   height: 10px;
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
-}
-.library-dock-chevron--down {
-  animation: library-chevron-down 1.45s ease-in-out infinite;
-}
-.library-dock-chevron--up {
-  animation: library-chevron-up 1.45s ease-in-out infinite;
-}
-@keyframes library-chevron-down {
-  0%, 100% { transform: translateY(-2px) rotate(45deg); }
-  50% { transform: translateY(2px) rotate(45deg); }
-}
-@keyframes library-chevron-up {
-  0%, 100% { transform: translateY(2px) rotate(-135deg); }
-  50% { transform: translateY(-2px) rotate(-135deg); }
+  will-change: transform;
 }
 
 .library-overview {
@@ -2024,9 +2008,3 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   margin-bottom: 1px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .library-dock-chevron--down,
-  .library-dock-chevron--up {
-    animation: none;
-  }
-}

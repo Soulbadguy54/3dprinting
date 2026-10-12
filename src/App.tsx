@@ -318,6 +318,7 @@ function App() {
   )
   const libraryScrollAnchorRef = useRef(0)
   const libraryForceCollapsedRef = useRef(false)
+  const libraryScrollSyncPausedRef = useRef(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
@@ -341,7 +342,7 @@ function App() {
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
 
   useMotionValueEvent(libraryCollapseProgress, 'change', (latest) => {
-    const collapsed = latest >= 0.72
+    const collapsed = latest >= 0.985
     setLibraryControlsCollapsed((current) => current === collapsed ? current : collapsed)
   })
 
@@ -426,6 +427,8 @@ function App() {
     libraryForceCollapsedRef.current = false
 
     const syncControlsToScroll = () => {
+      if (libraryScrollSyncPausedRef.current) return
+
       const currentY = window.scrollY
 
       if (currentY <= topStart) {
@@ -1156,34 +1159,54 @@ function App() {
           }
           onClick={() => {
             const currentProgress = libraryCollapseProgress.get()
+            libraryScrollSyncPausedRef.current = true
 
             if (currentProgress >= 0.5) {
               libraryForceCollapsedRef.current = false
-              libraryScrollAnchorRef.current = window.scrollY
-              animate(libraryCollapseProgress, 0, {
+
+              const controls = animate(libraryCollapseProgress, 0, {
                 type: 'spring',
-                stiffness: 230,
-                damping: 28,
-                mass: .85,
+                stiffness: 210,
+                damping: 30,
+                mass: .9,
+              })
+
+              void controls.then(() => {
+                window.requestAnimationFrame(() => {
+                  window.requestAnimationFrame(() => {
+                    libraryScrollAnchorRef.current = window.scrollY
+                    libraryScrollSyncPausedRef.current = false
+                  })
+                })
               })
             } else {
-              libraryForceCollapsedRef.current = true
-              animate(libraryCollapseProgress, 1, {
+              const controls = animate(libraryCollapseProgress, 1, {
                 type: 'spring',
-                stiffness: 230,
-                damping: 28,
-                mass: .85,
+                stiffness: 210,
+                damping: 30,
+                mass: .9,
+              })
+
+              void controls.then(() => {
+                libraryForceCollapsedRef.current = true
+                libraryScrollAnchorRef.current = window.scrollY
+                libraryScrollSyncPausedRef.current = false
               })
             }
           }}
           whileTap={shouldReduceMotion ? undefined : { scale: .96 }}
         >
-          <span
-            className={
+          <motion.span
+            className="library-dock-chevron"
+            animate={
               libraryControlsCollapsed
-                ? 'library-dock-chevron library-dock-chevron--down'
-                : 'library-dock-chevron library-dock-chevron--up'
+                ? { rotate: 45, y: [-2, 2, -2] }
+                : { rotate: -135, y: [2, -2, 2] }
             }
+            transition={{
+              rotate: { duration: .2, ease: 'easeOut' },
+              y: { duration: 1.45, repeat: Infinity, ease: 'easeInOut' },
+            }}
             aria-hidden="true"
           />
         </motion.button>
