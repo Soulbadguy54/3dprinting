@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import {
   games,
@@ -202,6 +203,7 @@ function GameCard({
   collections: GameCollection[]
   onOpen: () => void
 }) {
+  const shouldReduceMotion = useReducedMotion()
   const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
   const activityDate =
     entry.status === 'completed' && entry.completedAt
@@ -211,7 +213,16 @@ function GameCard({
         : entry.addedAt
 
   return (
-    <button className="game-card" onClick={onOpen}>
+    <motion.button
+      layout
+      className="game-card"
+      onClick={onOpen}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 14, scale: .985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8, scale: .98 }}
+      whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 34, mass: .72 }}
+    >
       <div className="game-card__cover-wrap">
         <Cover game={game} markers={markers} />
         {entry.score != null && (
@@ -226,7 +237,7 @@ function GameCard({
       <div className="game-card__body">
         <h3>{game.title}</h3>
       </div>
-    </button>
+    </motion.button>
   )
 }
 
@@ -258,6 +269,7 @@ function RatingSlider({
 }
 
 function App() {
+  const shouldReduceMotion = useReducedMotion()
   const [activeTab, setActiveTab] = useState<Tab>('library')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -771,86 +783,141 @@ function App() {
   }
 
   const renderLibrary = () => (
-    <>
+    <LayoutGroup id="library-motion">
       <header className="topbar library-topbar">
-        <button
+        <motion.button
+          layout
           className={statusFilters.length === 0 ? 'library-title library-title--active' : 'library-title'}
           onClick={() => setStatusFilters([])}
           aria-label="Показать все игры"
           aria-pressed={statusFilters.length === 0}
+          whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
+          transition={{ type: 'spring', stiffness: 480, damping: 34 }}
         >
           Мои игры
-        </button>
+        </motion.button>
 
-        <div className="topbar-actions">
-          <button
-            className={librarySearchOpen || query ? 'icon-button icon-button--active' : 'icon-button'}
-            onClick={() => {
-              if (librarySearchOpen) {
-                setLibrarySearchOpen(false)
-                setQuery('')
-              } else {
-                setLibrarySearchOpen(true)
-              }
-            }}
-            aria-label={librarySearchOpen ? 'Закрыть поиск' : 'Поиск по библиотеке'}
-            aria-expanded={librarySearchOpen}
+        <motion.div className="topbar-actions" layout>
+          <AnimatePresence initial={false}>
+            {!librarySearchOpen && (
+              <motion.button
+                key="library-search-trigger"
+                layoutId="library-search-surface"
+                className="icon-button library-search-trigger"
+                onClick={() => setLibrarySearchOpen(true)}
+                aria-label="Поиск по библиотеке"
+                aria-expanded={false}
+                whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
+                transition={{ type: 'spring', stiffness: 520, damping: 36, mass: .7 }}
+              >
+                <Icon name="search" size={19} />
+              </motion.button>
+            )}
+          </AnimatePresence>
+          <motion.button
+            layout
+            className="round-add"
+            onClick={() => openTab('add')}
+            aria-label="Добавить игру"
+            whileTap={shouldReduceMotion ? undefined : { scale: .9, rotate: 8 }}
+            transition={{ type: 'spring', stiffness: 520, damping: 30 }}
           >
-            <Icon name="search" size={19} />
-          </button>
-          <button className="round-add" onClick={() => openTab('add')} aria-label="Добавить игру">
             <Icon name="plus" size={20} />
-          </button>
-        </div>
+          </motion.button>
+        </motion.div>
       </header>
 
-      {librarySearchOpen && (
-        <div className="search-wrap library-search">
-          <Icon name="search" size={19} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Название, жанр или разработчик..."
-            aria-label="Поиск в библиотеке"
-            autoFocus
-          />
-          {query && (
-            <button
+      <AnimatePresence initial={false}>
+        {librarySearchOpen && (
+          <motion.div
+            key="library-search-panel"
+            layoutId="library-search-surface"
+            className="search-wrap library-search library-search--motion"
+            initial={shouldReduceMotion ? false : { opacity: .72 }}
+            animate={{ opacity: 1 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .96, x: 14 }}
+            transition={{ type: 'spring', stiffness: 430, damping: 34, mass: .76 }}
+          >
+            <motion.span
+              initial={shouldReduceMotion ? false : { opacity: 0, scale: .6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: .06 }}
+            >
+              <Icon name="search" size={19} />
+            </motion.span>
+            <motion.input
+              initial={shouldReduceMotion ? false : { opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: .07, duration: .18 }}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Название, жанр или разработчик..."
+              aria-label="Поиск в библиотеке"
+              autoFocus
+            />
+            <motion.button
               className="library-search__clear"
-              onClick={() => setQuery('')}
-              aria-label="Очистить поиск"
+              onClick={() => {
+                setLibrarySearchOpen(false)
+                setQuery('')
+              }}
+              aria-label="Закрыть поиск"
+              whileTap={shouldReduceMotion ? undefined : { scale: .86, rotate: 8 }}
             >
               <Icon name="close" size={17} />
-            </button>
-          )}
-        </div>
-      )}
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <section className="library-overview" aria-label="Сводка библиотеки">
-        <div className="library-overview-card library-overview-card--games">
+      <motion.section
+        className="library-overview"
+        aria-label="Сводка библиотеки"
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: .24 }}
+      >
+        <motion.div
+          className="library-overview-card library-overview-card--games"
+          initial={shouldReduceMotion ? false : { opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 30, delay: .03 }}
+        >
           <span className="library-overview-card__icon"><Icon name="gamepad" size={20} /></span>
           <span>
             <small>Всего игр</small>
             <strong>{entries.length}</strong>
           </span>
-        </div>
-        <div className="library-overview-card library-overview-card--score">
+        </motion.div>
+        <motion.div
+          className="library-overview-card library-overview-card--score"
+          initial={shouldReduceMotion ? false : { opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 30, delay: .07 }}
+        >
           <span className="library-overview-card__icon"><Icon name="star" size={19} /></span>
           <span>
             <small>Средняя оценка</small>
             <strong>{averageLibraryScore != null ? averageLibraryScore.toFixed(1) : '—'}</strong>
           </span>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
-      <section className="library-summary" aria-label="Фильтр по статусу">
+      <motion.section
+        className="library-summary"
+        aria-label="Фильтр по статусу"
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: .24, delay: .08 }}
+      >
         {([
           ['completed', 'Пройдено'],
           ['playing', 'Прохожу'],
           ['wishlist', 'Хочу пройти'],
           ['dropped', 'Дропнул'],
         ] as [LibraryStatus, string][]).map(([status, label]) => (
-          <button
+          <motion.button
+            layout
             key={status}
             className={
               statusFilters.includes(status)
@@ -859,17 +926,34 @@ function App() {
             }
             onClick={() => toggleStatusFilter(status)}
             aria-pressed={statusFilters.includes(status)}
+            whileHover={shouldReduceMotion ? undefined : { y: -2 }}
+            whileTap={shouldReduceMotion ? undefined : { scale: .965 }}
+            transition={{ type: 'spring', stiffness: 460, damping: 30 }}
           >
-            <span className="library-status-card__icon"><Icon name={statusIcons[status]} size={18} /></span>
+            <motion.span
+              className="library-status-card__icon"
+              animate={shouldReduceMotion ? undefined : {
+                scale: statusFilters.includes(status) ? 1.06 : 1,
+                rotate: statusFilters.includes(status) ? 2 : 0,
+              }}
+            >
+              <Icon name={statusIcons[status]} size={18} />
+            </motion.span>
             <span className="library-status-card__copy">
               <strong>{counts[status]}</strong>
               <span>{label}</span>
             </span>
-          </button>
+          </motion.button>
         ))}
-      </section>
+      </motion.section>
 
-      <div className="library-controls">
+      <motion.div
+        className="library-controls"
+        layout
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: .22, delay: .12 }}
+      >
         <label className="library-sort">
           <Icon name="sort" size={17} />
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} aria-label="Сортировка">
@@ -890,10 +974,18 @@ function App() {
           <span>Фильтры</span>
           {activeExtraFilters > 0 && <b>{activeExtraFilters}</b>}
         </button>
-      </div>
+      </motion.div>
 
-      {filtersOpen && (
-        <section className="filter-panel library-filter-panel">
+      <AnimatePresence initial={false}>
+        {filtersOpen && (
+        <motion.section
+          className="filter-panel library-filter-panel"
+          initial={shouldReduceMotion ? false : { opacity: 0, y: -8, scaleY: .96 }}
+          animate={{ opacity: 1, y: 0, scaleY: 1 }}
+          exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6, scaleY: .97 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 32, mass: .78 }}
+          style={{ transformOrigin: 'top center' }}
+        >
           <div className="filter-panel__header">
             <strong>Фильтры библиотеки</strong>
             <div className="filter-panel__actions">
@@ -945,37 +1037,51 @@ function App() {
               ))}
             </div>
           </div>
-        </section>
-      )}
+        </motion.section>
+        )}
+      </AnimatePresence>
 
       <section className="catalog">
-        {query && (
-          <div className="section-heading library-section-heading">
-            <h2>Найдено: {libraryGames.length}</h2>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {query && (
+            <motion.div
+              className="section-heading library-section-heading"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -4 }}
+            >
+              <h2>Найдено: {libraryGames.length}</h2>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {libraryGames.length > 0 ? (
-          <div className="game-grid">
-            {libraryGames.map(({ game, entry }) => (
-              <GameCard
-                key={game.id}
-                game={game}
-                entry={entry}
-                collections={collections}
-                onOpen={() => setSelectedGameId(game.id)}
-              />
-            ))}
-          </div>
+          <motion.div className="game-grid" layout>
+            <AnimatePresence initial={false}>
+              {libraryGames.map(({ game, entry }) => (
+                <GameCard
+                  key={game.id}
+                  game={game}
+                  entry={entry}
+                  collections={collections}
+                  onOpen={() => setSelectedGameId(game.id)}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
         ) : (
-          <div className="empty-state">
+          <motion.div
+            className="empty-state"
+            initial={shouldReduceMotion ? false : { opacity: 0, scale: .98 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
             <strong>Здесь пока пусто</strong>
             <p>Смени фильтр или добавь новую игру в библиотеку.</p>
             <button onClick={() => openTab('add')}>Добавить игру</button>
-          </div>
+          </motion.div>
         )}
       </section>
-    </>
+    </LayoutGroup>
   )
 
   const renderAdd = () => {
@@ -1392,33 +1498,56 @@ function App() {
   return (
     <div className="app-shell">
       <main className="page">
-        {selectedGameId ? renderDetail() : (
-          <>
-            {activeTab === 'library' && renderLibrary()}
-            {activeTab === 'add' && renderAdd()}
-            {activeTab === 'collections' && renderCollections()}
-            {activeTab === 'profile' && renderProfile()}
-          </>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={selectedGameId ? `detail-${selectedGameId}` : activeTab}
+            className="page-motion"
+            initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {selectedGameId ? renderDetail() : (
+              <>
+                {activeTab === 'library' && renderLibrary()}
+                {activeTab === 'add' && renderAdd()}
+                {activeTab === 'collections' && renderCollections()}
+                {activeTab === 'profile' && renderProfile()}
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {!selectedGameId && (
         <nav className="bottom-nav" aria-label="Основная навигация">
           {nav.map((item) => (
-            <button
+            <motion.button
+              layout
               key={item.id}
               onClick={() => openTab(item.id)}
               className={activeTab === item.id ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'}
+              whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 34 }}
             >
-              {item.id === 'profile' ? (
-                <span className="bottom-nav__avatar" aria-hidden="true">
-                  {authUser.nickname.slice(0, 1).toUpperCase()}
-                </span>
-              ) : (
-                <Icon name={item.icon} />
+              {activeTab === item.id && (
+                <motion.span
+                  className="bottom-nav__active-surface"
+                  layoutId="bottom-nav-active-surface"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                />
               )}
-              <span>{item.label}</span>
-            </button>
+              <span className="bottom-nav__content">
+                {item.id === 'profile' ? (
+                  <span className="bottom-nav__avatar" aria-hidden="true">
+                    {authUser.nickname.slice(0, 1).toUpperCase()}
+                  </span>
+                ) : (
+                  <Icon name={item.icon} />
+                )}
+                <span>{item.label}</span>
+              </span>
+            </motion.button>
           ))}
         </nav>
       )}
