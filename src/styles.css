@@ -263,33 +263,27 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 .library-summary {
-  display: flex;
-  gap: 7px;
-  margin: 0 -18px 12px;
-  padding: 1px 18px 4px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-}
-.library-summary::-webkit-scrollbar {
-  display: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 12px;
 }
 .library-status-card {
   --status-color: var(--accent);
   display: inline-flex;
-  min-width: max-content;
-  height: 38px;
-  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
   align-items: center;
-  gap: 7px;
-  padding: 0 10px 0 8px;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
   border: 1px solid color-mix(in srgb, var(--status-color) 28%, transparent);
   border-radius: 999px;
   color: var(--status-color);
   background: color-mix(in srgb, var(--status-color) 6%, #11141b);
   box-shadow: 0 5px 14px rgba(0,0,0,.1);
-  scroll-snap-align: start;
   transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
 }
 .library-status-card:hover {
@@ -303,30 +297,37 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 
 .library-status-card__icon {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
   color: var(--status-color);
   background: color-mix(in srgb, var(--status-color) 12%, transparent);
 }
+.library-status-card__icon svg {
+  width: 13px;
+  height: 13px;
+}
 .library-status-card__label {
+  min-width: 0;
+  overflow: hidden;
   color: #d8dde5;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 800;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .library-status-card__count {
   display: grid;
-  min-width: 19px;
-  height: 19px;
-  padding: 0 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   place-items: center;
   border-radius: 999px;
   color: var(--status-color);
   background: color-mix(in srgb, var(--status-color) 10%, transparent);
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 900;
 }
 .library-status-card--active {
@@ -662,13 +663,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   --status-color: #8cf27d;
   bottom: 10px;
   left: 50%;
-  min-height: 29px;
-  max-width: calc(100% - 20px);
+  width: 88%;
+  min-height: 30px;
+  max-width: none;
   transform: translateX(-50%);
-  padding: 6px 8px;
+  padding: 6px 9px;
   border: 1px solid color-mix(in srgb, var(--status-color) 42%, transparent);
   color: var(--status-color);
-  background: rgba(10, 12, 17, .78);
+  background: rgba(10, 12, 17, .82);
   line-height: 1;
 }
 .status-badge--completed { --status-color: #8cf27d; }
@@ -677,6 +679,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .status-badge--dropped { --status-color: #ff9a82; }
 .status-badge svg {
   flex: 0 0 auto;
+}
+.status-badge__label {
+  margin-right: auto;
 }
 .status-badge__label,
 .status-badge__date {
@@ -691,11 +696,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: #c4cad3;
   font-size: 8px;
   font-weight: 700;
-}
-.status-badge__date::before {
-  margin-right: 4px;
-  color: #626b78;
-  content: '·';
 }
 
 .cover {
@@ -1920,5 +1920,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .app-shell,
   .page {
     min-height: 100vh;
+  }
+}
+
+@media (max-width: 360px) {
+  .library-status-card {
+    gap: 3px;
+    padding-inline: 4px;
+  }
+  .library-status-card__label {
+    font-size: 7.5px;
+  }
+  .status-badge {
+    width: 90%;
+    padding-inline: 7px;
+  }
+  .status-badge__date {
+    font-size: 7px;
   }
 }

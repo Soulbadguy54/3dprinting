@@ -936,7 +936,6 @@ function App() {
         {([
           ['completed', 'Пройдено'],
           ['playing', 'Прохожу'],
-          ['wishlist', 'Хочу пройти'],
           ['dropped', 'Дропнул'],
         ] as [LibraryStatus, string][]).map(([status, label]) => (
           <motion.button
