@@ -24,6 +24,11 @@ type IconName =
   | 'globe'
   | 'mail'
   | 'lock'
+  | 'check'
+  | 'play'
+  | 'bookmark'
+  | 'close'
+  | 'sort'
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
 type StatusFilter = 'all' | LibraryStatus
@@ -121,6 +126,11 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     globe: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></>,
     mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></>,
     lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+    check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16.5 9"/></>,
+    play: <><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4V8Z"/></>,
+    bookmark: <path d="M6 4.8A1.8 1.8 0 0 1 7.8 3h8.4A1.8 1.8 0 0 1 18 4.8V21l-6-3.8L6 21V4.8Z"/>,
+    close: <><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></>,
+    sort: <><path d="M8 6h11M8 12h8M8 18h5"/><path d="M4 4v16M2 18l2 2 2-2"/></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
@@ -254,6 +264,7 @@ function App() {
   const [platformFilter, setPlatformFilter] = useState('all')
   const [sortMode, setSortMode] = useState<SortMode>('activity')
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [librarySearchOpen, setLibrarySearchOpen] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
@@ -396,13 +407,11 @@ function App() {
 
   const activeExtraFilters =
     (genreFilter !== 'all' ? 1 : 0) +
-    (platformFilter !== 'all' ? 1 : 0) +
-    (sortMode !== 'activity' ? 1 : 0)
+    (platformFilter !== 'all' ? 1 : 0)
 
   const resetExtraFilters = () => {
     setGenreFilter('all')
     setPlatformFilter('all')
-    setSortMode('activity')
   }
 
   useEffect(() => {
@@ -736,49 +745,119 @@ function App() {
 
   const renderLibrary = () => (
     <>
-      <header className="topbar">
-        <div>
-          <h1>Мои игры</h1>
-        </div>
-        <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">
-          {authUser?.nickname.slice(0, 1).toUpperCase()}
+      <header className="topbar library-topbar">
+        <button
+          className={statusFilter === 'all' ? 'library-title library-title--active' : 'library-title'}
+          onClick={() => setStatusFilter('all')}
+          aria-label="Показать все игры"
+          aria-pressed={statusFilter === 'all'}
+        >
+          Мои игры
         </button>
+
+        <div className="topbar-actions">
+          <button
+            className={librarySearchOpen || query ? 'icon-button icon-button--active' : 'icon-button'}
+            onClick={() => {
+              if (librarySearchOpen) {
+                setLibrarySearchOpen(false)
+                setQuery('')
+              } else {
+                setLibrarySearchOpen(true)
+              }
+            }}
+            aria-label={librarySearchOpen ? 'Закрыть поиск' : 'Поиск по библиотеке'}
+            aria-expanded={librarySearchOpen}
+          >
+            <Icon name="search" size={19} />
+          </button>
+          <button className="avatar" onClick={() => openTab('profile')} aria-label="Открыть профиль">
+            {authUser?.nickname.slice(0, 1).toUpperCase()}
+          </button>
+        </div>
       </header>
 
-      <section className="library-summary">
-        <div><strong>{counts.completed}</strong><span>пройдено</span></div>
-        <div><strong>{counts.playing}</strong><span>прохожу</span></div>
-        <div><strong>{counts.wishlist}</strong><span>хочу пройти</span></div>
-        <div><strong>{counts.dropped}</strong><span>дропнул</span></div>
+      {librarySearchOpen && (
+        <div className="search-wrap library-search">
+          <Icon name="search" size={19} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Название, жанр или разработчик..."
+            aria-label="Поиск в библиотеке"
+            autoFocus
+          />
+          {query && (
+            <button
+              className="library-search__clear"
+              onClick={() => setQuery('')}
+              aria-label="Очистить поиск"
+            >
+              <Icon name="close" size={17} />
+            </button>
+          )}
+        </div>
+      )}
+
+      <section className="library-summary" aria-label="Фильтр по статусу">
+        {([
+          ['completed', 'Пройдено', 'check'],
+          ['playing', 'Прохожу', 'play'],
+          ['wishlist', 'Хочу пройти', 'bookmark'],
+          ['dropped', 'Дропнул', 'close'],
+        ] as [LibraryStatus, string, IconName][]).map(([status, label, icon]) => (
+          <button
+            key={status}
+            className={
+              statusFilter === status
+                ? `library-status-card library-status-card--${status} library-status-card--active`
+                : `library-status-card library-status-card--${status}`
+            }
+            onClick={() => setStatusFilter(status)}
+            aria-pressed={statusFilter === status}
+          >
+            <span className="library-status-card__icon"><Icon name={icon} size={18} /></span>
+            <span className="library-status-card__copy">
+              <strong>{counts[status]}</strong>
+              <span>{label}</span>
+            </span>
+          </button>
+        ))}
       </section>
 
-      <div className="search-wrap">
-        <Icon name="search" size={20} />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск в моей библиотеке..."
-          aria-label="Поиск в библиотеке"
-        />
+      <div className="library-controls">
+        <label className="library-sort">
+          <Icon name="sort" size={17} />
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} aria-label="Сортировка">
+            <option value="activity">Последняя активность</option>
+            <option value="score-desc">Оценка: высокая → низкая</option>
+            <option value="score-asc">Оценка: низкая → высокая</option>
+            <option value="title">По названию</option>
+          </select>
+        </label>
+
         <button
-          className={filtersOpen || activeExtraFilters > 0 ? 'search-action search-action--active' : 'search-action'}
-          aria-label="Дополнительные фильтры"
+          className={filtersOpen || activeExtraFilters > 0 ? 'library-filter-button library-filter-button--active' : 'library-filter-button'}
+          aria-label="Фильтры библиотеки"
           aria-expanded={filtersOpen}
           onClick={() => setFiltersOpen((current) => !current)}
         >
-          <Icon name="filter" size={18} />
-          {activeExtraFilters > 0 && <span className="filter-count">{activeExtraFilters}</span>}
+          <Icon name="filter" size={17} />
+          <span>Фильтры</span>
+          {activeExtraFilters > 0 && <b>{activeExtraFilters}</b>}
         </button>
       </div>
 
       {filtersOpen && (
-        <section className="filter-panel">
+        <section className="filter-panel library-filter-panel">
           <div className="filter-panel__header">
-            <div>
-              <span className="eyebrow">ФИЛЬТРЫ</span>
-              <strong>Показать нужное</strong>
+            <strong>Фильтры библиотеки</strong>
+            <div className="filter-panel__actions">
+              {activeExtraFilters > 0 && <button onClick={resetExtraFilters}>Сбросить</button>}
+              <button onClick={() => setFiltersOpen(false)} aria-label="Закрыть фильтры">
+                <Icon name="close" size={16} />
+              </button>
             </div>
-            {activeExtraFilters > 0 && <button onClick={resetExtraFilters}>Сбросить</button>}
           </div>
 
           <div className="filter-group">
@@ -822,44 +901,23 @@ function App() {
               ))}
             </div>
           </div>
-
-          <label className="sort-field">
-            <span>Сортировка</span>
-            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-              <option value="activity">По последней активности</option>
-              <option value="score-desc">Оценка: сначала высокая</option>
-              <option value="score-asc">Оценка: сначала низкая</option>
-              <option value="title">По названию</option>
-            </select>
-          </label>
         </section>
       )}
 
-      <section className="status-strip" aria-label="Статус игры">
-        {([
-          ['all', 'Все'],
-          ['playing', 'Прохожу'],
-          ['completed', 'Пройдено'],
-          ['dropped', 'Дропнул'],
-          ['wishlist', 'Хочу пройти'],
-        ] as [StatusFilter, string][]).map(([value, label]) => (
-          <button
-            key={value}
-            className={statusFilter === value ? 'status-chip status-chip--active' : 'status-chip'}
-            onClick={() => setStatusFilter(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </section>
-
       <section className="catalog">
-        <div className="section-heading">
+        <div className="section-heading library-section-heading">
           <div>
-            <span className="eyebrow">БИБЛИОТЕКА</span>
-            <h2>{query ? `Найдено: ${libraryGames.length}` : 'Последняя активность'}</h2>
+            <h2>
+              {query
+                ? `Найдено: ${libraryGames.length}`
+                : statusFilter === 'all'
+                  ? 'Последняя активность'
+                  : statusMeta[statusFilter].label}
+            </h2>
           </div>
-          <button className="round-add" onClick={() => openTab('add')} aria-label="Добавить игру"><Icon name="plus" size={20} /></button>
+          <button className="round-add" onClick={() => openTab('add')} aria-label="Добавить игру">
+            <Icon name="plus" size={20} />
+          </button>
         </div>
 
         {libraryGames.length > 0 ? (
@@ -881,14 +939,6 @@ function App() {
             <button onClick={() => openTab('add')}>Добавить игру</button>
           </div>
         )}
-      </section>
-
-      <section className="prototype-note">
-        <span className="prototype-note__dot" />
-        <div>
-          <strong>Данные сохраняются в аккаунте</strong>
-          <p>Статусы, оценки и коллекции загружаются из Postgres через RateApp API.</p>
-        </div>
       </section>
     </>
   )
