@@ -222,7 +222,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .library-dock-handle {
   position: absolute;
   z-index: 2;
-  left: 50%;
+  left: calc(50% - 32px);
   bottom: -20px;
   display: flex;
   width: 64px;
@@ -236,7 +236,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   box-shadow: 0 8px 18px rgba(0,0,0,.2);
   cursor: grab;
   touch-action: none;
-  transform: translateX(-50%);
 }
 .library-dock-handle:active {
   cursor: grabbing;
