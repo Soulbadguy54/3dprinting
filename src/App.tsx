@@ -217,9 +217,6 @@ function GameCard({
       layout
       className="game-card"
       onClick={onOpen}
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 14, scale: .985 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8, scale: .98 }}
       whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
       transition={{ type: 'spring', stiffness: 420, damping: 34, mass: .72 }}
     >
@@ -287,6 +284,8 @@ function App() {
   const [sortMode, setSortMode] = useState<SortMode>('activity')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false)
+  const librarySearchInputRef = useRef<HTMLInputElement>(null)
+  const focusLibrarySearchOnOpen = useRef(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
@@ -365,6 +364,21 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      activeTab !== 'library' ||
+      !librarySearchOpen ||
+      !focusLibrarySearchOnOpen.current
+    ) return
+
+    focusLibrarySearchOnOpen.current = false
+    const frame = window.requestAnimationFrame(() => {
+      librarySearchInputRef.current?.focus()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeTab, librarySearchOpen])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -798,22 +812,26 @@ function App() {
         </motion.button>
 
         <motion.div className="topbar-actions" layout>
-          <AnimatePresence initial={false}>
-            {!librarySearchOpen && (
-              <motion.button
-                key="library-search-trigger"
-                layoutId="library-search-surface"
-                className="icon-button library-search-trigger"
-                onClick={() => setLibrarySearchOpen(true)}
-                aria-label="Поиск по библиотеке"
-                aria-expanded={false}
-                whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
-                transition={{ type: 'spring', stiffness: 520, damping: 36, mass: .7 }}
-              >
-                <Icon name="search" size={19} />
-              </motion.button>
-            )}
-          </AnimatePresence>
+          <motion.button
+            className={librarySearchOpen || query ? 'icon-button library-search-trigger library-search-trigger--active' : 'icon-button library-search-trigger'}
+            onClick={() => {
+              if (librarySearchOpen) {
+                focusLibrarySearchOnOpen.current = false
+                librarySearchInputRef.current?.blur()
+                setLibrarySearchOpen(false)
+                setQuery('')
+              } else {
+                focusLibrarySearchOnOpen.current = true
+                setLibrarySearchOpen(true)
+              }
+            }}
+            aria-label={librarySearchOpen ? 'Свернуть поиск' : 'Открыть поиск'}
+            aria-expanded={librarySearchOpen}
+            whileTap={shouldReduceMotion ? undefined : { scale: .9 }}
+            transition={{ type: 'spring', stiffness: 520, damping: 36, mass: .7 }}
+          >
+            <Icon name="search" size={19} />
+          </motion.button>
           <motion.button
             layout
             className="round-add"
@@ -831,41 +849,35 @@ function App() {
         {librarySearchOpen && (
           <motion.div
             key="library-search-panel"
-            layoutId="library-search-surface"
-            className="search-wrap library-search library-search--motion"
-            initial={shouldReduceMotion ? false : { opacity: .72 }}
-            animate={{ opacity: 1 }}
-            exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .96, x: 14 }}
-            transition={{ type: 'spring', stiffness: 430, damping: 34, mass: .76 }}
+            className="library-search-motion-wrap"
+            initial={shouldReduceMotion ? false : { height: 0, opacity: 0, y: -8 }}
+            animate={{ height: 'auto', opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0, y: -6 }}
+            transition={{ duration: .2, ease: [0.22, 1, 0.36, 1] }}
           >
-            <motion.span
-              initial={shouldReduceMotion ? false : { opacity: 0, scale: .6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: .06 }}
-            >
+            <div className="search-wrap library-search">
               <Icon name="search" size={19} />
-            </motion.span>
-            <motion.input
-              initial={shouldReduceMotion ? false : { opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: .07, duration: .18 }}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Название, жанр или разработчик..."
-              aria-label="Поиск в библиотеке"
-              autoFocus
-            />
-            <motion.button
-              className="library-search__clear"
-              onClick={() => {
-                setLibrarySearchOpen(false)
-                setQuery('')
-              }}
-              aria-label="Закрыть поиск"
-              whileTap={shouldReduceMotion ? undefined : { scale: .86, rotate: 8 }}
-            >
-              <Icon name="close" size={17} />
-            </motion.button>
+              <input
+                ref={librarySearchInputRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Название, жанр или разработчик..."
+                aria-label="Поиск в библиотеке"
+              />
+              {query && (
+                <motion.button
+                  className="library-search__clear"
+                  onClick={() => {
+                    setQuery('')
+                    librarySearchInputRef.current?.focus()
+                  }}
+                  aria-label="Очистить поиск"
+                  whileTap={shouldReduceMotion ? undefined : { scale: .88 }}
+                >
+                  <Icon name="close" size={17} />
+                </motion.button>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1055,31 +1067,58 @@ function App() {
           )}
         </AnimatePresence>
 
-        {libraryGames.length > 0 ? (
-          <motion.div className="game-grid" layout>
-            <AnimatePresence initial={false}>
-              {libraryGames.map(({ game, entry }) => (
-                <GameCard
-                  key={game.id}
-                  game={game}
-                  entry={entry}
-                  collections={collections}
-                  onOpen={() => setSelectedGameId(game.id)}
-                />
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        ) : (
-          <motion.div
-            className="empty-state"
-            initial={shouldReduceMotion ? false : { opacity: 0, scale: .98 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <strong>Здесь пока пусто</strong>
-            <p>Смени фильтр или добавь новую игру в библиотеку.</p>
-            <button onClick={() => openTab('add')}>Добавить игру</button>
-          </motion.div>
-        )}
+        <AnimatePresence mode="popLayout" initial={false}>
+          {libraryGames.length > 0 ? (
+            <motion.div
+              key="library-game-grid"
+              className="game-grid"
+              layout
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8 }}
+              transition={{ duration: .2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <AnimatePresence mode="popLayout">
+                {libraryGames.map(({ game, entry }, index) => (
+                  <motion.div
+                    key={game.id}
+                    layout
+                    initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 430,
+                      damping: 34,
+                      mass: .72,
+                      delay: shouldReduceMotion ? 0 : Math.min(index * .025, .16),
+                    }}
+                  >
+                    <GameCard
+                      game={game}
+                      entry={entry}
+                      collections={collections}
+                      onOpen={() => setSelectedGameId(game.id)}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="library-empty-state"
+              className="empty-state"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 8, scale: .98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8, scale: .98 }}
+              transition={{ duration: .18 }}
+            >
+              <strong>Здесь пока пусто</strong>
+              <p>Смени фильтр или добавь новую игру в библиотеку.</p>
+              <button onClick={() => openTab('add')}>Добавить игру</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
     </LayoutGroup>
   )
