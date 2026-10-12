@@ -68,7 +68,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   min-height: 100dvh;
   margin: 0 auto;
   padding:
-    max(18px, calc(var(--safe-top) + 10px))
+    max(12px, calc(var(--safe-top) + 6px))
     max(18px, calc(var(--safe-right) + 18px))
     calc(var(--bottom-nav-height) + var(--safe-bottom) + var(--page-bottom-gap))
     max(18px, calc(var(--safe-left) + 18px));
@@ -1748,12 +1748,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: var(--accent);
 }
 
-@media (max-width: 430px) {
-  .library-summary {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 .rating-slider input[type="range"] {
   border: 0;
   padding: 0;
@@ -1937,5 +1931,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   }
   .status-badge__date {
     font-size: 7px;
+  }
+}
+
+@media (max-width: 430px) {
+  .library-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
