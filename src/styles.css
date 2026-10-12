@@ -137,29 +137,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   z-index: 15;
   top: var(--safe-top);
   margin: 0 -8px;
-  padding: 0 8px 7px;
-  background: rgba(11, 13, 18, .94);
-  backdrop-filter: blur(20px);
-  transition: box-shadow .2s ease, border-color .2s ease;
-}
-.library-sticky-stack::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0 -10px;
-  pointer-events: none;
+  padding: 2px 8px 7px;
   border-bottom: 1px solid transparent;
-  background: linear-gradient(180deg, rgba(11,13,18,.98) 0%, rgba(11,13,18,.94) 82%, rgba(11,13,18,.82) 100%);
-  content: '';
+  background: var(--bg);
+  transition: box-shadow .28s ease, border-color .28s ease;
 }
-.library-sticky-stack--collapsed::before {
+.library-sticky-stack--collapsed {
   border-bottom-color: rgba(255,255,255,.055);
-  box-shadow: 0 12px 28px rgba(0,0,0,.22);
+  box-shadow: 0 12px 28px rgba(0,0,0,.2);
 }
 .library-topbar {
-  margin: 2px 0 12px;
+  min-height: 50px;
+  margin: 0 0 12px;
+  align-items: center;
 }
 .library-sticky-stack--collapsed .library-topbar {
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 .topbar-actions {
   display: flex;
@@ -219,29 +212,46 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .library-control-dock {
   position: relative;
 }
-.library-control-content {
+.library-control-clip {
   overflow: hidden;
+  will-change: height, opacity;
+}
+.library-control-content {
+  width: 100%;
 }
 .library-dock-handle {
   position: absolute;
-  left: calc(50% - 29px);
-  bottom: -19px;
+  z-index: 2;
+  left: 50%;
+  bottom: -20px;
   display: flex;
-  width: 58px;
-  height: 20px;
+  width: 64px;
+  height: 22px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255,255,255,.09);
+  border: 1px solid rgba(255,255,255,.1);
   border-top: 0;
-  border-radius: 0 0 14px 14px;
-  background: rgba(18, 21, 28, .98);
+  border-radius: 0 0 15px 15px;
+  background: #12151c;
   box-shadow: 0 8px 18px rgba(0,0,0,.2);
+  cursor: grab;
+  touch-action: none;
+  transform: translateX(-50%);
+}
+.library-dock-handle:active {
+  cursor: grabbing;
+}
+.library-dock-handle--expanded {
+  background: #10131a;
+}
+.library-dock-handle--collapsed {
+  background: #151922;
 }
 .library-dock-handle__grip {
-  width: 20px;
+  width: 24px;
   height: 3px;
   border-radius: 999px;
-  background: #737c89;
+  background: #858e9b;
 }
 .library-dock-handle__dot {
   position: absolute;
@@ -1997,4 +2007,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .library-status-card__label {
     font-size: 8px;
   }
+}
+
+.library-topbar .round-add,
+.library-topbar .icon-button {
+  align-self: center;
+}
+.library-topbar .round-add svg,
+.library-topbar .icon-button svg {
+  display: block;
+}
+
+.library-sticky-stack--collapsed .library-control-dock {
+  margin-bottom: 1px;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
@@ -298,6 +298,8 @@ function App() {
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
   const [libraryControlsCollapsed, setLibraryControlsCollapsed] = useState(false)
+  const libraryControlContentRef = useRef<HTMLDivElement>(null)
+  const [libraryControlsHeight, setLibraryControlsHeight] = useState(0)
   const libraryLastScrollYRef = useRef(0)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
@@ -424,6 +426,21 @@ function App() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [activeTab, selectedGameId])
+
+  useLayoutEffect(() => {
+    const node = libraryControlContentRef.current
+    if (!node) return
+
+    const updateHeight = () => {
+      setLibraryControlsHeight(node.getBoundingClientRect().height)
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+
+    return () => observer.disconnect()
+  }, [filtersOpen, entries.length])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -935,16 +952,20 @@ function App() {
       </AnimatePresence>
 
       <div className="library-control-dock">
-        <AnimatePresence initial={false}>
-          {!libraryControlsCollapsed && (
-            <motion.div
-              key="library-control-content"
-              className="library-control-content"
-              initial={shouldReduceMotion ? false : { height: 0, opacity: 0, y: -8 }}
-              animate={{ height: 'auto', opacity: 1, y: 0 }}
-              exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0, y: -10 }}
-              transition={{ duration: .22, ease: [0.22, 1, 0.36, 1] }}
-            >
+        <motion.div
+          className="library-control-clip"
+          initial={false}
+          animate={{
+            height: libraryControlsCollapsed ? 0 : libraryControlsHeight,
+            opacity: libraryControlsCollapsed ? 0 : 1,
+          }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 210, damping: 29, mass: .92 }
+          }
+        >
+          <div ref={libraryControlContentRef} className="library-control-content">
 
       <motion.section
         className="library-overview"
@@ -1105,30 +1126,48 @@ function App() {
         )}
       </AnimatePresence>
 
-            </motion.div>
-          )}
-        </AnimatePresence>
+          </div>
+        </motion.div>
 
-        <AnimatePresence initial={false}>
-          {libraryControlsCollapsed && (
-            <motion.button
-              key="library-dock-handle"
-              className="library-dock-handle"
-              onClick={() => setLibraryControlsCollapsed(false)}
-              aria-label="Развернуть управление библиотекой"
-              initial={shouldReduceMotion ? false : { opacity: 0, y: -5, scale: .92 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -4, scale: .94 }}
-              whileTap={shouldReduceMotion ? undefined : { scale: .9 }}
-              transition={{ type: 'spring', stiffness: 480, damping: 32 }}
-            >
-              <span className="library-dock-handle__grip" />
-              {(statusFilters.length > 0 || activeExtraFilters > 0) && (
-                <span className="library-dock-handle__dot" aria-hidden="true" />
-              )}
-            </motion.button>
+        <motion.button
+          className={
+            libraryControlsCollapsed
+              ? 'library-dock-handle library-dock-handle--collapsed'
+              : 'library-dock-handle library-dock-handle--expanded'
+          }
+          aria-label={
+            libraryControlsCollapsed
+              ? 'Развернуть управление библиотекой'
+              : 'Свернуть управление библиотекой'
+          }
+          drag={shouldReduceMotion ? false : 'y'}
+          dragConstraints={{ top: -34, bottom: 46 }}
+          dragElastic={0.14}
+          dragMomentum={false}
+          onTap={() => {
+            setLibraryControlsCollapsed((current) => {
+              if (!current) setFiltersOpen(false)
+              return !current
+            })
+          }}
+          onDragEnd={(_, info) => {
+            if (libraryControlsCollapsed) {
+              if (info.offset.y > 18 || info.velocity.y > 220) {
+                setLibraryControlsCollapsed(false)
+              }
+            } else if (info.offset.y < -18 || info.velocity.y < -220) {
+              setFiltersOpen(false)
+              setLibraryControlsCollapsed(true)
+            }
+          }}
+          whileTap={shouldReduceMotion ? undefined : { scale: .96 }}
+          transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+        >
+          <span className="library-dock-handle__grip" />
+          {(statusFilters.length > 0 || activeExtraFilters > 0) && (
+            <span className="library-dock-handle__dot" aria-hidden="true" />
           )}
-        </AnimatePresence>
+        </motion.button>
       </div>
       </div>
 
