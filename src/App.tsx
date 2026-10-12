@@ -243,7 +243,7 @@ function GameCard({
       <div className="game-card__cover-wrap">
         <Cover game={game} markers={markers} />
         {entry.score != null && (
-          <span className="score-badge"><Icon name="star" size={13} />{entry.score.toFixed(1)}</span>
+          <span className="score-badge">{entry.score.toFixed(1)}</span>
         )}
         <span className={`status-badge status-badge--${entry.status}`}>
           <Icon name={statusIcons[entry.status]} size={12} />
@@ -342,7 +342,7 @@ function App() {
   const [addCollectionIds, setAddCollectionIds] = useState<string[]>([])
 
   useMotionValueEvent(libraryCollapseProgress, 'change', (latest) => {
-    const collapsed = latest >= 0.985
+    const collapsed = latest >= 0.84
     setLibraryControlsCollapsed((current) => current === collapsed ? current : collapsed)
   })
 
@@ -1163,6 +1163,7 @@ function App() {
 
             if (currentProgress >= 0.5) {
               libraryForceCollapsedRef.current = false
+              setLibraryControlsCollapsed(false)
 
               const controls = animate(libraryCollapseProgress, 0, {
                 type: 'spring',
@@ -1197,15 +1198,28 @@ function App() {
           whileTap={shouldReduceMotion ? undefined : { scale: .96 }}
         >
           <motion.span
+            key={libraryControlsCollapsed ? 'chevron-down' : 'chevron-up'}
             className="library-dock-chevron"
+            initial={
+              shouldReduceMotion
+                ? false
+                : {
+                    rotate: libraryControlsCollapsed ? -135 : 45,
+                    y: 0,
+                    opacity: .72,
+                  }
+            }
             animate={
               libraryControlsCollapsed
-                ? { rotate: 45, y: [-2, 2, -2] }
-                : { rotate: -135, y: [2, -2, 2] }
+                ? { rotate: 45, y: [-2, 2, -2], opacity: 1 }
+                : { rotate: -135, y: [2, -2, 2], opacity: 1 }
             }
             transition={{
-              rotate: { duration: .2, ease: 'easeOut' },
-              y: { duration: 1.45, repeat: Infinity, ease: 'easeInOut' },
+              rotate: { duration: .24, ease: [0.22, 1, 0.36, 1] },
+              opacity: { duration: .16 },
+              y: shouldReduceMotion
+                ? { duration: 0 }
+                : { duration: 1.45, repeat: Infinity, ease: 'easeInOut', delay: .18 },
             }}
             aria-hidden="true"
           />
