@@ -197,11 +197,13 @@ function GameCard({
   entry,
   collections,
   onOpen,
+  animationIndex = 0,
 }: {
   game: Game
   entry: LibraryEntry
   collections: GameCollection[]
   onOpen: () => void
+  animationIndex?: number
 }) {
   const shouldReduceMotion = useReducedMotion()
   const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
@@ -217,8 +219,17 @@ function GameCard({
       layout
       className="game-card"
       onClick={onOpen}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
       whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 34, mass: .72 }}
+      transition={{
+        type: 'spring',
+        stiffness: 430,
+        damping: 34,
+        mass: .72,
+        delay: shouldReduceMotion ? 0 : Math.min(animationIndex * .025, .16),
+      }}
     >
       <div className="game-card__cover-wrap">
         <Cover game={game} markers={markers} />
@@ -1080,27 +1091,14 @@ function App() {
             >
               <AnimatePresence mode="popLayout">
                 {libraryGames.map(({ game, entry }, index) => (
-                  <motion.div
+                  <GameCard
                     key={game.id}
-                    layout
-                    initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 430,
-                      damping: 34,
-                      mass: .72,
-                      delay: shouldReduceMotion ? 0 : Math.min(index * .025, .16),
-                    }}
-                  >
-                    <GameCard
-                      game={game}
-                      entry={entry}
-                      collections={collections}
-                      onOpen={() => setSelectedGameId(game.id)}
-                    />
-                  </motion.div>
+                    game={game}
+                    entry={entry}
+                    collections={collections}
+                    onOpen={() => setSelectedGameId(game.id)}
+                    animationIndex={index}
+                  />
                 ))}
               </AnimatePresence>
             </motion.div>
