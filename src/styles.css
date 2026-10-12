@@ -132,8 +132,34 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: transparent;
 }
 
+.library-sticky-stack {
+  position: sticky;
+  z-index: 15;
+  top: var(--safe-top);
+  margin: 0 -8px;
+  padding: 0 8px 7px;
+  background: rgba(11, 13, 18, .94);
+  backdrop-filter: blur(20px);
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+.library-sticky-stack::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 -10px;
+  pointer-events: none;
+  border-bottom: 1px solid transparent;
+  background: linear-gradient(180deg, rgba(11,13,18,.98) 0%, rgba(11,13,18,.94) 82%, rgba(11,13,18,.82) 100%);
+  content: '';
+}
+.library-sticky-stack--collapsed::before {
+  border-bottom-color: rgba(255,255,255,.055);
+  box-shadow: 0 12px 28px rgba(0,0,0,.22);
+}
 .library-topbar {
-  margin-bottom: 17px;
+  margin: 2px 0 12px;
+}
+.library-sticky-stack--collapsed .library-topbar {
+  margin-bottom: 5px;
 }
 .topbar-actions {
   display: flex;
@@ -190,6 +216,44 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: #858e9b;
   background: #242a35;
 }
+.library-control-dock {
+  position: relative;
+}
+.library-control-content {
+  overflow: hidden;
+}
+.library-dock-handle {
+  position: absolute;
+  left: calc(50% - 29px);
+  bottom: -19px;
+  display: flex;
+  width: 58px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.09);
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  background: rgba(18, 21, 28, .98);
+  box-shadow: 0 8px 18px rgba(0,0,0,.2);
+}
+.library-dock-handle__grip {
+  width: 20px;
+  height: 3px;
+  border-radius: 999px;
+  background: #737c89;
+}
+.library-dock-handle__dot {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(140,242,125,.08);
+}
+
 .library-overview {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -277,8 +341,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   height: 36px;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 5px;
+  padding: 0 7px;
   border: 1px solid color-mix(in srgb, var(--status-color) 28%, transparent);
   border-radius: 999px;
   color: var(--status-color);
@@ -295,25 +359,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .library-status-card--wishlist { --status-color: #d5b5ff; }
 .library-status-card--dropped { --status-color: #ff9a82; }
 
-.library-status-card__icon {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--status-color);
-  background: color-mix(in srgb, var(--status-color) 12%, transparent);
-}
-.library-status-card__icon svg {
-  width: 13px;
-  height: 13px;
-}
 .library-status-card__label {
   min-width: 0;
   overflow: hidden;
   color: #d8dde5;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -334,10 +384,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: var(--status-color);
   background: var(--status-color);
   box-shadow: 0 7px 18px color-mix(in srgb, var(--status-color) 12%, transparent);
-}
-.library-status-card--active .library-status-card__icon {
-  color: #0b0d12;
-  background: rgba(11, 13, 18, .12);
 }
 .library-status-card--active .library-status-card__label,
 .library-status-card--active .library-status-card__count {
@@ -589,7 +635,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: #fff;
 }
 
-.catalog { margin-top: 24px; }
+.catalog { margin-top: 26px; }
 .section-heading {
   display: flex;
   align-items: end;
@@ -1937,5 +1983,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 @media (max-width: 430px) {
   .library-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 700px) {
+  .library-sticky-stack {
+    top: max(var(--safe-top), 10px);
+    border-radius: 0 0 18px 18px;
+  }
+}
+
+@media (max-width: 360px) {
+  .library-status-card__label {
+    font-size: 8px;
   }
 }

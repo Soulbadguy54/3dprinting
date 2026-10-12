@@ -74,7 +74,7 @@ const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   completed: { label: 'Пройдено', short: 'Пройдено' },
   playing: { label: 'Прохожу', short: 'Прохожу' },
   wishlist: { label: 'Хочу пройти', short: 'Хочу' },
-  dropped: { label: 'Дропнул', short: 'Дроп' },
+  dropped: { label: 'Дропнуто', short: 'Дропнуто' },
 }
 
 const statusIcons: Record<LibraryStatus, IconName> = {
@@ -297,6 +297,8 @@ function App() {
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false)
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
+  const [libraryControlsCollapsed, setLibraryControlsCollapsed] = useState(false)
+  const libraryLastScrollYRef = useRef(0)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
@@ -390,6 +392,38 @@ function App() {
 
     return () => window.cancelAnimationFrame(frame)
   }, [activeTab, librarySearchOpen])
+
+  useEffect(() => {
+    if (activeTab !== 'library' || selectedGameId != null) return
+
+    let lastY = window.scrollY
+    libraryLastScrollYRef.current = lastY
+
+    if (lastY <= 24) {
+      setLibraryControlsCollapsed(false)
+    } else if (lastY > 120) {
+      setLibraryControlsCollapsed(true)
+      setFiltersOpen(false)
+    }
+
+    const handleScroll = () => {
+      const currentY = window.scrollY
+      const delta = currentY - lastY
+
+      if (currentY <= 24) {
+        setLibraryControlsCollapsed(false)
+      } else if (currentY > 110 && delta > 4) {
+        setLibraryControlsCollapsed(true)
+        setFiltersOpen(false)
+      }
+
+      lastY = currentY
+      libraryLastScrollYRef.current = currentY
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [activeTab, selectedGameId])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -809,6 +843,13 @@ function App() {
 
   const renderLibrary = () => (
     <LayoutGroup id="library-motion">
+      <div
+        className={
+          libraryControlsCollapsed
+            ? 'library-sticky-stack library-sticky-stack--collapsed'
+            : 'library-sticky-stack'
+        }
+      >
       <header className="topbar library-topbar">
         <motion.button
           layout
@@ -893,6 +934,18 @@ function App() {
         )}
       </AnimatePresence>
 
+      <div className="library-control-dock">
+        <AnimatePresence initial={false}>
+          {!libraryControlsCollapsed && (
+            <motion.div
+              key="library-control-content"
+              className="library-control-content"
+              initial={shouldReduceMotion ? false : { height: 0, opacity: 0, y: -8 }}
+              animate={{ height: 'auto', opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0, y: -10 }}
+              transition={{ duration: .22, ease: [0.22, 1, 0.36, 1] }}
+            >
+
       <motion.section
         className="library-overview"
         aria-label="Сводка библиотеки"
@@ -936,7 +989,7 @@ function App() {
         {([
           ['completed', 'Пройдено'],
           ['playing', 'Прохожу'],
-          ['dropped', 'Дропнул'],
+          ['dropped', 'Дропнуто'],
         ] as [LibraryStatus, string][]).map(([status, label]) => (
           <motion.button
             layout
@@ -952,15 +1005,6 @@ function App() {
             whileTap={shouldReduceMotion ? undefined : { scale: .965 }}
             transition={{ type: 'spring', stiffness: 460, damping: 30 }}
           >
-            <motion.span
-              className="library-status-card__icon"
-              animate={shouldReduceMotion ? undefined : {
-                scale: statusFilters.includes(status) ? 1.05 : 1,
-                rotate: statusFilters.includes(status) ? 2 : 0,
-              }}
-            >
-              <Icon name={statusIcons[status]} size={15} />
-            </motion.span>
             <span className="library-status-card__label">{label}</span>
             <span className="library-status-card__count">{counts[status]}</span>
           </motion.button>
@@ -1060,6 +1104,33 @@ function App() {
         </motion.section>
         )}
       </AnimatePresence>
+
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {libraryControlsCollapsed && (
+            <motion.button
+              key="library-dock-handle"
+              className="library-dock-handle"
+              onClick={() => setLibraryControlsCollapsed(false)}
+              aria-label="Развернуть управление библиотекой"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: -5, scale: .92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -4, scale: .94 }}
+              whileTap={shouldReduceMotion ? undefined : { scale: .9 }}
+              transition={{ type: 'spring', stiffness: 480, damping: 32 }}
+            >
+              <span className="library-dock-handle__grip" />
+              {(statusFilters.length > 0 || activeExtraFilters > 0) && (
+                <span className="library-dock-handle__dot" aria-hidden="true" />
+              )}
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+      </div>
 
       <section className="catalog">
         <AnimatePresence initial={false}>
