@@ -31,7 +31,6 @@ type IconName =
   | 'sort'
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
-type StatusFilter = 'all' | LibraryStatus
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
 
 type ApiLibraryEntry = Omit<
@@ -75,6 +74,13 @@ const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   playing: { label: 'Прохожу', short: 'Прохожу' },
   wishlist: { label: 'Хочу пройти', short: 'Хочу' },
   dropped: { label: 'Дропнул', short: 'Дроп' },
+}
+
+const statusIcons: Record<LibraryStatus, IconName> = {
+  completed: 'check',
+  playing: 'play',
+  wishlist: 'bookmark',
+  dropped: 'close',
 }
 
 const ratedStatuses = new Set<LibraryStatus>(['completed', 'dropped'])
@@ -212,14 +218,13 @@ function GameCard({
           <span className="score-badge"><Icon name="star" size={13} />{entry.score.toFixed(1)}</span>
         )}
         <span className={`status-badge status-badge--${entry.status}`}>
-          {statusMeta[entry.status].short}
+          <Icon name={statusIcons[entry.status]} size={12} />
+          <span className="status-badge__label">{statusMeta[entry.status].short}</span>
+          <span className="status-badge__date">{formatCardDate(activityDate)}</span>
         </span>
       </div>
       <div className="game-card__body">
         <h3>{game.title}</h3>
-        <div className="game-card__meta">
-          <span>{formatCardDate(activityDate)}</span>
-        </div>
       </div>
     </button>
   )
@@ -264,7 +269,7 @@ function App() {
   const [addSearchError, setAddSearchError] = useState('')
   const addSearchCache = useRef(new Map<string, Game[]>())
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [statusFilters, setStatusFilters] = useState<LibraryStatus[]>([])
   const [genreFilter, setGenreFilter] = useState('all')
   const [platformFilter, setPlatformFilter] = useState('all')
   const [sortMode, setSortMode] = useState<SortMode>('activity')
@@ -375,7 +380,7 @@ function App() {
     const normalized = query.trim().toLowerCase()
 
     const result = entries
-      .filter((entry) => statusFilter === 'all' || entry.status === statusFilter)
+      .filter((entry) => statusFilters.length === 0 || statusFilters.includes(entry.status))
       .map((entry) => ({ entry, game: catalogGames.find((game) => game.id === entry.gameId)! }))
       .filter(({ game, entry }) => {
         const queryMatch =
@@ -408,7 +413,7 @@ function App() {
       const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
       return dateB.localeCompare(dateA)
     })
-  }, [entries, query, statusFilter, genreFilter, platformFilter, sortMode, catalogGames])
+  }, [entries, query, statusFilters, genreFilter, platformFilter, sortMode, catalogGames])
 
   const activeExtraFilters =
     (genreFilter !== 'all' ? 1 : 0) +
@@ -491,6 +496,23 @@ function App() {
     wishlist: entries.filter((entry) => entry.status === 'wishlist').length,
     dropped: entries.filter((entry) => entry.status === 'dropped').length,
   }), [entries])
+
+  const averageLibraryScore = useMemo(() => {
+    const scores = entries
+      .map((entry) => entry.score)
+      .filter((score): score is number => score != null)
+
+    if (scores.length === 0) return null
+    return scores.reduce((sum, score) => sum + score, 0) / scores.length
+  }, [entries])
+
+  const toggleStatusFilter = (status: LibraryStatus) => {
+    setStatusFilters((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    )
+  }
 
   const openTab = (tab: Tab) => {
     setActiveTab(tab)
@@ -752,10 +774,10 @@ function App() {
     <>
       <header className="topbar library-topbar">
         <button
-          className={statusFilter === 'all' ? 'library-title library-title--active' : 'library-title'}
-          onClick={() => setStatusFilter('all')}
+          className={statusFilters.length === 0 ? 'library-title library-title--active' : 'library-title'}
+          onClick={() => setStatusFilters([])}
           aria-label="Показать все игры"
-          aria-pressed={statusFilter === 'all'}
+          aria-pressed={statusFilters.length === 0}
         >
           Мои игры
         </button>
@@ -804,24 +826,41 @@ function App() {
         </div>
       )}
 
+      <section className="library-overview" aria-label="Сводка библиотеки">
+        <div className="library-overview-card library-overview-card--games">
+          <span className="library-overview-card__icon"><Icon name="gamepad" size={20} /></span>
+          <span>
+            <small>Всего игр</small>
+            <strong>{entries.length}</strong>
+          </span>
+        </div>
+        <div className="library-overview-card library-overview-card--score">
+          <span className="library-overview-card__icon"><Icon name="star" size={19} /></span>
+          <span>
+            <small>Средняя оценка</small>
+            <strong>{averageLibraryScore != null ? averageLibraryScore.toFixed(1) : '—'}</strong>
+          </span>
+        </div>
+      </section>
+
       <section className="library-summary" aria-label="Фильтр по статусу">
         {([
-          ['completed', 'Пройдено', 'check'],
-          ['playing', 'Прохожу', 'play'],
-          ['wishlist', 'Хочу пройти', 'bookmark'],
-          ['dropped', 'Дропнул', 'close'],
-        ] as [LibraryStatus, string, IconName][]).map(([status, label, icon]) => (
+          ['completed', 'Пройдено'],
+          ['playing', 'Прохожу'],
+          ['wishlist', 'Хочу пройти'],
+          ['dropped', 'Дропнул'],
+        ] as [LibraryStatus, string][]).map(([status, label]) => (
           <button
             key={status}
             className={
-              statusFilter === status
+              statusFilters.includes(status)
                 ? `library-status-card library-status-card--${status} library-status-card--active`
                 : `library-status-card library-status-card--${status}`
             }
-            onClick={() => setStatusFilter(status)}
-            aria-pressed={statusFilter === status}
+            onClick={() => toggleStatusFilter(status)}
+            aria-pressed={statusFilters.includes(status)}
           >
-            <span className="library-status-card__icon"><Icon name={icon} size={18} /></span>
+            <span className="library-status-card__icon"><Icon name={statusIcons[status]} size={18} /></span>
             <span className="library-status-card__copy">
               <strong>{counts[status]}</strong>
               <span>{label}</span>
@@ -910,9 +949,9 @@ function App() {
       )}
 
       <section className="catalog">
-        {(query || statusFilter !== 'all') && (
+        {query && (
           <div className="section-heading library-section-heading">
-            <h2>{query ? `Найдено: ${libraryGames.length}` : statusMeta[statusFilter as LibraryStatus].label}</h2>
+            <h2>Найдено: {libraryGames.length}</h2>
           </div>
         )}
 

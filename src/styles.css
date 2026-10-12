@@ -157,6 +157,64 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.library-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.library-overview-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 12px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: linear-gradient(145deg, rgba(24, 28, 37, .9), rgba(15, 18, 25, .78));
+}
+.library-overview-card__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+}
+.library-overview-card--games .library-overview-card__icon {
+  color: var(--accent);
+  background: rgba(140, 242, 125, .09);
+}
+.library-overview-card--score .library-overview-card__icon {
+  color: #f8d96a;
+  background: rgba(248, 217, 106, .09);
+}
+.library-overview-card--score .library-overview-card__icon svg {
+  fill: currentColor;
+}
+.library-overview-card > span:last-child {
+  min-width: 0;
+}
+.library-overview-card small,
+.library-overview-card strong {
+  display: block;
+}
+.library-overview-card small {
+  overflow: hidden;
+  color: #747d8a;
+  font-size: 8px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-overview-card strong {
+  margin-top: 4px;
+  color: #f4f6f8;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+
 .library-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -515,17 +573,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.game-card__meta {
-  display: flex;
-  gap: 5px;
-  margin-top: 5px;
-  overflow: hidden;
-  color: #737b89;
-  font-size: 9px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .score-badge, .status-badge {
   position: absolute;
   z-index: 4;
@@ -548,15 +595,41 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .score-badge svg { fill: currentColor; }
 .status-badge {
+  --status-color: #8cf27d;
   bottom: 10px;
   left: 10px;
+  max-width: calc(100% - 20px);
   padding: 6px 8px;
-  border: 1px solid rgba(255,255,255,.13);
-  background: rgba(10, 12, 17, .66);
+  border: 1px solid color-mix(in srgb, var(--status-color) 42%, transparent);
+  color: var(--status-color);
+  background: rgba(10, 12, 17, .78);
 }
-.status-badge--playing { color: #8cf27d; }
-.status-badge--wishlist { color: #d7bbff; }
-.status-badge--completed { color: #fff; }
+.status-badge--completed { --status-color: #8cf27d; }
+.status-badge--playing { --status-color: #77a8ff; }
+.status-badge--wishlist { --status-color: #d5b5ff; }
+.status-badge--dropped { --status-color: #ff9a82; }
+.status-badge svg {
+  flex: 0 0 auto;
+}
+.status-badge__label,
+.status-badge__date {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-badge__label {
+  color: var(--status-color);
+}
+.status-badge__date {
+  color: #c4cad3;
+  font-size: 8px;
+  font-weight: 700;
+}
+.status-badge__date::before {
+  margin-right: 4px;
+  color: #626b78;
+  content: '·';
+}
 
 .cover {
   position: relative;
@@ -1574,10 +1647,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   text-align: right;
 }
 
-.status-badge--dropped {
-  color: #ffb36b;
-}
-
 .bottom-nav__avatar {
   display: grid;
   width: 23px;
@@ -1726,4 +1795,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .library-section-heading h2 {
   font-size: 18px;
+}
+
+.library-status-card--active + .library-status-card--active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-color) 14%, transparent);
 }
