@@ -326,6 +326,7 @@ function App() {
   const libraryToggleAnimationRef = useRef<{ stop: () => void } | null>(null)
   const libraryToggleGenerationRef = useRef(0)
   const libraryEntryAnchorActiveRef = useRef(false)
+  const libraryHasOpenedRef = useRef(false)
   const libraryCollapseProgress = useMotionValue(0)
   const libraryMeasuredControlsHeight = useMotionValue(0)
   const libraryControlClipHeight = useTransform(
@@ -447,6 +448,14 @@ function App() {
     const collapseDistance = 210
     const topStart = 4
     let scrollFrame: number | null = null
+
+    // A restored browser scroll position must not start the first authenticated
+    // library view halfway down the page with the filters already closed.
+    // Returning from a game detail is deliberately excluded.
+    if (!libraryHasOpenedRef.current) {
+      libraryHasOpenedRef.current = true
+      if (window.scrollY !== 0) window.scrollTo(0, 0)
+    }
 
     // Reset any manual toggle still animating when the previous screen left.
     libraryToggleGenerationRef.current += 1
