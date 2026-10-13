@@ -1199,6 +1199,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 39%) minmax(0, 1fr);
   gap: 14px;
+  /* Preserve the original cover height for short titles while letting
+     long titles increase the row height without widening the poster. */
+  min-height: clamp(156px, 48vw, 277px);
   align-items: stretch;
 }
 .detail-hero__cover {
