@@ -39,6 +39,11 @@ type IconName =
   | 'bookmark'
   | 'close'
   | 'sort'
+  | 'edit'
+  | 'trash'
+  | 'sparkles'
+  | 'book'
+  | 'cpu'
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
@@ -147,6 +152,11 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     bookmark: <path d="M6 4.8A1.8 1.8 0 0 1 7.8 3h8.4A1.8 1.8 0 0 1 18 4.8V21l-6-3.8L6 21V4.8Z"/>,
     close: <><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></>,
     sort: <><path d="M8 6h11M8 12h8M8 18h5"/><path d="M4 4v16M2 18l2 2 2-2"/></>,
+    edit: <><path d="M12 20h9"/><path d="m16.5 4.5 3 3L8 19H5v-3L16.5 4.5Z"/><path d="m15 6 3 3"/></>,
+    trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></>,
+    sparkles: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></>,
+    book: <><path d="M12 6c-2.3-1.6-5.3-1.9-9-1v14c3.7-.9 6.7-.6 9 1 2.3-1.6 5.3-1.9 9-1V5c-3.7-.9-6.7-.6-9 1Z"/><path d="M12 6v14"/></>,
+    cpu: <><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
@@ -835,42 +845,59 @@ function App() {
   const renderDetail = () => {
     if (!selectedGame || !selectedEntry) return null
     const gameCollections = collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
+    const rateAppScore = selectedGame.communityRatings > 0
+      ? selectedGame.communityRating.toFixed(1)
+      : '—'
+    const igdbScore = selectedGame.igdbRating > 0
+      ? String(selectedGame.igdbRating)
+      : '—'
 
     return (
       <div className="detail-page">
-        <button className="icon-button detail-back" onClick={() => setSelectedGameId(null)}>
-          <Icon name="back" size={20} />
-        </button>
+        <div className="detail-toolbar">
+          <button
+            className="icon-button detail-back"
+            onClick={() => setSelectedGameId(null)}
+            aria-label="Вернуться к библиотеке"
+            title="Назад"
+          >
+            <Icon name="back" size={20} />
+          </button>
+          <div className="detail-toolbar__actions">
+            <button
+              className="icon-button detail-edit"
+              onClick={() => startEditing(selectedGame, selectedEntry)}
+              aria-label="Редактировать запись об игре"
+              title="Редактировать"
+            >
+              <Icon name="edit" size={19} />
+            </button>
+            <button
+              className="icon-button detail-delete"
+              onClick={() => { void deleteGame(selectedGame) }}
+              aria-label="Удалить игру из моей библиотеки"
+              title="Удалить"
+            >
+              <Icon name="trash" size={19} />
+            </button>
+          </div>
+        </div>
 
         <section className="detail-hero">
           <div className="detail-hero__cover"><Cover game={selectedGame} markers={gameCollections} /></div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>
-            <p>{selectedGame.genres.join(' · ')} · {selectedGame.year}</p>
-            <button
-              className="secondary-button"
-              onClick={() => startEditing(selectedGame, selectedEntry)}
-            >
-              Редактировать запись
-            </button>
-          </div>
-        </section>
-
-        <section className="rating-grid">
-          <div className="rating-card rating-card--mine">
-            <span>Моя оценка</span>
-            <strong>{selectedEntry.score != null ? selectedEntry.score.toFixed(1) : '—'}</strong>
-            <small>из 10</small>
-          </div>
-          <div className="rating-card">
-            <span>RateApp</span>
-            <strong>{selectedGame.communityRatings > 0 ? selectedGame.communityRating.toFixed(1) : '—'}</strong>
-            <small>{selectedGame.communityRatings > 0 ? `${selectedGame.communityRatings.toLocaleString('ru-RU')} оценок` : 'оценок пока нет'}</small>
-          </div>
-          <div className="rating-card">
-            <span>IGDB</span>
-            <strong>{selectedGame.igdbRating}</strong>
-            <small>из 100</small>
+            <p>{selectedGame.genres.join(' · ')} · {formatDate(selectedGame.releaseDate) || selectedGame.year}</p>
+            <div className="detail-source-ratings" aria-label="Рейтинги игры">
+              <div className="detail-source-rating">
+                <span>IGDB</span>
+                <strong>{igdbScore}<small>{igdbScore !== '—' ? ' / 100' : ''}</small></strong>
+              </div>
+              <div className="detail-source-rating detail-source-rating--community">
+                <span>RateApp</span>
+                <strong>{rateAppScore}<small>{rateAppScore !== '—' ? ' / 10' : ''}</small></strong>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -881,20 +908,17 @@ function App() {
               <strong>{selectedEntry.score?.toFixed(1) ?? '—'}</strong>
             </div>
             <div className="criteria-breakdown">
-              <div><span>Атмосфера</span><b>{selectedEntry.atmosphereScore?.toFixed(1) ?? '—'}</b></div>
-              <div><span>Сюжет</span><b>{selectedEntry.storyScore?.toFixed(1) ?? '—'}</b></div>
-              <div><span>Технологичность</span><b>{selectedEntry.technologyScore?.toFixed(1) ?? '—'}</b></div>
-              <div><span>Геймплей</span><b>{selectedEntry.gameplayScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span><Icon name="sparkles" size={15} />Атмосфера</span><b>{selectedEntry.atmosphereScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span><Icon name="book" size={15} />Сюжет</span><b>{selectedEntry.storyScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span><Icon name="cpu" size={15} />Технологичность</span><b>{selectedEntry.technologyScore?.toFixed(1) ?? '—'}</b></div>
+              <div><span><Icon name="gamepad" size={15} />Геймплей</span><b>{selectedEntry.gameplayScore?.toFixed(1) ?? '—'}</b></div>
             </div>
           </section>
         )}
 
         <section className="info-card">
           <div className="section-heading section-heading--tight">
-            <div>
-              <span className="eyebrow">МОЯ ЗАПИСЬ</span>
-              <h2>Прохождение</h2>
-            </div>
+            <h2>Моё прохождение</h2>
           </div>
           <div className="info-list">
             <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
@@ -917,20 +941,6 @@ function App() {
             </div>
           )}
         </section>
-
-        <section className="info-card">
-          <span className="eyebrow">ОБ ИГРЕ</span>
-          <h2>{selectedGame.developer}</h2>
-          <div className="facts-grid">
-            <div><span>Релиз</span><strong>{formatDate(selectedGame.releaseDate)}</strong></div>
-            <div><span>Платформы</span><strong>{selectedGame.platforms.join(', ')}</strong></div>
-            <div><span>Жанры</span><strong>{selectedGame.genres.join(', ')}</strong></div>
-          </div>
-        </section>
-
-        <button className="danger-button" onClick={() => { void deleteGame(selectedGame) }}>
-          Удалить из моих игр
-        </button>
       </div>
     )
   }
