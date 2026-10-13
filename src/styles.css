@@ -1454,8 +1454,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   transition: border-color .16s ease, background .16s ease, transform .16s ease;
 }
 .detail-external-link:hover {
-  border-color: rgba(159, 190, 241, .5);
+  border-color: var(--store-accent, rgba(159, 190, 241, .5));
   background: #2b3548;
+  box-shadow: 0 0 0 1px var(--store-accent, rgba(159, 190, 241, .15));
 }
 .detail-external-link:active {
   transform: scale(.94);
@@ -1464,19 +1465,35 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.detail-external-link__mark {
-  font-size: 10px;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -.04em;
+.detail-external-link__icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: .9;
+  transition: transform .16s ease, opacity .16s ease;
 }
-.detail-external-link--gog .detail-external-link__mark {
-  font-size: 9px;
+.detail-external-link:hover .detail-external-link__icon {
+  transform: scale(1.07);
+  opacity: 1;
 }
+.detail-external-link--steam { --store-accent: rgba(144, 202, 247, .48); }
+.detail-external-link--epic { --store-accent: rgba(230, 230, 236, .42); }
+.detail-external-link--gog { --store-accent: rgba(185, 144, 248, .52); }
+.detail-external-link--itch { --store-accent: rgba(255, 137, 137, .52); }
+.detail-external-link--playstation { --store-accent: rgba(119, 171, 255, .52); }
+.detail-external-link--xbox { --store-accent: rgba(140, 242, 125, .48); }
+.detail-external-link--nintendo { --store-accent: rgba(255, 135, 143, .48); }
 .detail-external-link--trailer {
+  --store-accent: rgba(255, 121, 129, .55);
   color: #ffb8ba;
   border-color: rgba(255, 121, 129, .25);
   background: rgba(203, 55, 74, .12);
+}
+.detail-external-link--trailer .detail-external-link__icon {
+  width: 21px;
+  height: 21px;
 }
 .detail-external-links__loading {
   width: 34px;
