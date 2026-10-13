@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   AnimatePresence,
@@ -320,7 +320,8 @@ function App() {
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
   const [libraryControlsCollapsed, setLibraryControlsCollapsed] = useState(false)
-  const libraryControlContentRef = useRef<HTMLDivElement>(null)
+  const libraryControlsObserverRef = useRef<ResizeObserver | null>(null)
+  const libraryControlsMeasureFrameRef = useRef<number | null>(null)
   const libraryCollapseProgress = useMotionValue(0)
   const libraryMeasuredControlsHeight = useMotionValue(0)
   const libraryControlClipHeight = useTransform(
@@ -514,20 +515,38 @@ function App() {
     }
   }, [activeTab, selectedGameId, libraryCollapseProgress])
 
-  useLayoutEffect(() => {
-    const node = libraryControlContentRef.current
+  // The library page is unmounted while a game detail is visible. Measuring
+  // only in an App-level effect misses its delayed remount (AnimatePresence
+  // mode="wait"), leaving the animated clip with a height of zero.
+  const measureLibraryControls = useCallback((node: HTMLDivElement | null) => {
+    libraryControlsObserverRef.current?.disconnect()
+    libraryControlsObserverRef.current = null
+
+    if (libraryControlsMeasureFrameRef.current !== null) {
+      window.cancelAnimationFrame(libraryControlsMeasureFrameRef.current)
+      libraryControlsMeasureFrameRef.current = null
+    }
+
     if (!node) return
 
     const updateHeight = () => {
-      libraryMeasuredControlsHeight.set(node.getBoundingClientRect().height)
+      if (node.isConnected) {
+        libraryMeasuredControlsHeight.set(node.getBoundingClientRect().height)
+      }
     }
 
     updateHeight()
     const observer = new ResizeObserver(updateHeight)
     observer.observe(node)
+    libraryControlsObserverRef.current = observer
 
-    return () => observer.disconnect()
-  }, [filtersOpen, entries.length, libraryMeasuredControlsHeight])
+    // Measure once more after Motion attaches its subscriptions and the
+    // library entrance transition has committed.
+    libraryControlsMeasureFrameRef.current = window.requestAnimationFrame(() => {
+      libraryControlsMeasureFrameRef.current = null
+      updateHeight()
+    })
+  }, [libraryMeasuredControlsHeight])
 
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
@@ -1087,7 +1106,7 @@ function App() {
             opacity: shouldReduceMotion ? 1 : libraryControlClipOpacity,
           }}
         >
-          <div ref={libraryControlContentRef} className="library-control-content">
+          <div ref={measureLibraryControls} className="library-control-content">
 
       <motion.section
         className="library-overview"
