@@ -322,6 +322,8 @@ function App() {
   const libraryScrollAnchorRef = useRef(0)
   const libraryForceCollapsedRef = useRef(false)
   const libraryScrollSyncPausedRef = useRef(false)
+  const libraryLastScrollYRef = useRef(0)
+  const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
@@ -426,26 +428,67 @@ function App() {
 
     const collapseDistance = 210
     const topStart = 4
-    libraryScrollAnchorRef.current = 0
+    libraryScrollAnchorRef.current = topStart
     libraryForceCollapsedRef.current = false
+    libraryForcedRevealStartRef.current = null
+    libraryLastScrollYRef.current = window.scrollY
 
     const syncControlsToScroll = () => {
       if (libraryScrollSyncPausedRef.current) return
 
       const currentY = window.scrollY
+      const previousY = libraryLastScrollYRef.current
+      const scrollingUp = currentY < previousY - .5
+      const scrollingDown = currentY > previousY + .5
+      libraryLastScrollYRef.current = currentY
 
       if (currentY <= topStart) {
-        libraryScrollAnchorRef.current = 0
+        libraryScrollAnchorRef.current = topStart
         libraryForceCollapsedRef.current = false
+        libraryForcedRevealStartRef.current = null
         libraryCollapseProgress.set(0)
         return
       }
 
       if (libraryForceCollapsedRef.current) {
+        if (scrollingDown) {
+          libraryForcedRevealStartRef.current = null
+          libraryCollapseProgress.set(1)
+          return
+        }
+
+        if (scrollingUp) {
+          if (libraryForcedRevealStartRef.current == null) {
+            if (currentY > topStart + collapseDistance) {
+              libraryCollapseProgress.set(1)
+              return
+            }
+
+            libraryForcedRevealStartRef.current = currentY
+          }
+
+          const revealStart = libraryForcedRevealStartRef.current
+          const revealDistance = Math.max(1, revealStart - topStart)
+          const progress = Math.min(
+            1,
+            Math.max(0, (currentY - topStart) / revealDistance),
+          )
+
+          libraryCollapseProgress.set(progress)
+
+          if (progress <= .001) {
+            libraryForceCollapsedRef.current = false
+            libraryForcedRevealStartRef.current = null
+            libraryScrollAnchorRef.current = topStart
+          }
+          return
+        }
+
         libraryCollapseProgress.set(1)
         return
       }
 
+      libraryForcedRevealStartRef.current = null
       const anchor = libraryScrollAnchorRef.current || topStart
       const progress = Math.min(1, Math.max(0, (currentY - anchor) / collapseDistance))
       libraryCollapseProgress.set(progress)
@@ -1193,6 +1236,8 @@ function App() {
                 window.requestAnimationFrame(() => {
                   window.requestAnimationFrame(() => {
                     libraryScrollAnchorRef.current = window.scrollY
+                    libraryLastScrollYRef.current = window.scrollY
+                    libraryForcedRevealStartRef.current = null
                     libraryScrollSyncPausedRef.current = false
                   })
                 })
@@ -1208,6 +1253,8 @@ function App() {
               void controls.then(() => {
                 libraryForceCollapsedRef.current = true
                 libraryScrollAnchorRef.current = window.scrollY
+                libraryLastScrollYRef.current = window.scrollY
+                libraryForcedRevealStartRef.current = null
                 libraryScrollSyncPausedRef.current = false
               })
             }
