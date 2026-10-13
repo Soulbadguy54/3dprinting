@@ -154,16 +154,25 @@ type GameDetailExtras = {
   completionHours: number | null
   storeLinks: GameStoreLink[]
   trailerUrl: string | null
+  game?: Game
 }
 
-const STORE_MARKS: Record<string, string> = {
-  steam: 'ST',
-  epic: 'EP',
-  gog: 'GOG',
-  itch: 'IT',
-  playstation: 'PS',
-  xbox: 'XB',
-  nintendo: 'N',
+const STORE_ICONS: Record<string, string> = {
+  steam: '/brand/steam.svg',
+  epic: '/brand/epicgames.svg',
+  gog: '/brand/gogdotcom.svg',
+  itch: '/brand/itchdotio.svg',
+  playstation: '/brand/playstation.svg',
+  xbox: '/brand/xbox.svg',
+  nintendo: '/brand/nintendoswitch.svg',
+  youtube: '/brand/youtube.svg',
+}
+
+function BrandIcon({ provider }: { provider: string }) {
+  const iconUrl = STORE_ICONS[provider]
+  return iconUrl
+    ? <img className="detail-external-link__icon" src={iconUrl} alt="" aria-hidden="true" width={20} height={20} />
+    : <Icon name="globe" size={20} />
 }
 
 function formatPlaytime(details?: GameDetailExtras, loading = false): string {
@@ -1190,8 +1199,10 @@ function App() {
         window.alert('Не удалось сохранить игру. Попробуйте ещё раз.')
         return
       }
-      const savedEntry = normalizeEntry(await response.json() as ApiLibraryEntry)
+      const savedPayload = await response.json() as ApiLibraryEntry
+      const savedEntry = normalizeEntry(savedPayload)
       setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
+      if (savedPayload.game) rememberCatalogResults([savedPayload.game])
     } catch {
       window.alert('Не удалось сохранить игру. Проверьте соединение и попробуйте ещё раз.')
       return
@@ -1299,6 +1310,7 @@ function App() {
         if (!response.ok) throw new Error('Game metadata is not available')
         const payload = await response.json() as GameDetailExtras
         if (controller.signal.aborted) return
+        if (payload.game) rememberCatalogResults([payload.game])
         setGameDetailsById((previous) => ({ ...previous, [gameId]: {
           storyHours: typeof payload.storyHours === 'number' ? payload.storyHours : null,
           completionHours: typeof payload.completionHours === 'number' ? payload.completionHours : null,
@@ -1316,13 +1328,30 @@ function App() {
 
     void fetchDetails()
     return () => controller.abort()
-  }, [authUser, selectedGameId, gameDetailsById, failedGameDetailsId])
+  }, [authUser, selectedGameId, gameDetailsById, failedGameDetailsId, rememberCatalogResults])
 
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
   const selectedGame = selectedGameId ? catalogGames.find((game) => game.id === selectedGameId) : undefined
 
   const renderDetail = () => {
-    if (!selectedGame) return null
+    if (!selectedGame) {
+      return (
+        <div className="detail-page">
+          <div className="detail-toolbar">
+            <button
+              className="icon-button detail-back"
+              onClick={() => goBackOr({ tab: 'library', gameId: null, collectionId: null, formGameId: null })}
+              aria-label="Назад"
+            >
+              <Icon name="back" size={20} />
+            </button>
+          </div>
+          <p className="game-database-loading" role="status">
+            {failedGameDetailsId === selectedGameId ? 'Не удалось загрузить игру.' : 'Загружаем игру из базы…'}
+          </p>
+        </div>
+      )
+    }
     const gameCollections = selectedEntry
       ? collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
       : []
@@ -1404,9 +1433,7 @@ function App() {
                   title={store.label}
                   aria-label={`Открыть ${store.label}`}
                 >
-                  <span className="detail-external-link__mark" aria-hidden="true">
-                    {STORE_MARKS[store.provider] || '↗'}
-                  </span>
+                  <BrandIcon provider={store.provider} />
                 </a>
               ))}
               {gameDetails?.trailerUrl && (
@@ -1418,7 +1445,7 @@ function App() {
                   title="Смотреть трейлер"
                   aria-label="Смотреть трейлер на YouTube"
                 >
-                  <Icon name="video" size={19} />
+                  <BrandIcon provider="youtube" />
                 </a>
               )}
               {loadingDetails && !gameDetails && (

@@ -250,7 +250,31 @@ def _igdb_cover(image_id: str | None) -> str | None:
     return f"https://images.igdb.com/igdb/image/upload/t_cover_big_2x/{image_id}.jpg"
 
 
-def _game_payload(game: Game) -> dict[str, object]:
+def _community_rating_map(session, game_ids: list[int]) -> dict[int, tuple[float, int]]:
+    """Calculate one RateApp rating per user/game, excluding the seeded demo account."""
+    if not game_ids:
+        return {}
+
+    rows = session.execute(
+        select(UserGame.game_id, func.avg(UserGame.score), func.count(UserGame.id))
+        .join(User, User.id == UserGame.user_id)
+        .where(
+            UserGame.game_id.in_(game_ids),
+            UserGame.status.in_(("completed", "dropped")),
+            UserGame.score.is_not(None),
+            User.email != "demo@rateapp.local",
+        )
+        .group_by(UserGame.game_id)
+    ).all()
+    return {
+        int(game_id): (round(float(average), 1), int(count))
+        for game_id, average, count in rows
+    }
+
+
+def _game_payload(
+    game: Game, community_rating: tuple[float, int] | None = None,
+) -> dict[str, object]:
     release_date = game.release_date.isoformat() if game.release_date else ""
     genres = json.loads(game.genres_json) if game.genres_json else []
     platforms = json.loads(game.platforms_json) if game.platforms_json else []
@@ -266,8 +290,8 @@ def _game_payload(game: Game) -> dict[str, object]:
         "developer": game.developer or "—",
         "platforms": platforms,
         "igdbRating": round(float(game.igdb_rating or 0)),
-        "communityRating": 0,
-        "communityRatings": 0,
+        "communityRating": community_rating[0] if community_rating else 0,
+        "communityRatings": community_rating[1] if community_rating else 0,
         "accent": "#8cf27d",
         "accent2": "#2c6bff",
         "glyph": glyph,
@@ -330,7 +354,8 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             cached_games.append(game)
 
         session.flush()
-        cached = [_game_payload(game) for game in cached_games]
+        ratings = _community_rating_map(session, [game.id for game in cached_games])
+        cached = [_game_payload(game, ratings.get(game.id)) for game in cached_games]
         session.commit()
         return cached
 
@@ -350,6 +375,7 @@ def _serialize_entry(
     session,
     entry: UserGame,
     collection_ids: list[str] | None = None,
+    community_rating: tuple[float, int] | None = None,
 ) -> dict[str, object]:
     return {
         "gameId": entry.game.igdb_id,
@@ -365,7 +391,7 @@ def _serialize_entry(
         "review": entry.review,
         "collectionIds": collection_ids if collection_ids is not None else _collection_slugs(session, entry.id),
         "addedAt": entry.added_at.date().isoformat(),
-        "game": _game_payload(entry.game),
+        "game": _game_payload(entry.game, community_rating),
     }
 
 
@@ -404,8 +430,9 @@ def _library_payload(session, user: User) -> list[dict[str, object]]:
         for user_game_id, slug in pairs:
             memberships.setdefault(user_game_id, []).append(slug)
 
+    ratings = _community_rating_map(session, [row.game_id for row in rows])
     return [
-        _serialize_entry(session, row, memberships.get(row.id, []))
+        _serialize_entry(session, row, memberships.get(row.id, []), ratings.get(row.game_id))
         for row in rows
     ]
 
@@ -744,6 +771,12 @@ def _hours_from_igdb(value: object) -> int | None:
     return max(1, round(seconds / 3600))
 
 
+def _detail_response(session, game: Game, details: dict[str, object]) -> dict[str, object]:
+    # Metadata is cached for 30 days; community scores must always be live.
+    ratings = _community_rating_map(session, [game.id])
+    return {**details, "game": _game_payload(game, ratings.get(game.id))}
+
+
 @app.get("/api/games/{game_id}/details")
 def game_details(game_id: int, request: Request) -> dict[str, object]:
     with _session() as session:
@@ -761,7 +794,7 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
             and game.details_cached_at.replace(tzinfo=game.details_cached_at.tzinfo or timezone.utc)
                 > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
         ):
-            return cached_details
+            return _detail_response(session, game, cached_details)
 
     try:
         client_id, token = _igdb_access_token()
@@ -772,7 +805,10 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
         )
     except HTTPException:
         if isinstance(cached_details, dict):
-            return cached_details
+            with _session() as session:
+                game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+                if game is not None:
+                    return _detail_response(session, game, cached_details)
         raise
 
     game_row = game_rows[0] if game_rows else {}
@@ -801,12 +837,12 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
 
     with _session() as session:
         game = session.scalar(select(Game).where(Game.igdb_id == game_id))
-        if game is not None:
-            game.details_json = json.dumps(details, ensure_ascii=False)
-            game.details_cached_at = _now()
-            session.commit()
-
-    return details
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра не найдена в нашей базе.")
+        game.details_json = json.dumps(details, ensure_ascii=False)
+        game.details_cached_at = _now()
+        session.commit()
+        return _detail_response(session, game, details)
 
 
 @app.get("/api/games/search")
@@ -862,8 +898,10 @@ def search_games(
                 .limit(GAME_SEARCH_PAGE_SIZE + 1)
             ).all()
             has_more = len(rows) > GAME_SEARCH_PAGE_SIZE
+            page_games = rows[:GAME_SEARCH_PAGE_SIZE]
+            ratings = _community_rating_map(session, [game.id for game in page_games])
             return {
-                "items": [_game_payload(game) for game in rows[:GAME_SEARCH_PAGE_SIZE]],
+                "items": [_game_payload(game, ratings.get(game.id)) for game in page_games],
                 "hasMore": has_more,
                 "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
             }
@@ -1072,7 +1110,10 @@ def upsert_library_game(
 
         session.commit()
         session.refresh(entry)
-        return _serialize_entry(session, entry)
+        return _serialize_entry(
+            session, entry,
+            community_rating=_community_rating_map(session, [game.id]).get(game.id),
+        )
 
 
 @app.delete("/api/library/{game_id}", status_code=204)
