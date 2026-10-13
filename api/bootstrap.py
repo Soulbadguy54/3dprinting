@@ -104,6 +104,7 @@ def initialize_database() -> None:
                 SELECT id, 'wishlist', 'Хочу пройти',
                        'Игры, которые планирую пройти.', '♡', TRUE
                 FROM users
+                WHERE TRUE
                 ON CONFLICT (user_id, slug) DO NOTHING
                 RETURNING id, user_id
             )
