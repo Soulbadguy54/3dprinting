@@ -442,48 +442,20 @@ function App() {
       const scrollingDown = currentY > previousY + .5
       libraryLastScrollYRef.current = currentY
 
-      if (currentY <= topStart) {
-        libraryScrollAnchorRef.current = topStart
-        libraryForceCollapsedRef.current = false
-        libraryForcedRevealStartRef.current = null
-        libraryCollapseProgress.set(0)
+      // The top 210px is a bidirectional scrub zone: the same scroll
+      // distance drives collapse and reveal, without a snap at scrollY=0.
+      // It takes precedence over manual collapse and mid-list anchors.
+      if (currentY <= topStart + collapseDistance) {
+        const progress = Math.min(1, Math.max(0, (currentY - topStart) / collapseDistance))
+        libraryCollapseProgress.set(progress)
+        if (currentY <= topStart) {
+          libraryScrollAnchorRef.current = topStart
+          libraryForceCollapsedRef.current = false
+        }
         return
       }
 
       if (libraryForceCollapsedRef.current) {
-        if (scrollingDown) {
-          libraryForcedRevealStartRef.current = null
-          libraryCollapseProgress.set(1)
-          return
-        }
-
-        if (scrollingUp) {
-          if (libraryForcedRevealStartRef.current == null) {
-            if (currentY > topStart + collapseDistance) {
-              libraryCollapseProgress.set(1)
-              return
-            }
-
-            libraryForcedRevealStartRef.current = currentY
-          }
-
-          const revealStart = libraryForcedRevealStartRef.current
-          const revealDistance = Math.max(1, revealStart - topStart)
-          const progress = Math.min(
-            1,
-            Math.max(0, (currentY - topStart) / revealDistance),
-          )
-
-          libraryCollapseProgress.set(progress)
-
-          if (progress <= .001) {
-            libraryForceCollapsedRef.current = false
-            libraryForcedRevealStartRef.current = null
-            libraryScrollAnchorRef.current = topStart
-          }
-          return
-        }
-
         libraryCollapseProgress.set(1)
         return
       }
