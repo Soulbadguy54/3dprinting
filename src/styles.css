@@ -1334,7 +1334,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   overflow-y: hidden;
   padding: 0 0 12px;
   scroll-snap-type: x proximity;
-  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
 .detail-collection-card {
