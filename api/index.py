@@ -11,7 +11,7 @@ from typing import Literal
 import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -648,15 +648,19 @@ def igdb_status(request: Request) -> dict[str, bool]:
     }
 
 
+GAME_SEARCH_PAGE_SIZE = 20
+
+
 @app.get("/api/games/search")
 def search_games(
     q: str,
     request: Request,
     source: Literal["local", "igdb"] = "local",
-) -> list[dict[str, object]]:
+    offset: int = Query(default=0, ge=0, le=10000),
+) -> dict[str, object]:
     query = q.strip()
     if len(query) < 3:
-        return []
+        return {"items": [], "hasMore": False, "nextOffset": None}
 
     query_tokens = [
         token
@@ -696,9 +700,18 @@ def search_games(
                     func.length(Game.title),
                     Game.title,
                 )
-                .limit(40)
+                .offset(offset)
+                .limit(GAME_SEARCH_PAGE_SIZE + 1)
             ).all()
-            return [_game_payload(game) for game in rows]
+            has_more = len(rows) > GAME_SEARCH_PAGE_SIZE
+            return {
+                "items": [_game_payload(game) for game in rows[:GAME_SEARCH_PAGE_SIZE]],
+                "hasMore": has_more,
+                "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
+            }
+
+    if offset >= 10000:
+        return {"items": [], "hasMore": False, "nextOffset": None}
 
     # Only an explicit user action triggers this external request. The
     # returned games are written to PostgreSQL and shared by later searches.
@@ -720,7 +733,8 @@ def search_games(
         "involved_companies.company.name; "
         f"where {name_filters} & version_parent = null; "
         "sort total_rating_count desc; "
-        "limit 50;"
+        f"limit {GAME_SEARCH_PAGE_SIZE + 1}; "
+        f"offset {offset};"
     )
 
     try:
@@ -744,16 +758,18 @@ def search_games(
         raise HTTPException(status_code=502, detail="Не удалось получить игры из IGDB.") from exc
 
     if not isinstance(rows, list):
-        return []
+        return {"items": [], "hasMore": False, "nextOffset": None}
 
-    ranked_rows = sorted(
-        rows,
-        key=lambda row: _igdb_search_rank(row, query),
-        reverse=True,
-    )
-    # Cache every returned candidate, not only the first page shown to the
-    # user: the next local search can discover these games without IGDB.
-    return _cache_igdb_games(ranked_rows)[:20]
+    has_more = len(rows) > GAME_SEARCH_PAGE_SIZE and offset + GAME_SEARCH_PAGE_SIZE < 10000
+    # IGDB's popularity sort gives a stable page order. Persist the complete
+    # displayed page before responding, making it searchable by future users.
+    page_rows = rows[:GAME_SEARCH_PAGE_SIZE]
+    cached = _cache_igdb_games(page_rows) if page_rows else []
+    return {
+        "items": cached,
+        "hasMore": has_more,
+        "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
+    }
 
 
 @app.get("/api/collections")

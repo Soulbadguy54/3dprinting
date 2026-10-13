@@ -133,6 +133,14 @@ type BootstrapPayload = {
   collections: GameCollection[]
 }
 
+type GameSearchPage = {
+  items: Game[]
+  hasMore: boolean
+  nextOffset: number | null
+}
+
+type SearchSource = 'local' | 'igdb'
+
 const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => ({
   ...entry,
   platform: entry.platform ?? undefined,
@@ -244,11 +252,18 @@ function Cover({
   game,
   compact = false,
   markers = [],
+  thumbnail = false,
+  priority = false,
 }: {
   game: Game
   compact?: boolean
   markers?: GameCollection[]
+  thumbnail?: boolean
+  priority?: boolean
 }) {
+  const imageUrl = thumbnail
+    ? game.coverUrl?.replace('/t_cover_big_2x/', '/t_cover_small/')
+    : game.coverUrl
   const style = {
     '--cover-accent': game.accent,
     '--cover-accent-2': game.accent2,
@@ -256,7 +271,16 @@ function Cover({
 
   return (
     <div className={compact ? 'cover cover--compact' : 'cover'} style={style}>
-      {game.coverUrl && <img className="cover__image" src={game.coverUrl} alt="" loading="lazy" />}
+      {imageUrl && (
+        <img
+          className="cover__image"
+          src={imageUrl}
+          alt=""
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : undefined}
+          decoding="async"
+        />
+      )}
       {!game.coverUrl && <div className="cover__orb cover__orb--one" />}
       {!game.coverUrl && <div className="cover__orb cover__orb--two" />}
       {!game.coverUrl && <span className="cover__noise" />}
@@ -375,10 +399,13 @@ function App() {
   const [addResults, setAddResults] = useState<Game[]>([])
   const [addSearchLoading, setAddSearchLoading] = useState(false)
   const [addSearchError, setAddSearchError] = useState('')
-  const [addSearchSource, setAddSearchSource] = useState<'local' | 'igdb'>('local')
-  const addSearchCache = useRef(new Map<string, Game[]>())
+  const [addSearchSource, setAddSearchSource] = useState<SearchSource>('local')
+  const [addSearchHasMore, setAddSearchHasMore] = useState(false)
+  const [addSearchNextOffset, setAddSearchNextOffset] = useState(0)
   const addSearchGenerationRef = useRef(0)
   const addSearchAbortRef = useRef<AbortController | null>(null)
+  const addSearchBusyRef = useRef(false)
+  const addSearchSentinelRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<LibraryStatus[]>([])
   const [genreFilter, setGenreFilter] = useState('all')
@@ -850,130 +877,169 @@ function App() {
     setPlatformFilter('all')
   }
 
-  const rememberCatalogResults = (results: Game[]) => {
+  const rememberCatalogResults = useCallback((results: Game[]) => {
+    if (results.length === 0) return
     setCatalogGames((current) => {
       const merged = new Map(current.map((game) => [game.id, game]))
       results.forEach((game) => merged.set(game.id, game))
       return Array.from(merged.values())
     })
-  }
+  }, [])
 
-  useEffect(() => {
-    const query = addQuery.trim()
-    const cacheKey = query.toLocaleLowerCase('ru-RU')
-    const generation = ++addSearchGenerationRef.current
+  const loadSearchPage = useCallback(async ({
+    query,
+    source,
+    offset,
+    append,
+    generation,
+  }: {
+    query: string
+    source: SearchSource
+    offset: number
+    append: boolean
+    generation: number
+  }) => {
+    if (addSearchBusyRef.current || generation !== addSearchGenerationRef.current) return
 
-    // Changing the query invalidates any pending deep search too.
-    addSearchAbortRef.current?.abort()
-    addSearchAbortRef.current = null
-    setAddSearchSource('local')
-
-    if (query.length < 3) {
-      setAddResults([])
-      setAddSearchError('')
-      setAddSearchLoading(false)
-      return
-    }
-
-    const cached = addSearchCache.current.get(cacheKey)
-    if (cached) {
-      setAddResults(cached)
-      setAddSearchError('')
-      setAddSearchLoading(false)
-      return
-    }
-
-    // Clear stale results while the new query is pending.
-    setAddResults([])
-    setAddSearchError('')
     const controller = new AbortController()
     addSearchAbortRef.current = controller
-    const timer = window.setTimeout(async () => {
-      setAddSearchLoading(true)
-
-      try {
-        const response = await fetch(`/api/games/search?q=${encodeURIComponent(query)}&source=local`, {
-          signal: controller.signal,
-        })
-        const payload = await response.json().catch(() => null) as Game[] | { detail?: string } | null
-        if (controller.signal.aborted || generation !== addSearchGenerationRef.current) return
-
-        if (!response.ok) {
-          const detail = payload && !Array.isArray(payload) && payload.detail
-          setAddSearchError(detail || 'Не удалось выполнить поиск в базе игр.')
-          return
-        }
-
-        const results = Array.isArray(payload) ? payload : []
-        addSearchCache.current.set(cacheKey, results)
-        if (addSearchCache.current.size > 30) {
-          const oldestKey = addSearchCache.current.keys().next().value
-          if (oldestKey) addSearchCache.current.delete(oldestKey)
-        }
-
-        setAddResults(results)
-        rememberCatalogResults(results)
-      } catch (error) {
-        if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
-          setAddSearchError('Не удалось связаться с базой игр.')
-        }
-      } finally {
-        if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
-          setAddSearchLoading(false)
-          addSearchAbortRef.current = null
-        }
-      }
-    }, 350)
-
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [addQuery])
-
-  const searchIgdb = async () => {
-    const query = addQuery.trim()
-    if (query.length < 3 || (addSearchLoading && addSearchSource === 'igdb')) return
-
-    // Invalidate pending local results, so an older request cannot overwrite
-    // the manually requested IGDB results when the user is swiping or typing.
-    const generation = ++addSearchGenerationRef.current
-    addSearchAbortRef.current?.abort()
-    const controller = new AbortController()
-    addSearchAbortRef.current = controller
-    setAddSearchSource('igdb')
+    addSearchBusyRef.current = true
     setAddSearchLoading(true)
     setAddSearchError('')
 
     try {
-      const response = await fetch(`/api/games/search?q=${encodeURIComponent(query)}&source=igdb`, {
+      const params = new URLSearchParams({
+        q: query,
+        source,
+        offset: String(offset),
+      })
+      const response = await fetch(`/api/games/search?${params}`, {
         signal: controller.signal,
       })
-      const payload = await response.json().catch(() => null) as Game[] | { detail?: string } | null
+      const payload = await response.json().catch(() => null) as GameSearchPage | { detail?: string } | null
       if (controller.signal.aborted || generation !== addSearchGenerationRef.current) return
 
-      if (!response.ok) {
-        const detail = payload && !Array.isArray(payload) && payload.detail
-        setAddSearchError(detail || 'Не удалось выполнить расширенный поиск в IGDB.')
-        return
+      if (!response.ok || !payload || !('items' in payload) || !Array.isArray(payload.items)) {
+        const detail = payload && 'detail' in payload ? payload.detail : undefined
+        throw new Error(detail || (source === 'igdb'
+          ? 'Не удалось загрузить игры из IGDB.'
+          : 'Не удалось выполнить поиск в базе игр.'))
       }
 
-      const results = Array.isArray(payload) ? payload : []
-      // The server has persisted every IGDB hit. Invalidate stale local
-      // search results so subsequent searches can see those new records.
-      addSearchCache.current.clear()
-      setAddResults(results)
-      rememberCatalogResults(results)
+      const page = payload as GameSearchPage
+      setAddResults((current) => {
+        if (!append) return page.items
+        const known = new Set(current.map((game) => game.id))
+        return [...current, ...page.items.filter((game) => {
+          if (known.has(game.id)) return false
+          known.add(game.id)
+          return true
+        })]
+      })
+      setAddSearchHasMore(Boolean(page.hasMore))
+      setAddSearchNextOffset(page.nextOffset ?? offset + page.items.length)
+      rememberCatalogResults(page.items)
     } catch (error) {
       if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
-        setAddSearchError('Не удалось связаться с IGDB. Попробуйте позже.')
+        setAddSearchError(
+          error instanceof Error ? error.message : 'Не удалось загрузить игры. Попробуй снова.',
+        )
       }
     } finally {
-      if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
+      if (generation === addSearchGenerationRef.current) {
+        addSearchBusyRef.current = false
+        if (addSearchAbortRef.current === controller) addSearchAbortRef.current = null
         setAddSearchLoading(false)
-        addSearchAbortRef.current = null
       }
     }
+  }, [rememberCatalogResults])
+
+  useEffect(() => {
+    const query = addQuery.trim()
+    const generation = ++addSearchGenerationRef.current
+    addSearchAbortRef.current?.abort()
+    addSearchAbortRef.current = null
+    addSearchBusyRef.current = false
+
+    setAddSearchSource('local')
+    setAddResults([])
+    setAddSearchError('')
+    setAddSearchHasMore(false)
+    setAddSearchNextOffset(0)
+    setAddSearchLoading(query.length >= 3)
+
+    if (query.length < 3) return
+
+    const timer = window.setTimeout(() => {
+      void loadSearchPage({ query, source: 'local', offset: 0, append: false, generation })
+    }, 350)
+
+    return () => {
+      window.clearTimeout(timer)
+      addSearchAbortRef.current?.abort()
+      addSearchBusyRef.current = false
+    }
+  }, [addQuery, loadSearchPage])
+
+  useEffect(() => {
+    if (
+      activeTab !== 'add' ||
+      addGameId != null ||
+      selectedGameId != null ||
+      !addSearchHasMore ||
+      addSearchLoading ||
+      addSearchError ||
+      addQuery.trim().length < 3
+    ) return
+
+    const sentinel = addSearchSentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting || addSearchBusyRef.current) return
+      void loadSearchPage({
+        query: addQuery.trim(),
+        source: addSearchSource,
+        offset: addSearchNextOffset,
+        append: true,
+        generation: addSearchGenerationRef.current,
+      })
+    }, { rootMargin: '600px 0px', threshold: 0 })
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [
+    activeTab, addGameId, selectedGameId, addSearchHasMore,
+    addSearchLoading, addSearchError, addSearchSource,
+    addSearchNextOffset, addQuery, addResults.length, loadSearchPage,
+  ])
+
+  const searchIgdb = () => {
+    const query = addQuery.trim()
+    if (
+      query.length < 3 ||
+      addSearchLoading ||
+      addSearchBusyRef.current ||
+      addSearchSource === 'igdb'
+    ) return
+
+    const generation = ++addSearchGenerationRef.current
+    setAddSearchSource('igdb')
+    setAddSearchHasMore(false)
+    setAddSearchNextOffset(0)
+    // Continue the same result list: omit IGDB matches already in local DB.
+    void loadSearchPage({ query, source: 'igdb', offset: 0, append: true, generation })
+  }
+
+  const retrySearch = () => {
+    if (addSearchBusyRef.current) return
+    void loadSearchPage({
+      query: addQuery.trim(),
+      source: addSearchSource,
+      offset: addSearchNextOffset,
+      append: addSearchSource === 'igdb' || addSearchNextOffset > 0,
+      generation: addSearchGenerationRef.current,
+    })
   }
 
   const counts = useMemo(() => ({
@@ -1169,8 +1235,10 @@ function App() {
   const selectedGame = selectedGameId ? catalogGames.find((game) => game.id === selectedGameId) : undefined
 
   const renderDetail = () => {
-    if (!selectedGame || !selectedEntry) return null
-    const gameCollections = collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
+    if (!selectedGame) return null
+    const gameCollections = selectedEntry
+      ? collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
+      : []
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
       : '—'
@@ -1195,28 +1263,41 @@ function App() {
             <Icon name="back" size={20} />
           </button>
           <div className="detail-toolbar__actions">
-            <button
-              className="icon-button detail-edit"
-              onClick={() => startEditing(selectedGame, selectedEntry)}
-              aria-label="Редактировать запись об игре"
-              title="Редактировать"
-            >
-              <Icon name="edit" size={19} />
-            </button>
-            <button
-              className="icon-button detail-delete"
-              onClick={() => { void deleteGame(selectedGame) }}
-              aria-label="Удалить игру из моей библиотеки"
-              title="Удалить"
-            >
-              <Icon name="trash" size={19} />
-            </button>
+            {selectedEntry ? (
+              <>
+                <button
+                  className="icon-button detail-edit"
+                  onClick={() => startEditing(selectedGame, selectedEntry)}
+                  aria-label="Редактировать запись об игре"
+                  title="Редактировать"
+                >
+                  <Icon name="edit" size={19} />
+                </button>
+                <button
+                  className="icon-button detail-delete"
+                  onClick={() => { void deleteGame(selectedGame) }}
+                  aria-label="Удалить игру из моей библиотеки"
+                  title="Удалить"
+                >
+                  <Icon name="trash" size={19} />
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="detail-catalog-icon detail-catalog-icon--wish" role="img" aria-label="Хочу" title="Хочу — действие обсудим позже">
+                  <Icon name="bookmark" size={19} />
+                </span>
+                <span className="detail-catalog-icon detail-catalog-icon--add" role="img" aria-label="Добавить" title="Добавить — действие обсудим позже">
+                  <Icon name="plus" size={20} />
+                </span>
+              </>
+            )}
           </div>
         </div>
 
         <section className="detail-hero">
           <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
-            <Cover game={selectedGame} markers={gameCollections} />
+            <Cover game={selectedGame} markers={gameCollections} priority />
           </div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>
@@ -1237,7 +1318,7 @@ function App() {
           </div>
         </section>
 
-        {ratedStatuses.has(selectedEntry.status) && (
+        {selectedEntry && ratedStatuses.has(selectedEntry.status) && (
           <section className="criteria-card">
             <div className="criteria-card__header">
               <span className="eyebrow">МОЯ ОЦЕНКА</span>
@@ -1252,19 +1333,30 @@ function App() {
           </section>
         )}
 
-        <section className="info-card">
-          <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
-          <div className="info-list">
-            <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
-            <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
-          </div>
-          {selectedEntry.review && (
-            <div className="review-box">
-              <span>Мой отзыв</span>
-              <p>{selectedEntry.review}</p>
+        {selectedEntry ? (
+          <section className="info-card">
+            <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
+            <div className="info-list">
+              <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
+              <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
             </div>
-          )}
-        </section>
+            {selectedEntry.review && (
+              <div className="review-box">
+                <span>Мой отзыв</span>
+                <p>{selectedEntry.review}</p>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="info-card">
+            <span className="eyebrow detail-section-eyebrow">ОБ ИГРЕ</span>
+            <div className="info-list">
+              <div><span><Icon name="gamepad" size={17} />Платформы</span><strong>{selectedGame.platforms.join(', ') || '—'}</strong></div>
+              <div><span><Icon name="cpu" size={17} />Разработчик</span><strong>{selectedGame.developer || '—'}</strong></div>
+              <div><span><Icon name="calendar" size={17} />Дата выхода</span><strong>{formatDate(selectedGame.releaseDate) || selectedGame.year || '—'}</strong></div>
+            </div>
+          </section>
+        )}
 
         {gameCollections.length > 0 && (
           <section className="detail-collections" aria-labelledby="detail-collections-title">
@@ -1848,13 +1940,11 @@ function App() {
     return (
       <>
         <header className="topbar game-database-heading">
-          <div>
+          <div className="game-database-heading__row">
             <h1>База игр</h1>
             <p className="game-database-powered">powered by <strong>IGDB</strong></p>
           </div>
         </header>
-
-        <p className="page-lead">Ищи игру в нашей базе, чтобы добавить её в свою библиотеку.</p>
 
         {addQuery.trim().length < 3 && (
           <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска.</p>
@@ -1867,77 +1957,73 @@ function App() {
             placeholder="Название игры..."
             aria-label="Поиск по базе игр"
           />
-          <button
-            type="button"
-            className="source-badge source-badge--action"
-            onClick={() => { void searchIgdb() }}
-            disabled={addQuery.trim().length < 3 || (addSearchLoading && addSearchSource === 'igdb')}
-            aria-label="Искать глубже в IGDB"
-            title="Расширенный поиск в IGDB"
-          >
-            IGDB <Icon name="arrow" size={12} />
-          </button>
         </div>
 
-        {addSearchLoading && (
-          <div className="search-hint">
-            {addSearchSource === 'igdb' ? 'Ищем в IGDB и сохраняем игры в базу…' : 'Ищем в нашей базе…'}
-          </div>
-        )}
-        {addSearchError && <div className="search-hint search-hint--error">{addSearchError}</div>}
-        {addQuery.trim().length >= 3 && !addSearchLoading && !addSearchError && (
-          <div className="game-database-result-caption">
-            {addResults.length > 0
-              ? `${addSearchSource === 'igdb' ? 'Результаты IGDB' : 'Найдено в нашей базе'} · ${addResults.length}`
-              : addSearchSource === 'igdb'
-                ? 'IGDB не нашёл совпадений. Попробуй другое название.'
-                : 'В нашей базе пока ничего нет по этому запросу.'}
-          </div>
-        )}
-
         <section className="search-results">
-          {addResults.map((game) => {
-            const existing = entryMap.get(game.id)
-            return (
-              <div className="search-result" key={game.id}>
-                <div className="search-result__cover"><Cover game={game} compact /></div>
-                <div className="search-result__copy">
-                  <strong>{game.title}</strong>
-                  <span>{game.year} · {game.genres.slice(0, 2).join(' · ')}</span>
-                  <small>{game.platforms.join(' · ')}</small>
-                </div>
-                <button
-                  className={existing ? 'result-action result-action--existing' : 'result-action'}
-                  onClick={() => {
-                    if (existing) {
-                      startEditing(game, existing)
-                    } else {
-                      startAdding(game)
-                    }
-                  }}
-                >
-                  {existing ? 'Изменить' : <Icon name="plus" size={18} />}
-                </button>
+          {addResults.map((game, index) => (
+            <button
+              type="button"
+              className="search-result search-result--open"
+              key={game.id}
+              onClick={() => openGame(game.id)}
+              aria-label={`Открыть игру «${game.title}»`}
+            >
+              <div className="search-result__cover">
+                <Cover game={game} compact thumbnail priority={index < 6} />
               </div>
-            )
-          })}
+              <div className="search-result__copy">
+                <strong>{game.title}</strong>
+                <span>{game.year || 'Год не указан'} · {game.genres.slice(0, 2).join(' · ') || 'Жанр не указан'}</span>
+                <small>{game.platforms.join(' · ')}</small>
+              </div>
+              <Icon name="arrow" size={16} />
+            </button>
+          ))}
         </section>
 
-        {addQuery.trim().length >= 3 && !addSearchLoading && addSearchSource === 'local' && (
-          <button
-            type="button"
-            className="game-database-deep-search"
-            onClick={() => { void searchIgdb() }}
-          >
-            <span className="game-database-deep-search__text">
-              <strong>Не нашёл нужную игру?</strong>
-              <small>Попробуй более глубокий поиск по всей базе IGDB.</small>
-            </span>
-            <span className="game-database-deep-search__action">
-              Поиск в IGDB <Icon name="arrow" size={15} />
-            </span>
-          </button>
+        {addSearchHasMore && !addSearchError && <div ref={addSearchSentinelRef} className="game-database-sentinel" aria-hidden="true" />}
+
+        {addSearchLoading && (
+          <div className="game-database-loading" role="status">
+            <span className="game-database-loading__spinner" aria-hidden="true" />
+            {addSearchSource === 'igdb' ? 'Подгружаем игры из IGDB…' : 'Ищем в базе игр…'}
+          </div>
         )}
+
+        {addSearchError && (
+          <div className="game-database-error" role="alert">
+            <span>{addSearchError}</span>
+            <button type="button" onClick={retrySearch}>Повторить</button>
+          </div>
+        )}
+
+        {addQuery.trim().length >= 3 && !addSearchLoading && !addSearchError && !addSearchHasMore && addSearchSource === 'igdb' && addResults.length === 0 && (
+          <p className="game-database-empty">По этому запросу игр не нашлось. Попробуй другое название.</p>
+        )}
+
+        <AnimatePresence initial={false}>
+          {addQuery.trim().length >= 3 && !addSearchLoading && !addSearchError && !addSearchHasMore && addSearchSource === 'local' && (
+            <motion.button
+              key="igdb-deep-search"
+              type="button"
+              className="game-database-deep-search"
+              onClick={searchIgdb}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 12, scale: .97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6, scale: .98 }}
+              transition={{ type: 'spring', stiffness: 330, damping: 27 }}
+              whileTap={shouldReduceMotion ? undefined : { scale: .975 }}
+            >
+              <span className="game-database-deep-search__text">
+                <strong>Не нашёл нужную игру?</strong>
+                <small>Попробуй более глубокий поиск по всей базе IGDB.</small>
+              </span>
+              <span className="game-database-deep-search__action">
+                Поиск в IGDB <Icon name="arrow" size={15} />
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
       </>
     )
   }
