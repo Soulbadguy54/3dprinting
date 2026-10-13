@@ -320,8 +320,12 @@ function App() {
   const librarySearchInputRef = useRef<HTMLInputElement>(null)
   const focusLibrarySearchOnOpen = useRef(false)
   const [libraryControlsCollapsed, setLibraryControlsCollapsed] = useState(false)
+  const [libraryControlsMeasured, setLibraryControlsMeasured] = useState(false)
   const libraryControlsObserverRef = useRef<ResizeObserver | null>(null)
   const libraryControlsMeasureFrameRef = useRef<number | null>(null)
+  const libraryToggleAnimationRef = useRef<{ stop: () => void } | null>(null)
+  const libraryToggleGenerationRef = useRef(0)
+  const libraryEntryAnchorActiveRef = useRef(false)
   const libraryCollapseProgress = useMotionValue(0)
   const libraryMeasuredControlsHeight = useMotionValue(0)
   const libraryControlClipHeight = useTransform(
@@ -436,30 +440,42 @@ function App() {
   }, [activeTab, librarySearchOpen])
 
   useEffect(() => {
-    if (activeTab !== 'library' || selectedGameId != null) return
+    // The App renders a loading/auth shell before the library mounts.
+    // Never read or apply its scroll position as library collapse progress.
+    if (!authReady || !authUser || activeTab !== 'library' || selectedGameId != null) return
 
     const collapseDistance = 210
     const topStart = 4
     let scrollFrame: number | null = null
 
-    libraryScrollAnchorRef.current = topStart
+    // Reset any manual toggle still animating when the previous screen left.
+    libraryToggleGenerationRef.current += 1
+    libraryToggleAnimationRef.current?.stop()
+    libraryToggleAnimationRef.current = null
+    libraryScrollSyncPausedRef.current = false
+    libraryCollapseProgress.set(0)
+    setLibraryControlsCollapsed(false)
+
+    const initialY = Math.max(0, window.scrollY)
+    libraryScrollAnchorRef.current = Math.max(topStart, initialY)
+    libraryEntryAnchorActiveRef.current = initialY > topStart
     libraryForceCollapsedRef.current = false
     libraryForcedRevealStartRef.current = null
-    libraryTopLatchRef.current = window.scrollY <= topStart
-    libraryLastScrollYRef.current = window.scrollY
+    libraryTopLatchRef.current = initialY <= topStart
+    libraryLastScrollYRef.current = initialY
 
     const syncControlsToScroll = () => {
       if (libraryScrollSyncPausedRef.current) return
 
-      const currentY = window.scrollY
+      const currentY = Math.max(0, window.scrollY)
       const previousY = libraryLastScrollYRef.current
       const scrollingDown = currentY > previousY + .5
       libraryLastScrollYRef.current = currentY
 
-      // Mobile rubber-band can briefly overshoot the top and rebound.
-      // Once the real top is reached, pin the panel open through that rebound.
+      // Keep the library open through the native top-of-page rubber band.
       if (currentY <= topStart) {
         libraryTopLatchRef.current = true
+        libraryEntryAnchorActiveRef.current = false
         libraryScrollAnchorRef.current = topStart
         libraryForceCollapsedRef.current = false
         libraryCollapseProgress.set(0)
@@ -467,23 +483,11 @@ function App() {
       }
 
       if (libraryTopLatchRef.current) {
-        const latchReleaseDistance = 18
-
-        if (!scrollingDown || currentY < topStart + latchReleaseDistance) {
+        if (!scrollingDown || currentY < topStart + 18) {
           libraryCollapseProgress.set(0)
           return
         }
-
         libraryTopLatchRef.current = false
-      }
-
-      // The top 210px is one bidirectional scrub zone. Updating it at most
-      // once per animation frame prevents fast touch-scroll events from
-      // forcing several height/layout recalculations before the next paint.
-      if (currentY <= topStart + collapseDistance) {
-        const progress = Math.min(1, Math.max(0, (currentY - topStart) / collapseDistance))
-        libraryCollapseProgress.set(progress)
-        return
       }
 
       if (libraryForceCollapsedRef.current) {
@@ -491,29 +495,48 @@ function App() {
         return
       }
 
-      libraryForcedRevealStartRef.current = null
+      // When returning from details, the browser may restore a nonzero
+      // scroll offset. Start expanded and animate from that entry offset,
+      // instead of instantly jumping to the global top-zone progress.
+      if (libraryEntryAnchorActiveRef.current) {
+        const progress = Math.min(1, Math.max(
+          0,
+          (currentY - libraryScrollAnchorRef.current) / collapseDistance,
+        ))
+        libraryCollapseProgress.set(progress)
+        return
+      }
+
+      // The top 210px is a symmetric collapse/reveal zone.
+      if (currentY <= topStart + collapseDistance) {
+        libraryCollapseProgress.set(Math.min(1, Math.max(0, (currentY - topStart) / collapseDistance)))
+        return
+      }
+
       const anchor = libraryScrollAnchorRef.current || topStart
-      const progress = Math.min(1, Math.max(0, (currentY - anchor) / collapseDistance))
-      libraryCollapseProgress.set(progress)
+      libraryCollapseProgress.set(Math.min(1, Math.max(0, (currentY - anchor) / collapseDistance)))
     }
 
     const queueScrollSync = () => {
       if (scrollFrame != null) return
-
       scrollFrame = window.requestAnimationFrame(() => {
         scrollFrame = null
         syncControlsToScroll()
       })
     }
 
-    syncControlsToScroll()
+    // Do not sync immediately: the incoming library hasn't measured or
+    // mounted during the AnimatePresence route transition.
     window.addEventListener('scroll', queueScrollSync, { passive: true })
-
     return () => {
       window.removeEventListener('scroll', queueScrollSync)
       if (scrollFrame != null) window.cancelAnimationFrame(scrollFrame)
+      libraryToggleGenerationRef.current += 1
+      libraryToggleAnimationRef.current?.stop()
+      libraryToggleAnimationRef.current = null
+      libraryScrollSyncPausedRef.current = false
     }
-  }, [activeTab, selectedGameId, libraryCollapseProgress])
+  }, [authReady, authUser, activeTab, selectedGameId, libraryCollapseProgress])
 
   // The library page is unmounted while a game detail is visible. Measuring
   // only in an App-level effect misses its delayed remount (AnimatePresence
@@ -530,9 +553,12 @@ function App() {
     if (!node) return
 
     const updateHeight = () => {
-      if (node.isConnected) {
-        libraryMeasuredControlsHeight.set(node.getBoundingClientRect().height)
-      }
+      if (!node.isConnected) return
+      const height = node.getBoundingClientRect().height
+      if (height <= 0 || !Number.isFinite(height)) return
+
+      libraryMeasuredControlsHeight.set(height)
+      setLibraryControlsMeasured(true)
     }
 
     updateHeight()
@@ -1102,8 +1128,10 @@ function App() {
         <motion.div
           className="library-control-clip"
           style={{
-            height: libraryControlClipHeight,
-            opacity: shouldReduceMotion ? 1 : libraryControlClipOpacity,
+            // Render the real content before its first positive measurement;
+            // otherwise the zero-initialised MotionValue hides it at startup.
+            height: libraryControlsMeasured ? libraryControlClipHeight : 'auto',
+            opacity: shouldReduceMotion || !libraryControlsMeasured ? 1 : libraryControlClipOpacity,
           }}
         >
           <div ref={measureLibraryControls} className="library-control-content">
@@ -1293,45 +1321,44 @@ function App() {
           }
           onClick={() => {
             const currentProgress = libraryCollapseProgress.get()
+            const generation = ++libraryToggleGenerationRef.current
+            libraryToggleAnimationRef.current?.stop()
             libraryScrollSyncPausedRef.current = true
 
-            if (currentProgress >= 0.5) {
+            const expanding = currentProgress >= .5
+            if (expanding) {
               libraryForceCollapsedRef.current = false
               setLibraryControlsCollapsed(false)
+            }
 
-              const controls = animate(libraryCollapseProgress, 0, {
-                type: 'spring',
-                stiffness: 210,
-                damping: 30,
-                mass: .9,
-              })
+            const controls = animate(libraryCollapseProgress, expanding ? 0 : 1, {
+              type: 'spring',
+              stiffness: 210,
+              damping: 30,
+              mass: .9,
+            })
+            libraryToggleAnimationRef.current = controls
 
-              void controls.then(() => {
+            void controls.then(() => {
+              if (generation !== libraryToggleGenerationRef.current) return
+              libraryToggleAnimationRef.current = null
+              // Wait until the changing dock height has settled before
+              // resuming scroll-driven updates.
+              window.requestAnimationFrame(() => {
                 window.requestAnimationFrame(() => {
-                  window.requestAnimationFrame(() => {
-                    libraryScrollAnchorRef.current = window.scrollY
-                    libraryLastScrollYRef.current = window.scrollY
-                    libraryForcedRevealStartRef.current = null
-                    libraryScrollSyncPausedRef.current = false
-                  })
+                  if (generation !== libraryToggleGenerationRef.current) return
+
+                  const currentY = Math.max(0, window.scrollY)
+                  libraryScrollAnchorRef.current = Math.max(4, currentY)
+                  libraryEntryAnchorActiveRef.current = expanding && currentY > 4
+                  libraryLastScrollYRef.current = currentY
+                  libraryForcedRevealStartRef.current = null
+                  libraryTopLatchRef.current = expanding && currentY <= 4
+                  libraryForceCollapsedRef.current = !expanding
+                  libraryScrollSyncPausedRef.current = false
                 })
               })
-            } else {
-              const controls = animate(libraryCollapseProgress, 1, {
-                type: 'spring',
-                stiffness: 210,
-                damping: 30,
-                mass: .9,
-              })
-
-              void controls.then(() => {
-                libraryForceCollapsedRef.current = true
-                libraryScrollAnchorRef.current = window.scrollY
-                libraryLastScrollYRef.current = window.scrollY
-                libraryForcedRevealStartRef.current = null
-                libraryScrollSyncPausedRef.current = false
-              })
-            }
+            })
           }}
           whileTap={shouldReduceMotion ? undefined : { scale: .96 }}
         >
