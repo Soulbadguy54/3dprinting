@@ -1271,10 +1271,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .detail-source-rating {
   display: inline-flex;
   min-width: 0;
-  min-height: 30px;
+  min-height: 26px;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 5px;
+  padding: 5px 8px;
   border: 1px solid rgba(145, 182, 255, .23);
   border-radius: 999px;
   background: rgba(88, 121, 173, .10);
@@ -1286,14 +1286,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .detail-source-rating strong {
   color: #f3f6fa;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .detail-source-rating > span {
   color: #aeb9cc;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 800;
 }
 .detail-source-rating--community > span {
@@ -1373,6 +1373,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 .info-card { margin-top: 12px; }
+.detail-section-eyebrow {
+  margin-bottom: 12px;
+}
 .info-list { display: grid; gap: 1px; }
 .info-list > div {
   display: flex;

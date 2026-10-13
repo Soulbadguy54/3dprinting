@@ -1163,12 +1163,12 @@ function App() {
             </div>
             <div className="detail-source-ratings" aria-label="Рейтинги игры">
               <div className="detail-source-rating" aria-label={`IGDB: ${igdbScore} из 100`}>
-                <strong>{igdbScore}</strong>
                 <span>IGDB</span>
+                <strong>{igdbScore}</strong>
               </div>
               <div className="detail-source-rating detail-source-rating--community" aria-label={`RateApp: ${rateAppScore} из 10`}>
-                <strong>{rateAppScore}</strong>
                 <span>RateApp</span>
+                <strong>{rateAppScore}</strong>
               </div>
             </div>
           </div>
@@ -1190,9 +1190,7 @@ function App() {
         )}
 
         <section className="info-card">
-          <div className="section-heading section-heading--tight">
-            <h2>Моё прохождение</h2>
-          </div>
+          <span className="eyebrow detail-section-eyebrow">Моё прохождение</span>
           <div className="info-list">
             <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
             <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
