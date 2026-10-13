@@ -323,6 +323,7 @@ function App() {
   const libraryForceCollapsedRef = useRef(false)
   const libraryScrollSyncPausedRef = useRef(false)
   const libraryLastScrollYRef = useRef(0)
+  const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
@@ -433,13 +434,37 @@ function App() {
     libraryScrollAnchorRef.current = topStart
     libraryForceCollapsedRef.current = false
     libraryForcedRevealStartRef.current = null
+    libraryTopLatchRef.current = window.scrollY <= topStart
     libraryLastScrollYRef.current = window.scrollY
 
     const syncControlsToScroll = () => {
       if (libraryScrollSyncPausedRef.current) return
 
       const currentY = window.scrollY
+      const previousY = libraryLastScrollYRef.current
+      const scrollingDown = currentY > previousY + .5
       libraryLastScrollYRef.current = currentY
+
+      // Mobile rubber-band can briefly overshoot the top and rebound.
+      // Once the real top is reached, pin the panel open through that rebound.
+      if (currentY <= topStart) {
+        libraryTopLatchRef.current = true
+        libraryScrollAnchorRef.current = topStart
+        libraryForceCollapsedRef.current = false
+        libraryCollapseProgress.set(0)
+        return
+      }
+
+      if (libraryTopLatchRef.current) {
+        const latchReleaseDistance = 18
+
+        if (!scrollingDown || currentY < topStart + latchReleaseDistance) {
+          libraryCollapseProgress.set(0)
+          return
+        }
+
+        libraryTopLatchRef.current = false
+      }
 
       // The top 210px is one bidirectional scrub zone. Updating it at most
       // once per animation frame prevents fast touch-scroll events from
@@ -447,11 +472,6 @@ function App() {
       if (currentY <= topStart + collapseDistance) {
         const progress = Math.min(1, Math.max(0, (currentY - topStart) / collapseDistance))
         libraryCollapseProgress.set(progress)
-
-        if (currentY <= topStart) {
-          libraryScrollAnchorRef.current = topStart
-          libraryForceCollapsedRef.current = false
-        }
         return
       }
 
