@@ -668,7 +668,7 @@ def search_games(
         if len(token) >= 2
     ]
     if not query_tokens:
-        return []
+        return {"items": [], "hasMore": False, "nextOffset": None}
 
     # The normal search never contacts IGDB: it searches the persistent,
     # shared games catalogue that earlier IGDB requests have already filled.

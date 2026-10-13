@@ -1025,10 +1025,14 @@ function App() {
 
     const generation = ++addSearchGenerationRef.current
     setAddSearchSource('igdb')
+    setAddResults([])
     setAddSearchHasMore(false)
     setAddSearchNextOffset(0)
-    // Continue the same result list: omit IGDB matches already in local DB.
-    void loadSearchPage({ query, source: 'igdb', offset: 0, append: true, generation })
+    // IGDB is a new result stream: starting at page one avoids repeated
+    // local/IGDB matches and an auto-loading loop when both contain the
+    // same games. The list is still infinite-scroll in either mode.
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    void loadSearchPage({ query, source: 'igdb', offset: 0, append: false, generation })
   }
 
   const retrySearch = () => {
