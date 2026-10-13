@@ -1214,6 +1214,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .detail-hero__cover .cover {
   min-height: 0;
 }
+.detail-hero__cover--image,
+.detail-hero__cover--image .cover {
+  background: #10131a;
+}
+.detail-hero__cover--image .cover::after {
+  content: none;
+}
 .detail-hero__cover .cover__image {
   object-fit: contain;
 }
@@ -1281,6 +1288,79 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .detail-source-rating--community > span {
   color: #b8dbb1;
+}
+
+.detail-collections {
+  margin-top: 20px;
+}
+.detail-collections__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.detail-collections__heading h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -.04em;
+}
+.detail-collections__heading > span {
+  display: grid;
+  min-width: 25px;
+  height: 25px;
+  padding: 0 6px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #b5bfcd;
+  font-size: 10px;
+  font-weight: 800;
+}
+.detail-collections__track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0 12px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.detail-collection-card {
+  flex: 0 0 clamp(156px, 52%, 212px);
+  scroll-snap-align: start;
+}
+.detail-collection-card__mosaic {
+  height: 112px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.detail-collection-card__mosaic--1,
+.detail-collection-card__mosaic--2 {
+  grid-template-rows: 1fr;
+}
+.detail-collection-card__mosaic--1 {
+  grid-template-columns: 1fr;
+}
+.detail-collection-card__mosaic--3 > .cover:first-child {
+  grid-row: span 2;
+}
+.detail-collection-card .collection-card__footer {
+  min-width: 0;
+  min-height: 55px;
+  padding: 10px;
+}
+.detail-collection-card__label {
+  min-width: 0;
+}
+.detail-collection-card__label strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-collection-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .info-card { margin-top: 12px; }

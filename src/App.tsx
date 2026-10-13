@@ -884,7 +884,9 @@ function App() {
         </div>
 
         <section className="detail-hero">
-          <div className="detail-hero__cover"><Cover game={selectedGame} markers={gameCollections} /></div>
+          <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
+            <Cover game={selectedGame} markers={gameCollections} />
+          </div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>
             <div className="detail-hero__metadata">
@@ -934,6 +936,52 @@ function App() {
             </div>
           )}
         </section>
+
+        {gameCollections.length > 0 && (
+          <section className="detail-collections" aria-labelledby="detail-collections-title">
+            <div className="detail-collections__heading">
+              <h2 id="detail-collections-title">Коллекции</h2>
+              <span>{gameCollections.length}</span>
+            </div>
+            <div className="detail-collections__track">
+              {gameCollections.map((collection) => {
+                const collectionGames = entries
+                  .filter((entry) => entry.collectionIds.includes(collection.id))
+                  .flatMap((entry) => {
+                    const game = catalogGames.find((item) => item.id === entry.gameId)
+                    return game ? [game] : []
+                  })
+
+                return (
+                  <button
+                    type="button"
+                    className="collection-card detail-collection-card"
+                    key={collection.id}
+                    onClick={() => {
+                      setSelectedGameId(null)
+                      setActiveTab('collections')
+                      setSelectedCollectionId(collection.id)
+                    }}
+                    aria-label={`Открыть коллекцию «${collection.title}»`}
+                  >
+                    <div className={`collection-card__mosaic detail-collection-card__mosaic detail-collection-card__mosaic--${Math.min(collectionGames.length, 4)}`}>
+                      {collectionGames.slice(0, 4).map((game) => (
+                        <Cover game={game} compact key={game.id} />
+                      ))}
+                    </div>
+                    <div className="collection-card__footer">
+                      <div className="detail-collection-card__label">
+                        <strong>{collection.title}</strong>
+                        <span>{collectionGames.length} {collectionGames.length === 1 ? 'игра' : 'игр'}</span>
+                      </div>
+                      <span className="collection-card__mark">{collection.mark}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
       </div>
     )
   }
