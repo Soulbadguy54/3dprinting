@@ -17,7 +17,7 @@ class WishlistApiTests(unittest.TestCase):
         suffix = secrets.token_hex(6)
         self.nickname = f"test_{suffix}"
         registered = self.client.post("/api/auth/register", json={
-            "email": f"{suffix}@example.test", "nickname": self.nickname, "pin": "12348765",
+            "email": f"{suffix}@example.com", "nickname": self.nickname, "pin": "12348765",
         })
         self.assertEqual(registered.status_code, 201, registered.text)
 
@@ -118,7 +118,7 @@ class WishlistApiTests(unittest.TestCase):
         suffix = secrets.token_hex(6)
         try:
             register = second.post("/api/auth/register", json={
-                "email": f"{suffix}@example.test", "nickname": f"other_{suffix}", "pin": "13572468",
+                "email": f"{suffix}@example.com", "nickname": f"other_{suffix}", "pin": "13572468",
             })
             self.assertEqual(register.status_code, 201, register.text)
             self.assertEqual(second.get("/api/library").json(), [])
