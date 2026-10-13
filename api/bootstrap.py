@@ -4,7 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from api.database import Base, SessionLocal, engine
-from api.models import Collection, CollectionGame, Game, User, UserGame
+from api.models import (
+    Collection, CollectionGame, Game, User, UserGame,
+    WISHLIST_SLUG, WISHLIST_TITLE, WISHLIST_DESCRIPTION, WISHLIST_MARK,
+)
 
 
 GAMES = [
@@ -20,6 +23,7 @@ GAMES = [
 ]
 
 COLLECTIONS = [
+    (WISHLIST_SLUG, WISHLIST_TITLE, WISHLIST_DESCRIPTION, WISHLIST_MARK),
     ("best", "Лучшее из пройденного", "Игры, к которым хочется возвращаться.", "★"),
     ("2026", "2026", "Что прошёл и прохожу в этом году.", "26"),
     ("coop", "Кооп", "Игры для совместных вечеров.", "CO"),
@@ -81,6 +85,36 @@ def initialize_database() -> None:
         connection.exec_driver_sql(
             "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS gameplay_score NUMERIC(3, 1)"
         )
+        connection.exec_driver_sql(
+            "ALTER TABLE collections ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        # A stable slug is the identity of the protected system collection.
+        # This fixes any preexisting row with that slug without duplicating it.
+        connection.exec_driver_sql(
+            "UPDATE collections SET is_system = TRUE, title = 'Хочу пройти', "
+            "description = 'Игры, которые планирую пройти.', mark = '♡' "
+            "WHERE slug = 'wishlist'"
+        )
+        # Backfill each user's collection, including existing accounts.
+        # Migrate old wishlist entries only for newly created collections:
+        # repeating app initialization never re-adds an intentionally removed game.
+        connection.exec_driver_sql("""
+            WITH created AS (
+                INSERT INTO collections (user_id, slug, title, description, mark, is_system)
+                SELECT id, 'wishlist', 'Хочу пройти',
+                       'Игры, которые планирую пройти.', '♡', TRUE
+                FROM users
+                WHERE TRUE
+                ON CONFLICT (user_id, slug) DO NOTHING
+                RETURNING id, user_id
+            )
+            INSERT INTO collection_games (collection_id, user_game_id)
+            SELECT created.id, ug.id
+            FROM created
+            JOIN user_games AS ug ON ug.user_id = created.user_id
+            WHERE ug.status = 'wishlist'
+            ON CONFLICT (collection_id, user_game_id) DO NOTHING
+        """)
 
     with SessionLocal() as session:
         existing = session.scalar(select(User).where(User.email == "demo@rateapp.local"))
@@ -116,6 +150,7 @@ def initialize_database() -> None:
                     title=title,
                     description=description,
                     mark=mark,
+                    is_system=(slug == WISHLIST_SLUG),
                 )
                 for slug, title, description, mark in COLLECTIONS
             }
@@ -152,7 +187,7 @@ def initialize_database() -> None:
                 session.add(entry)
                 session.flush()
 
-                for slug in collection_slugs:
+                for slug in set(collection_slugs) | ({WISHLIST_SLUG} if status == "wishlist" else set()):
                     session.add(
                         CollectionGame(
                             collection_id=collection_objects[slug].id,

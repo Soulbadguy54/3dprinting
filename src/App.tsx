@@ -142,6 +142,7 @@ type GameSearchPage = {
 }
 
 type SearchSource = 'local' | 'igdb'
+const WISHLIST_COLLECTION_ID = 'wishlist'
 
 type GameStoreLink = {
   provider: string
@@ -486,6 +487,8 @@ function App() {
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
+  const [wishlistBusyGameId, setWishlistBusyGameId] = useState<number | null>(null)
+  const wishlistBusyRef = useRef(false)
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
@@ -1218,6 +1221,38 @@ function App() {
     }
   }
 
+  const toggleWishlist = async (game: Game) => {
+    if (wishlistBusyRef.current) return
+    wishlistBusyRef.current = true
+    setWishlistBusyGameId(game.id)
+
+    const inWishlist = entries.some(
+      (entry) => entry.gameId === game.id && entry.collectionIds.includes(WISHLIST_COLLECTION_ID),
+    )
+    try {
+      const response = await fetch(`/api/library/${game.id}/wishlist`, {
+        method: inWishlist ? 'DELETE' : 'PUT',
+      })
+      if (!response.ok) throw new Error('Wishlist update failed')
+      const payload = await response.json() as {
+        inWishlist: boolean
+        entry: ApiLibraryEntry | null
+      }
+      setEntries((current) => {
+        const unchanged = current.filter((entry) => entry.gameId !== game.id)
+        return payload.entry
+          ? [...unchanged, normalizeEntry(payload.entry)]
+          : unchanged
+      })
+      if (payload.entry?.game) rememberCatalogResults([payload.entry.game])
+    } catch {
+      window.alert('Не удалось обновить список «Хочу пройти». Попробуйте ещё раз.')
+    } finally {
+      wishlistBusyRef.current = false
+      setWishlistBusyGameId(null)
+    }
+  }
+
   const deleteGame = async (game: Game) => {
     if (!window.confirm(`Удалить «${game.title}» из моих игр?`)) return
 
@@ -1355,6 +1390,7 @@ function App() {
     const gameCollections = selectedEntry
       ? collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
       : []
+    const isWished = Boolean(selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID))
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
       : '—'
@@ -1381,6 +1417,17 @@ function App() {
             <Icon name="back" size={20} />
           </button>
           <div className="detail-toolbar__actions">
+            <button
+              type="button"
+              className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
+              onClick={() => { void toggleWishlist(selectedGame) }}
+              disabled={wishlistBusyGameId === selectedGame.id}
+              aria-pressed={isWished}
+              aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
+              title={isWished ? 'Убрать из «Хочу пройти»' : 'Хочу пройти'}
+            >
+              <Icon name="bookmark" size={19} />
+            </button>
             {selectedEntry ? (
               <>
                 <button
@@ -1401,14 +1448,15 @@ function App() {
                 </button>
               </>
             ) : (
-              <>
-                <span className="detail-catalog-icon detail-catalog-icon--wish" role="img" aria-label="Хочу" title="Хочу — действие обсудим позже">
-                  <Icon name="bookmark" size={19} />
-                </span>
-                <span className="detail-catalog-icon detail-catalog-icon--add" role="img" aria-label="Добавить" title="Добавить — действие обсудим позже">
-                  <Icon name="plus" size={20} />
-                </span>
-              </>
+              <button
+                type="button"
+                className="detail-catalog-icon detail-catalog-icon--add"
+                onClick={() => startAdding(selectedGame)}
+                aria-label="Добавить игру в библиотеку"
+                title="Добавить игру"
+              >
+                <Icon name="plus" size={20} />
+              </button>
             )}
           </div>
         </div>
@@ -2201,6 +2249,9 @@ function App() {
             </div>
           </header>
           <p className="page-lead">{collection.description}</p>
+          {collection.isSystem && (
+            <p className="collection-system-label"><Icon name="lock" size={13} /> Системная коллекция — всегда доступна</p>
+          )}
           <div className="game-grid">
             {collectionEntries.map((entry) => {
               const game = catalogGames.find((item) => item.id === entry.gameId)!
@@ -2302,7 +2353,7 @@ function App() {
               .filter((entry) => entry.collectionIds.includes(collection.id))
               .map((entry) => catalogGames.find((game) => game.id === entry.gameId)!)
             return (
-              <button className="collection-card" key={collection.id} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
+              <button className="collection-card" key={collection.id} title={collection.isSystem ? 'Системная коллекция — нельзя удалить' : undefined} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
                 <div className="collection-card__mosaic">
                   {items.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
                   {items.length === 0 && <div className="collection-card__empty">{collection.mark}</div>}
@@ -2310,7 +2361,7 @@ function App() {
                 <div className="collection-card__footer">
                   <div>
                     <strong>{collection.title}</strong>
-                    <span>{items.length} {items.length === 1 ? 'игра' : 'игр'}</span>
+                    <span>{items.length} {items.length === 1 ? 'игра' : 'игр'}{collection.isSystem ? ' · системная' : ''}</span>
                   </div>
                   <span className="collection-card__mark">{collection.mark}</span>
                 </div>

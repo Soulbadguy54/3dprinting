@@ -1,10 +1,16 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
+
+
+WISHLIST_SLUG = "wishlist"
+WISHLIST_TITLE = "Хочу пройти"
+WISHLIST_DESCRIPTION = "Игры, которые планирую пройти."
+WISHLIST_MARK = "♡"
 
 
 class User(Base):
@@ -85,6 +91,7 @@ class Collection(Base):
     title: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(String(500))
     mark: Mapped[str | None] = mapped_column(String(8))
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

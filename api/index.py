@@ -27,6 +27,7 @@ from api.models import (
     LoginThrottle,
     User,
     UserGame,
+    WISHLIST_SLUG, WISHLIST_TITLE, WISHLIST_DESCRIPTION, WISHLIST_MARK,
 )
 
 app = FastAPI(
@@ -360,6 +361,43 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         return cached
 
 
+def _ensure_wishlist_collection(session, user_id: int) -> Collection:
+    row = session.scalar(
+        select(Collection).where(
+            Collection.user_id == user_id,
+            Collection.slug == WISHLIST_SLUG,
+        )
+    )
+    if row is not None:
+        return row
+
+    row = Collection(
+        user_id=user_id,
+        slug=WISHLIST_SLUG,
+        title=WISHLIST_TITLE,
+        description=WISHLIST_DESCRIPTION,
+        mark=WISHLIST_MARK,
+        is_system=True,
+    )
+    session.add(row)
+    session.flush()
+
+    # Only when first creating the system collection, preserve older
+    # wishlist entries from before this feature existed.
+    old_wishes = session.scalars(
+        select(UserGame).where(
+            UserGame.user_id == user_id,
+            UserGame.status == "wishlist",
+        )
+    ).all()
+    session.add_all([
+        CollectionGame(collection_id=row.id, user_game_id=entry.id)
+        for entry in old_wishes
+    ])
+    session.flush()
+    return row
+
+
 def _collection_slugs(session, user_game_id: int) -> list[str]:
     return list(
         session.scalars(
@@ -399,7 +437,10 @@ def _collections_payload(session, user: User) -> list[dict[str, object]]:
     rows = session.scalars(
         select(Collection)
         .where(Collection.user_id == user.id)
-        .order_by(Collection.id)
+        .order_by(
+            case((Collection.slug == WISHLIST_SLUG, 0), else_=1),
+            Collection.id,
+        )
     ).all()
     return [
         {
@@ -407,6 +448,7 @@ def _collections_payload(session, user: User) -> list[dict[str, object]]:
             "title": row.title,
             "description": row.description or "",
             "mark": row.mark or "",
+            "isSystem": row.is_system or row.slug == WISHLIST_SLUG,
         }
         for row in rows
     ]
@@ -535,6 +577,7 @@ def register(payload: RegisterPayload, response: Response) -> dict[str, object]:
         session.add(user)
         try:
             session.flush()
+            _ensure_wishlist_collection(session, user.id)
             _create_session(session, user, response)
         except IntegrityError:
             session.rollback()
@@ -611,6 +654,8 @@ def profile(request: Request) -> dict[str, object]:
 def bootstrap(request: Request) -> dict[str, object]:
     with _session() as session:
         user = _current_user(request, session)
+        _ensure_wishlist_collection(session, user.id)
+        session.commit()
         return {
             "user": _user_payload(user),
             "library": _library_payload(session, user),
@@ -972,6 +1017,8 @@ def search_games(
 def collections(request: Request) -> list[dict[str, object]]:
     with _session() as session:
         user = _current_user(request, session)
+        _ensure_wishlist_collection(session, user.id)
+        session.commit()
         return _collections_payload(session, user)
 
 
@@ -1017,7 +1064,31 @@ def create_collection(payload: CollectionPayload, request: Request) -> dict[str,
             "title": collection.title,
             "description": collection.description or "",
             "mark": collection.mark or "",
+            "isSystem": False,
         }
+
+
+@app.delete("/api/collections/{collection_id}", status_code=204)
+def delete_collection(collection_id: str, request: Request) -> Response:
+    with _session() as session:
+        user = _current_user(request, session)
+        collection = session.scalar(
+            select(Collection).where(
+                Collection.user_id == user.id,
+                Collection.slug == collection_id,
+            )
+        )
+        if collection is None:
+            raise HTTPException(status_code=404, detail="Коллекция не найдена.")
+        if collection.is_system or collection.slug == WISHLIST_SLUG:
+            raise HTTPException(status_code=403, detail="Системную коллекцию удалить нельзя.")
+
+        session.execute(
+            delete(CollectionGame).where(CollectionGame.collection_id == collection.id)
+        )
+        session.delete(collection)
+        session.commit()
+    return Response(status_code=204)
 
 
 @app.get("/api/library")
@@ -1091,11 +1162,16 @@ def upsert_library_game(
         session.flush()
         session.execute(delete(CollectionGame).where(CollectionGame.user_game_id == entry.id))
 
-        if payload.collectionIds:
+        selected_slugs = set(payload.collectionIds)
+        if payload.status == "wishlist":
+            _ensure_wishlist_collection(session, user.id)
+            selected_slugs.add(WISHLIST_SLUG)
+
+        if selected_slugs:
             selected_collections = session.scalars(
                 select(Collection).where(
                     Collection.user_id == user.id,
-                    Collection.slug.in_(payload.collectionIds),
+                    Collection.slug.in_(selected_slugs),
                 )
             ).all()
             session.add_all(
@@ -1114,6 +1190,94 @@ def upsert_library_game(
             session, entry,
             community_rating=_community_rating_map(session, [game.id]).get(game.id),
         )
+
+
+@app.put("/api/library/{game_id}/wishlist")
+def add_game_to_wishlist(game_id: int, request: Request) -> dict[str, object]:
+    with _session() as session:
+        user = _current_user(request, session)
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра пока недоступна в каталоге.")
+
+        collection = _ensure_wishlist_collection(session, user.id)
+        entry = session.scalar(
+            select(UserGame).where(
+                UserGame.user_id == user.id,
+                UserGame.game_id == game.id,
+            )
+        )
+        if entry is None:
+            entry = UserGame(user_id=user.id, game_id=game.id, status="wishlist")
+            session.add(entry)
+            session.flush()
+
+        already_added = session.scalar(
+            select(CollectionGame.id).where(
+                CollectionGame.collection_id == collection.id,
+                CollectionGame.user_game_id == entry.id,
+            )
+        )
+        if already_added is None:
+            session.add(CollectionGame(
+                collection_id=collection.id,
+                user_game_id=entry.id,
+            ))
+        session.commit()
+        session.refresh(entry)
+        return {
+            "inWishlist": True,
+            "entry": _serialize_entry(
+                session, entry,
+                community_rating=_community_rating_map(session, [game.id]).get(game.id),
+            ),
+        }
+
+
+@app.delete("/api/library/{game_id}/wishlist")
+def remove_game_from_wishlist(game_id: int, request: Request) -> dict[str, object]:
+    with _session() as session:
+        user = _current_user(request, session)
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра пока недоступна в каталоге.")
+        collection = _ensure_wishlist_collection(session, user.id)
+        entry = session.scalar(
+            select(UserGame).where(
+                UserGame.user_id == user.id,
+                UserGame.game_id == game.id,
+            )
+        )
+        if entry is None:
+            session.commit()
+            return {"inWishlist": False, "entry": None}
+
+        session.execute(
+            delete(CollectionGame).where(
+                CollectionGame.collection_id == collection.id,
+                CollectionGame.user_game_id == entry.id,
+            )
+        )
+        other_memberships = session.scalar(
+            select(CollectionGame.id).where(CollectionGame.user_game_id == entry.id).limit(1)
+        )
+
+        # A standalone wishlist entry is no longer needed, but a played game
+        # or an entry in another collection must retain its status and scores.
+        if entry.status == "wishlist" and other_memberships is None:
+            session.delete(entry)
+            session.commit()
+            return {"inWishlist": False, "entry": None}
+
+        session.commit()
+        session.refresh(entry)
+        return {
+            "inWishlist": False,
+            "entry": _serialize_entry(
+                session, entry,
+                community_rating=_community_rating_map(session, [game.id]).get(game.id),
+            ),
+        }
 
 
 @app.delete("/api/library/{game_id}", status_code=204)
