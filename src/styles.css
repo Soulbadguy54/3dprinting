@@ -613,6 +613,112 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   letter-spacing: .08em;
 }
 
+.game-database-heading {
+  margin-bottom: 12px;
+}
+.game-database-heading h1 {
+  margin-bottom: 4px;
+}
+.game-database-powered {
+  margin: 0;
+  color: #8793a5;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .015em;
+}
+.game-database-powered strong {
+  color: #bbc9df;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .07em;
+}
+.game-database-input-hint {
+  margin: 12px 1px 9px;
+  color: #a0aab8;
+  font-size: 11px;
+}
+.game-database-search {
+  margin-top: 12px;
+}
+.game-database-search input {
+  min-width: 0;
+}
+.source-badge--action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 32px;
+  border: 1px solid rgba(152, 184, 246, .24);
+  color: #cedcf4;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+.source-badge--action:not(:disabled):active {
+  transform: scale(.96);
+}
+.source-badge--action:not(:disabled):hover {
+  border-color: rgba(152, 184, 246, .48);
+  background: #343f52;
+}
+.source-badge--action:disabled {
+  cursor: default;
+  opacity: .5;
+}
+.game-database-result-caption {
+  margin: 15px 1px 9px;
+  color: #98a4b4;
+  font-size: 11px;
+}
+.game-database-deep-search {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 15px;
+  padding: 14px;
+  border: 1px solid rgba(142, 173, 230, .23);
+  border-radius: 17px;
+  color: #e6eefa;
+  background: linear-gradient(115deg, rgba(68, 96, 144, .20), rgba(23, 29, 43, .93));
+  text-align: left;
+  transition: border-color .18s ease, background .18s ease;
+}
+.game-database-deep-search:active {
+  border-color: rgba(152, 184, 246, .65);
+}
+.game-database-deep-search__text {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.game-database-deep-search__text strong {
+  font-size: 12px;
+  font-weight: 800;
+}
+.game-database-deep-search__text small {
+  color: #a1b0c8;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.game-database-deep-search__action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #bcd2ff;
+  font-size: 10px;
+  font-weight: 800;
+}
+@media (max-width: 400px) {
+  .game-database-deep-search {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
 .status-strip {
   display: flex;
   gap: 8px;
@@ -1375,6 +1481,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .info-card { margin-top: 12px; }
 .detail-section-eyebrow {
   margin-bottom: 12px;
+  color: #abb4c1;
 }
 .info-list { display: grid; gap: 1px; }
 .info-list > div {

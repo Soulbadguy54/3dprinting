@@ -375,7 +375,10 @@ function App() {
   const [addResults, setAddResults] = useState<Game[]>([])
   const [addSearchLoading, setAddSearchLoading] = useState(false)
   const [addSearchError, setAddSearchError] = useState('')
+  const [addSearchSource, setAddSearchSource] = useState<'local' | 'igdb'>('local')
   const addSearchCache = useRef(new Map<string, Game[]>())
+  const addSearchGenerationRef = useRef(0)
+  const addSearchAbortRef = useRef<AbortController | null>(null)
   const [query, setQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<LibraryStatus[]>([])
   const [genreFilter, setGenreFilter] = useState('all')
@@ -847,9 +850,23 @@ function App() {
     setPlatformFilter('all')
   }
 
+  const rememberCatalogResults = (results: Game[]) => {
+    setCatalogGames((current) => {
+      const merged = new Map(current.map((game) => [game.id, game]))
+      results.forEach((game) => merged.set(game.id, game))
+      return Array.from(merged.values())
+    })
+  }
+
   useEffect(() => {
     const query = addQuery.trim()
     const cacheKey = query.toLocaleLowerCase('ru-RU')
+    const generation = ++addSearchGenerationRef.current
+
+    // Changing the query invalidates any pending deep search too.
+    addSearchAbortRef.current?.abort()
+    addSearchAbortRef.current = null
+    setAddSearchSource('local')
 
     if (query.length < 3) {
       setAddResults([])
@@ -866,21 +883,24 @@ function App() {
       return
     }
 
+    // Clear stale results while the new query is pending.
+    setAddResults([])
+    setAddSearchError('')
     const controller = new AbortController()
+    addSearchAbortRef.current = controller
     const timer = window.setTimeout(async () => {
       setAddSearchLoading(true)
-      setAddSearchError('')
 
       try {
-        const response = await fetch(`/api/games/search?q=${encodeURIComponent(query)}`, {
+        const response = await fetch(`/api/games/search?q=${encodeURIComponent(query)}&source=local`, {
           signal: controller.signal,
         })
         const payload = await response.json().catch(() => null) as Game[] | { detail?: string } | null
+        if (controller.signal.aborted || generation !== addSearchGenerationRef.current) return
 
         if (!response.ok) {
           const detail = payload && !Array.isArray(payload) && payload.detail
-          setAddResults([])
-          setAddSearchError(detail || 'Не удалось выполнить поиск.')
+          setAddSearchError(detail || 'Не удалось выполнить поиск в базе игр.')
           return
         }
 
@@ -892,26 +912,69 @@ function App() {
         }
 
         setAddResults(results)
-        setCatalogGames((current) => {
-          const merged = new Map(current.map((game) => [game.id, game]))
-          results.forEach((game) => merged.set(game.id, game))
-          return Array.from(merged.values())
-        })
+        rememberCatalogResults(results)
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          setAddResults([])
-          setAddSearchError('Не удалось связаться с IGDB.')
+        if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
+          setAddSearchError('Не удалось связаться с базой игр.')
         }
       } finally {
-        if (!controller.signal.aborted) setAddSearchLoading(false)
+        if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
+          setAddSearchLoading(false)
+          addSearchAbortRef.current = null
+        }
       }
-    }, 650)
+    }, 350)
 
     return () => {
       window.clearTimeout(timer)
       controller.abort()
     }
   }, [addQuery])
+
+  const searchIgdb = async () => {
+    const query = addQuery.trim()
+    if (query.length < 3 || (addSearchLoading && addSearchSource === 'igdb')) return
+
+    // Invalidate pending local results, so an older request cannot overwrite
+    // the manually requested IGDB results when the user is swiping or typing.
+    const generation = ++addSearchGenerationRef.current
+    addSearchAbortRef.current?.abort()
+    const controller = new AbortController()
+    addSearchAbortRef.current = controller
+    setAddSearchSource('igdb')
+    setAddSearchLoading(true)
+    setAddSearchError('')
+
+    try {
+      const response = await fetch(`/api/games/search?q=${encodeURIComponent(query)}&source=igdb`, {
+        signal: controller.signal,
+      })
+      const payload = await response.json().catch(() => null) as Game[] | { detail?: string } | null
+      if (controller.signal.aborted || generation !== addSearchGenerationRef.current) return
+
+      if (!response.ok) {
+        const detail = payload && !Array.isArray(payload) && payload.detail
+        setAddSearchError(detail || 'Не удалось выполнить расширенный поиск в IGDB.')
+        return
+      }
+
+      const results = Array.isArray(payload) ? payload : []
+      // The server has persisted every IGDB hit. Invalidate stale local
+      // search results so subsequent searches can see those new records.
+      addSearchCache.current.clear()
+      setAddResults(results)
+      rememberCatalogResults(results)
+    } catch (error) {
+      if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
+        setAddSearchError('Не удалось связаться с IGDB. Попробуйте позже.')
+      }
+    } finally {
+      if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
+        setAddSearchLoading(false)
+        addSearchAbortRef.current = null
+      }
+    }
+  }
 
   const counts = useMemo(() => ({
     completed: entries.filter((entry) => entry.status === 'completed').length,
@@ -1190,7 +1253,7 @@ function App() {
         )}
 
         <section className="info-card">
-          <span className="eyebrow detail-section-eyebrow">Моё прохождение</span>
+          <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
           <div className="info-list">
             <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
             <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
@@ -1784,30 +1847,53 @@ function App() {
 
     return (
       <>
-        <header className="topbar">
+        <header className="topbar game-database-heading">
           <div>
-            <h1>Добавить игру</h1>
+            <h1>База игр</h1>
+            <p className="game-database-powered">powered by <strong>IGDB</strong></p>
           </div>
         </header>
 
-        <p className="page-lead">Найди игру, а затем укажи статус, платформу, дату и свою оценку.</p>
+        <p className="page-lead">Ищи игру в нашей базе, чтобы добавить её в свою библиотеку.</p>
 
-        <div className="search-wrap">
+        {addQuery.trim().length < 3 && (
+          <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска.</p>
+        )}
+        <div className="search-wrap game-database-search">
           <Icon name="search" size={20} />
           <input
             value={addQuery}
             onChange={(event) => setAddQuery(event.target.value)}
             placeholder="Название игры..."
-            aria-label="Поиск игры"
+            aria-label="Поиск по базе игр"
           />
-          <span className="source-badge">IGDB</span>
+          <button
+            type="button"
+            className="source-badge source-badge--action"
+            onClick={() => { void searchIgdb() }}
+            disabled={addQuery.trim().length < 3 || (addSearchLoading && addSearchSource === 'igdb')}
+            aria-label="Искать глубже в IGDB"
+            title="Расширенный поиск в IGDB"
+          >
+            IGDB <Icon name="arrow" size={12} />
+          </button>
         </div>
 
-        {addQuery.trim().length < 3 && (
-          <div className="search-hint">Введи хотя бы 3 символа — поиск начнётся после короткой паузы.</div>
+        {addSearchLoading && (
+          <div className="search-hint">
+            {addSearchSource === 'igdb' ? 'Ищем в IGDB и сохраняем игры в базу…' : 'Ищем в нашей базе…'}
+          </div>
         )}
-        {addSearchLoading && <div className="search-hint">Ищем в IGDB…</div>}
         {addSearchError && <div className="search-hint search-hint--error">{addSearchError}</div>}
+        {addQuery.trim().length >= 3 && !addSearchLoading && !addSearchError && (
+          <div className="game-database-result-caption">
+            {addResults.length > 0
+              ? `${addSearchSource === 'igdb' ? 'Результаты IGDB' : 'Найдено в нашей базе'} · ${addResults.length}`
+              : addSearchSource === 'igdb'
+                ? 'IGDB не нашёл совпадений. Попробуй другое название.'
+                : 'В нашей базе пока ничего нет по этому запросу.'}
+          </div>
+        )}
 
         <section className="search-results">
           {addResults.map((game) => {
@@ -1836,6 +1922,22 @@ function App() {
             )
           })}
         </section>
+
+        {addQuery.trim().length >= 3 && !addSearchLoading && addSearchSource === 'local' && (
+          <button
+            type="button"
+            className="game-database-deep-search"
+            onClick={() => { void searchIgdb() }}
+          >
+            <span className="game-database-deep-search__text">
+              <strong>Не нашёл нужную игру?</strong>
+              <small>Попробуй более глубокий поиск по всей базе IGDB.</small>
+            </span>
+            <span className="game-database-deep-search__action">
+              Поиск в IGDB <Icon name="arrow" size={15} />
+            </span>
+          </button>
+        )}
       </>
     )
   }
@@ -2058,7 +2160,7 @@ function App() {
 
   const nav: { id: Tab; label: string; icon: IconName }[] = [
     { id: 'library', label: 'Мои игры', icon: 'gamepad' },
-    { id: 'add', label: 'Добавить', icon: 'plus' },
+    { id: 'add', label: 'База игр', icon: 'library' },
     { id: 'collections', label: 'Коллекции', icon: 'layers' },
     { id: 'profile', label: 'Профиль', icon: 'user' },
   ]

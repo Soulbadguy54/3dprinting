@@ -13,7 +13,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from api.bootstrap import initialize_database
@@ -276,14 +276,20 @@ def _game_payload(game: Game) -> dict[str, object]:
 
 def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     with _session() as session:
-        cached: list[dict[str, object]] = []
+        ids = [int(row["id"]) for row in rows]
+        existing = {
+            game.igdb_id: game
+            for game in session.scalars(select(Game).where(Game.igdb_id.in_(ids))).all()
+        }
+        cached_games: list[Game] = []
 
         for row in rows:
             igdb_id = int(row["id"])
-            game = session.scalar(select(Game).where(Game.igdb_id == igdb_id))
+            game = existing.get(igdb_id)
             if game is None:
                 game = Game(igdb_id=igdb_id, title=str(row.get("name") or "Unknown"))
                 session.add(game)
+                existing[igdb_id] = game
 
             first_release = row.get("first_release_date")
             release_date = (
@@ -320,9 +326,10 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             game.genres_json = json.dumps(genres, ensure_ascii=False)
             game.platforms_json = json.dumps(platforms, ensure_ascii=False)
 
-            session.flush()
-            cached.append(_game_payload(game))
+            cached_games.append(game)
 
+        session.flush()
+        cached = [_game_payload(game) for game in cached_games]
         session.commit()
         return cached
 
@@ -642,15 +649,15 @@ def igdb_status(request: Request) -> dict[str, bool]:
 
 
 @app.get("/api/games/search")
-def search_games(q: str, request: Request) -> list[dict[str, object]]:
+def search_games(
+    q: str,
+    request: Request,
+    source: Literal["local", "igdb"] = "local",
+) -> list[dict[str, object]]:
     query = q.strip()
     if len(query) < 3:
         return []
 
-    with _session() as session:
-        _current_user(request, session)
-
-    client_id, token = _igdb_access_token()
     query_tokens = [
         token
         for token in _normalized_search_text(query).split()
@@ -658,6 +665,44 @@ def search_games(q: str, request: Request) -> list[dict[str, object]]:
     ]
     if not query_tokens:
         return []
+
+    # The normal search never contacts IGDB: it searches the persistent,
+    # shared games catalogue that earlier IGDB requests have already filled.
+    # Wildcards must be escaped so a title search is always a literal search.
+    with _session() as session:
+        _current_user(request, session)
+        if source == "local":
+            def literal_like(value: str) -> str:
+                return (
+                    value.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_")
+                )
+
+            matches = [
+                Game.title.ilike(f"%{literal_like(token)}%", escape="\\")
+                for token in query_tokens[:6]
+            ]
+            exact = literal_like(query)
+            rows = session.scalars(
+                select(Game)
+                .where(*matches)
+                .order_by(
+                    case(
+                        (Game.title.ilike(exact, escape="\\"), 0),
+                        (Game.title.ilike(f"{exact}%", escape="\\"), 1),
+                        else_=2,
+                    ),
+                    func.length(Game.title),
+                    Game.title,
+                )
+                .limit(40)
+            ).all()
+            return [_game_payload(game) for game in rows]
+
+    # Only an explicit user action triggers this external request. The
+    # returned games are written to PostgreSQL and shared by later searches.
+    client_id, token = _igdb_access_token()
 
     escaped_tokens = [
         token.replace("\\", "\\\\").replace('"', '\\"')
@@ -705,8 +750,10 @@ def search_games(q: str, request: Request) -> list[dict[str, object]]:
         rows,
         key=lambda row: _igdb_search_rank(row, query),
         reverse=True,
-    )[:20]
-    return _cache_igdb_games(ranked_rows)
+    )
+    # Cache every returned candidate, not only the first page shown to the
+    # user: the next local search can discover these games without IGDB.
+    return _cache_igdb_games(ranked_rows)[:20]
 
 
 @app.get("/api/collections")
