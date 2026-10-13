@@ -887,15 +887,18 @@ function App() {
           <div className="detail-hero__cover"><Cover game={selectedGame} markers={gameCollections} /></div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>
-            <p>{selectedGame.genres.join(' · ')} · {formatDate(selectedGame.releaseDate) || selectedGame.year}</p>
+            <div className="detail-hero__metadata">
+              <p className="detail-hero__genres">{selectedGame.genres.join(' · ') || 'Жанр не указан'}</p>
+              <p className="detail-hero__release">{formatDate(selectedGame.releaseDate) || selectedGame.year}</p>
+            </div>
             <div className="detail-source-ratings" aria-label="Рейтинги игры">
-              <div className="detail-source-rating">
+              <div className="detail-source-rating" aria-label={`IGDB: ${igdbScore} из 100`}>
+                <strong>{igdbScore}</strong>
                 <span>IGDB</span>
-                <strong>{igdbScore}<small>{igdbScore !== '—' ? ' / 100' : ''}</small></strong>
               </div>
-              <div className="detail-source-rating detail-source-rating--community">
+              <div className="detail-source-rating detail-source-rating--community" aria-label={`RateApp: ${rateAppScore} из 10`}>
+                <strong>{rateAppScore}</strong>
                 <span>RateApp</span>
-                <strong>{rateAppScore}<small>{rateAppScore !== '—' ? ' / 10' : ''}</small></strong>
               </div>
             </div>
           </div>
@@ -923,21 +926,11 @@ function App() {
           <div className="info-list">
             <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
             <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
-            <div><span><Icon name="layers" size={17} />Коллекции</span><strong>{gameCollections.length || '—'}</strong></div>
           </div>
           {selectedEntry.review && (
             <div className="review-box">
               <span>Мой отзыв</span>
               <p>{selectedEntry.review}</p>
-            </div>
-          )}
-          {gameCollections.length > 0 && (
-            <div className="tag-list">
-              {gameCollections.map((collection) => (
-                <span className="collection-tag" key={collection.id}>
-                  <b>{collection.mark}</b>{collection.title}
-                </span>
-              ))}
             </div>
           )}
         </section>
