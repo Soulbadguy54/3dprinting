@@ -46,6 +46,68 @@ type IconName =
   | 'cpu'
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
+
+type AppView = {
+  tab: Tab
+  gameId: number | null
+  collectionId: string | null
+  formGameId: number | null
+}
+
+type AppHistoryEntry = {
+  rateAppView: true
+  view: AppView
+  scrollY: number
+  fromApp: boolean
+  controls?: {
+    progress: number
+    anchor: number
+    forcedCollapsed: boolean
+    topLatch: boolean
+    entryAnchorActive: boolean
+  }
+}
+
+const validTabs: Tab[] = ['library', 'add', 'collections', 'profile']
+
+function readAppHistoryEntry(value: unknown): AppHistoryEntry | null {
+  if (!value || typeof value !== 'object') return null
+  const entry = value as Partial<AppHistoryEntry>
+  if (entry.rateAppView !== true || !entry.view || !validTabs.includes(entry.view.tab)) return null
+  return entry as AppHistoryEntry
+}
+
+function readAppViewFromUrl(): AppView {
+  const params = new URLSearchParams(window.location.search)
+  const tabName = params.get('tab') as Tab | null
+  const tab: Tab = tabName && validTabs.includes(tabName) ? tabName : 'library'
+  const gameId = Number(params.get('game'))
+  const formGameId = Number(params.get('edit'))
+  return {
+    tab,
+    gameId: Number.isSafeInteger(gameId) && gameId > 0 ? gameId : null,
+    collectionId: tab === 'collections' ? params.get('collection') : null,
+    formGameId: tab === 'add' && Number.isSafeInteger(formGameId) && formGameId > 0 ? formGameId : null,
+  }
+}
+
+function urlForAppView(view: AppView): string {
+  const url = new URL(window.location.href)
+  for (const param of ['tab', 'game', 'collection', 'edit']) url.searchParams.delete(param)
+  if (view.tab !== 'library') url.searchParams.set('tab', view.tab)
+  if (view.gameId != null) url.searchParams.set('game', String(view.gameId))
+  if (view.tab === 'collections' && view.collectionId) url.searchParams.set('collection', view.collectionId)
+  if (view.tab === 'add' && view.formGameId != null) url.searchParams.set('edit', String(view.formGameId))
+  return url.pathname + url.search + url.hash
+}
+
+function keyForAppView(view: AppView): string {
+  if (view.gameId != null) return `detail-${view.gameId}`
+  if (view.tab === 'collections' && view.collectionId) return `collection-${view.collectionId}`
+  if (view.tab === 'add' && view.formGameId != null) return `add-game-${view.formGameId}`
+  return view.tab
+}
+
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
 
 type ApiLibraryEntry = Omit<
@@ -300,7 +362,11 @@ function RatingSlider({
 
 function App() {
   const shouldReduceMotion = useReducedMotion()
-  const [activeTab, setActiveTab] = useState<Tab>('library')
+  const firstViewRef = useRef<AppView | null>(null)
+  if (!firstViewRef.current) {
+    firstViewRef.current = readAppHistoryEntry(window.history.state)?.view ?? readAppViewFromUrl()
+  }
+  const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [entries, setEntries] = useState<LibraryEntry[]>([])
@@ -341,8 +407,11 @@ function App() {
   const libraryLastScrollYRef = useRef(0)
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
-  const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(firstViewRef.current.collectionId)
+  const currentViewRef = useRef<AppView>(firstViewRef.current)
+  const pendingScreenRestoreRef = useRef<AppHistoryEntry | null>(null)
+  const libraryLastSnapshotRef = useRef<AppHistoryEntry | null>(null)
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
   const [collectionTitle, setCollectionTitle] = useState('')
   const [collectionDescription, setCollectionDescription] = useState('')
@@ -351,7 +420,7 @@ function App() {
   const [collectionError, setCollectionError] = useState('')
 
   const [addQuery, setAddQuery] = useState('')
-  const [addGameId, setAddGameId] = useState<number | null>(null)
+  const [addGameId, setAddGameId] = useState<number | null>(firstViewRef.current.formGameId)
   const [addStatus, setAddStatus] = useState<LibraryStatus>('completed')
   const [addPlatform, setAddPlatform] = useState('')
   const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -397,6 +466,126 @@ function App() {
       // Login itself succeeded; keep the authenticated shell and retry on refresh.
     }
   }
+
+  const captureCurrentView = () => {
+    const view = currentViewRef.current
+    const existing = readAppHistoryEntry(window.history.state)
+    const snapshot: AppHistoryEntry = {
+      rateAppView: true,
+      view,
+      fromApp: existing?.fromApp ?? false,
+      scrollY: Math.max(0, window.scrollY),
+    }
+
+    if (view.tab === 'library' && view.gameId == null) {
+      snapshot.controls = {
+        progress: libraryCollapseProgress.get(),
+        anchor: libraryScrollAnchorRef.current,
+        forcedCollapsed: libraryForceCollapsedRef.current,
+        topLatch: libraryTopLatchRef.current,
+        entryAnchorActive: libraryEntryAnchorActiveRef.current,
+      }
+      libraryLastSnapshotRef.current = snapshot
+    }
+
+    window.history.replaceState(snapshot, '', urlForAppView(view))
+  }
+
+  const showAppView = (view: AppView, restoredEntry: AppHistoryEntry) => {
+    currentViewRef.current = view
+    pendingScreenRestoreRef.current = restoredEntry
+    if (view.tab === 'library' && view.gameId == null) {
+      // Do not let scroll callbacks overwrite the saved collapsed state
+      // before the library's animated screen has actually remounted.
+      libraryScrollSyncPausedRef.current = true
+      libraryCollapseProgress.set(restoredEntry.controls?.progress ?? 0)
+    }
+    setActiveTab(view.tab)
+    setSelectedGameId(view.gameId)
+    setSelectedCollectionId(view.collectionId)
+    setAddGameId(view.formGameId)
+  }
+
+  const navigateTo = (view: AppView, options?: { replace?: boolean; restoreLibrary?: boolean }) => {
+    if (keyForAppView(currentViewRef.current) === keyForAppView(view)) return
+
+    captureCurrentView()
+    const savedLibrary = options?.restoreLibrary ? libraryLastSnapshotRef.current : null
+    const entry: AppHistoryEntry = {
+      rateAppView: true,
+      view,
+      scrollY: savedLibrary?.scrollY ?? 0,
+      fromApp: options?.replace
+        ? (readAppHistoryEntry(window.history.state)?.fromApp ?? false)
+        : true,
+      controls: savedLibrary?.controls,
+    }
+    if (options?.replace) window.history.replaceState(entry, '', urlForAppView(view))
+    else window.history.pushState(entry, '', urlForAppView(view))
+    showAppView(view, entry)
+  }
+
+  const goBackOr = (fallback: AppView) => {
+    if (readAppHistoryEntry(window.history.state)?.fromApp) {
+      captureCurrentView()
+      window.history.back()
+    } else {
+      navigateTo(fallback, { replace: true, restoreLibrary: fallback.tab === 'library' && fallback.gameId == null })
+    }
+  }
+
+  // Browser history is the source of truth for Android's system Back action
+  // and Safari's native edge-swipe navigation, including browser Forward.
+  useEffect(() => {
+    const previousRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+    const previous = readAppHistoryEntry(window.history.state)
+    const initial = currentViewRef.current
+    window.history.replaceState(
+      previous ?? { rateAppView: true, view: initial, scrollY: 0, fromApp: false },
+      '',
+      urlForAppView(initial),
+    )
+
+    const onPopState = (event: PopStateEvent) => {
+      const entry = readAppHistoryEntry(event.state) ?? {
+        rateAppView: true as const,
+        view: readAppViewFromUrl(),
+        scrollY: 0,
+        fromApp: false,
+      }
+      showAppView(entry.view, entry)
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      window.history.scrollRestoration = previousRestoration
+    }
+  }, [])
+
+  const restoreScreenPosition = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return
+    const saved = pendingScreenRestoreRef.current
+    if (!saved || keyForAppView(saved.view) !== keyForAppView(currentViewRef.current)) return
+
+    // AnimatePresence(mode="wait") delays mounting the destination page.
+    // Restore only after it exists and its list has laid out.
+    window.requestAnimationFrame(() => {
+      if (pendingScreenRestoreRef.current !== saved) return
+      if (saved.view.tab === 'library' && saved.view.gameId == null) {
+        libraryCollapseProgress.set(saved.controls?.progress ?? 0)
+      }
+      window.scrollTo(0, saved.scrollY)
+      window.requestAnimationFrame(() => {
+        if (pendingScreenRestoreRef.current !== saved) return
+        window.scrollTo(0, saved.scrollY)
+        libraryLastScrollYRef.current = Math.max(0, window.scrollY)
+        pendingScreenRestoreRef.current = null
+        libraryScrollSyncPausedRef.current = false
+      })
+    })
+  }, [libraryCollapseProgress])
 
   useEffect(() => {
     let cancelled = false
@@ -449,28 +638,33 @@ function App() {
     const topStart = 4
     let scrollFrame: number | null = null
 
-    // A restored browser scroll position must not start the first authenticated
-    // library view halfway down the page with the filters already closed.
-    // Returning from a game detail is deliberately excluded.
+    const pending = pendingScreenRestoreRef.current
+    const restoringLibrary = pending?.view.tab === 'library' && pending.view.gameId == null
+    const savedControls = restoringLibrary ? pending.controls : undefined
+
+    // Only the very first, non-restored library visit starts at scroll zero.
+    // A Back navigation instead restores the snapshot from browser history.
     if (!libraryHasOpenedRef.current) {
       libraryHasOpenedRef.current = true
-      if (window.scrollY !== 0) window.scrollTo(0, 0)
+      if (!restoringLibrary && window.scrollY !== 0) window.scrollTo(0, 0)
     }
 
-    // Reset any manual toggle still animating when the previous screen left.
     libraryToggleGenerationRef.current += 1
     libraryToggleAnimationRef.current?.stop()
     libraryToggleAnimationRef.current = null
-    libraryScrollSyncPausedRef.current = false
-    libraryCollapseProgress.set(0)
-    setLibraryControlsCollapsed(false)
+    libraryScrollSyncPausedRef.current = Boolean(restoringLibrary)
+    const progress = savedControls?.progress ?? 0
+    libraryCollapseProgress.set(progress)
+    setLibraryControlsCollapsed(progress >= .84)
 
-    const initialY = Math.max(0, window.scrollY)
-    libraryScrollAnchorRef.current = Math.max(topStart, initialY)
-    libraryEntryAnchorActiveRef.current = initialY > topStart
-    libraryForceCollapsedRef.current = false
+    const initialY = restoringLibrary && pending
+      ? Math.max(0, pending.scrollY)
+      : Math.max(0, window.scrollY)
+    libraryScrollAnchorRef.current = savedControls?.anchor ?? Math.max(topStart, initialY)
+    libraryEntryAnchorActiveRef.current = savedControls?.entryAnchorActive ?? initialY > topStart
+    libraryForceCollapsedRef.current = savedControls?.forcedCollapsed ?? false
     libraryForcedRevealStartRef.current = null
-    libraryTopLatchRef.current = initialY <= topStart
+    libraryTopLatchRef.current = savedControls?.topLatch ?? initialY <= topStart
     libraryLastScrollYRef.current = initialY
 
     const syncControlsToScroll = () => {
@@ -744,13 +938,22 @@ function App() {
   }
 
   const openTab = (tab: Tab) => {
-    setActiveTab(tab)
-    setSelectedGameId(null)
-    setSelectedCollectionId(null)
+    navigateTo({ tab, gameId: null, collectionId: null, formGameId: null })
   }
 
+  const openGame = (gameId: number) => {
+    navigateTo({
+      tab: currentViewRef.current.tab,
+      gameId,
+      collectionId: currentViewRef.current.collectionId,
+      formGameId: null,
+    })
+  }
+
+  const editingFromDetailRef = useRef(false)
+
   const startAdding = (game: Game) => {
-    setAddGameId(game.id)
+    editingFromDetailRef.current = false
     setAddStatus('completed')
     setAddPlatform(preferredPlatform(game.platforms))
     setAddDate(new Date().toISOString().slice(0, 10))
@@ -761,12 +964,11 @@ function App() {
     setAddReview('')
     setAddReviewOpen(false)
     setAddCollectionIds([])
-    setSelectedGameId(null)
-    setActiveTab('add')
+    navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: game.id })
   }
 
   const startEditing = (game: Game, entry: LibraryEntry) => {
-    setAddGameId(game.id)
+    editingFromDetailRef.current = currentViewRef.current.gameId === game.id
     setAddStatus(entry.status)
     setAddPlatform(entry.platform ?? preferredPlatform(game.platforms))
     setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
@@ -778,8 +980,7 @@ function App() {
     setAddReview(entry.review ?? '')
     setAddReviewOpen(Boolean(entry.review))
     setAddCollectionIds(entry.collectionIds)
-    setSelectedGameId(null)
-    setActiveTab('add')
+    navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: game.id })
   }
 
   const saveGame = async () => {
@@ -810,20 +1011,25 @@ function App() {
         body: JSON.stringify(nextEntry),
       })
 
-      if (response.ok) {
-        const savedEntry = normalizeEntry(await response.json() as ApiLibraryEntry)
-        setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
-      } else {
-        setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
+      if (!response.ok) {
+        window.alert('Не удалось сохранить игру. Попробуйте ещё раз.')
+        return
       }
+      const savedEntry = normalizeEntry(await response.json() as ApiLibraryEntry)
+      setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), savedEntry])
     } catch {
-      setEntries((current) => [...current.filter((entry) => entry.gameId !== game.id), nextEntry])
+      window.alert('Не удалось сохранить игру. Проверьте соединение и попробуйте ещё раз.')
+      return
     }
 
-    setAddGameId(null)
     setAddQuery('')
-    setSelectedGameId(game.id)
-    setActiveTab('library')
+    const gameView: AppView = { tab: 'library', gameId: game.id, collectionId: null, formGameId: null }
+    if (editingFromDetailRef.current) {
+      editingFromDetailRef.current = false
+      goBackOr(gameView)
+    } else {
+      navigateTo(gameView, { replace: true })
+    }
   }
 
   const deleteGame = async (game: Game) => {
@@ -837,8 +1043,11 @@ function App() {
       }
 
       setEntries((current) => current.filter((entry) => entry.gameId !== game.id))
-      setSelectedGameId(null)
-      if (addGameId === game.id) setAddGameId(null)
+      if (currentViewRef.current.gameId === game.id) {
+        goBackOr({ tab: 'library', gameId: null, collectionId: null, formGameId: null })
+      } else {
+        navigateTo({ tab: 'library', gameId: null, collectionId: null, formGameId: null }, { replace: true, restoreLibrary: true })
+      }
     } catch {
       window.alert('Не удалось удалить игру. Проверьте соединение и попробуйте ещё раз.')
     }
@@ -877,7 +1086,7 @@ function App() {
       setCollectionDescription('')
       setCollectionMark('')
       setCollectionCreatorOpen(false)
-      setSelectedCollectionId(payload.id)
+      navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null })
     } catch {
       setCollectionError('Не удалось создать коллекцию. Проверьте соединение.')
     } finally {
@@ -911,8 +1120,13 @@ function App() {
         <div className="detail-toolbar">
           <button
             className="icon-button detail-back"
-            onClick={() => setSelectedGameId(null)}
-            aria-label="Вернуться к библиотеке"
+            onClick={() => goBackOr({
+              tab: currentViewRef.current.tab,
+              gameId: null,
+              collectionId: currentViewRef.current.collectionId,
+              formGameId: null,
+            })}
+            aria-label="Вернуться назад"
             title="Назад"
           >
             <Icon name="back" size={20} />
@@ -1011,11 +1225,12 @@ function App() {
                     type="button"
                     className="collection-card detail-collection-card"
                     key={collection.id}
-                    onClick={() => {
-                      setSelectedGameId(null)
-                      setActiveTab('collections')
-                      setSelectedCollectionId(collection.id)
-                    }}
+                    onClick={() => navigateTo({
+                      tab: 'collections',
+                      gameId: null,
+                      collectionId: collection.id,
+                      formGameId: null,
+                    })}
                     aria-label={`Открыть коллекцию «${collection.title}»`}
                   >
                     <div className={`collection-card__mosaic detail-collection-card__mosaic detail-collection-card__mosaic--${Math.min(collectionGames.length, 4)}`}>
@@ -1424,7 +1639,7 @@ function App() {
                     game={game}
                     entry={entry}
                     collections={collections}
-                    onOpen={() => setSelectedGameId(game.id)}
+                    onOpen={() => openGame(game.id)}
                     animationIndex={index}
                   />
                 ))}
@@ -1457,7 +1672,7 @@ function App() {
       return (
         <>
           <header className="subpage-header">
-            <button className="icon-button" onClick={() => setAddGameId(null)}><Icon name="back" size={20} /></button>
+            <button className="icon-button" onClick={() => goBackOr({ tab: 'add', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
             <div>
               <h1>{editingEntry ? 'Изменить игру' : statusMeta[addStatus].label}</h1>
             </div>
@@ -1636,7 +1851,7 @@ function App() {
       return (
         <>
           <header className="subpage-header">
-            <button className="icon-button" onClick={() => setSelectedCollectionId(null)}><Icon name="back" size={20} /></button>
+            <button className="icon-button" onClick={() => goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
             <div>
               <h1>{collection.title}</h1>
             </div>
@@ -1645,7 +1860,7 @@ function App() {
           <div className="game-grid">
             {collectionEntries.map((entry) => {
               const game = catalogGames.find((item) => item.id === entry.gameId)!
-              return <GameCard key={game.id} game={game} entry={entry} collections={collections} onOpen={() => setSelectedGameId(game.id)} />
+              return <GameCard key={game.id} game={game} entry={entry} collections={collections} onOpen={() => openGame(game.id)} />
             })}
           </div>
         </>
@@ -1743,7 +1958,7 @@ function App() {
               .filter((entry) => entry.collectionIds.includes(collection.id))
               .map((entry) => catalogGames.find((game) => game.id === entry.gameId)!)
             return (
-              <button className="collection-card" key={collection.id} onClick={() => setSelectedCollectionId(collection.id)}>
+              <button className="collection-card" key={collection.id} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
                 <div className="collection-card__mosaic">
                   {items.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
                   {items.length === 0 && <div className="collection-card__empty">{collection.mark}</div>}
@@ -1801,7 +2016,7 @@ function App() {
             {recent.map((entry) => {
               const game = catalogGames.find((item) => item.id === entry.gameId)!
               return (
-                <button key={game.id} onClick={() => setSelectedGameId(game.id)}>
+                <button key={game.id} onClick={() => openGame(game.id)}>
                   <span className="activity-cover"><Cover game={game} compact /></span>
                   <span><strong>{game.title}</strong><small>{formatDate(entry.completedAt)}</small></span>
                   <b>{entry.score?.toFixed(1)}</b>
@@ -1830,7 +2045,10 @@ function App() {
               setAuthUser(null)
               setEntries([])
               setCollections([])
-              setActiveTab('library')
+              navigateTo(
+                { tab: 'library', gameId: null, collectionId: null, formGameId: null },
+                { replace: true },
+              )
             }}
           >
             Выйти из аккаунта
@@ -1871,7 +2089,8 @@ function App() {
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={selectedGameId ? `detail-${selectedGameId}` : activeTab}
+            key={keyForAppView(currentViewRef.current)}
+            ref={restoreScreenPosition}
             className="page-motion"
             initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
