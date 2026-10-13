@@ -44,6 +44,8 @@ type IconName =
   | 'sparkles'
   | 'book'
   | 'cpu'
+  | 'clock'
+  | 'video'
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
 
@@ -141,6 +143,41 @@ type GameSearchPage = {
 
 type SearchSource = 'local' | 'igdb'
 
+type GameStoreLink = {
+  provider: string
+  label: string
+  url: string
+}
+
+type GameDetailExtras = {
+  storyHours: number | null
+  completionHours: number | null
+  storeLinks: GameStoreLink[]
+  trailerUrl: string | null
+}
+
+const STORE_MARKS: Record<string, string> = {
+  steam: 'ST',
+  epic: 'EP',
+  gog: 'GOG',
+  itch: 'IT',
+  playstation: 'PS',
+  xbox: 'XB',
+  nintendo: 'N',
+}
+
+function formatPlaytime(details?: GameDetailExtras, loading = false): string {
+  if (loading && !details) return 'Загружаем…'
+  const story = details?.storyHours
+  const complete = details?.completionHours
+  if (story != null && complete != null) {
+    return story === complete ? `${story} ч` : `${story}–${complete} ч`
+  }
+  if (story != null) return `от ${story} ч`
+  if (complete != null) return `до ${complete} ч`
+  return '—'
+}
+
 const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => ({
   ...entry,
   platform: entry.platform ?? undefined,
@@ -227,6 +264,8 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     sparkles: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></>,
     book: <><path d="M12 6c-2.3-1.6-5.3-1.9-9-1v14c3.7-.9 6.7-.6 9 1 2.3-1.6 5.3-1.9 9-1V5c-3.7-.9-6.7-.6-9 1Z"/><path d="M12 6v14"/></>,
     cpu: <><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/></>,
+    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></>,
+    video: <><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="m10 9 5 3-5 3V9Z"/></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
@@ -438,6 +477,9 @@ function App() {
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
+  const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
+  const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
+  const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(firstViewRef.current.collectionId)
   const currentViewRef = useRef<AppView>(firstViewRef.current)
   const pendingScreenRestoreRef = useRef<AppHistoryEntry | null>(null)
@@ -1235,6 +1277,47 @@ function App() {
     )
   }
 
+  // IGDB metadata is fetched only when the detail screen opens; search
+  // results remain fast. The API caches enriched data for future opens.
+  useEffect(() => {
+    const gameId = selectedGameId
+    if (
+      !authUser ||
+      gameId == null ||
+      gameDetailsById[gameId] ||
+      failedGameDetailsId === gameId
+    ) return
+
+    const controller = new AbortController()
+    setLoadingGameDetailsId(gameId)
+
+    const fetchDetails = async () => {
+      try {
+        const response = await fetch(`/api/games/${gameId}/details`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error('Game metadata is not available')
+        const payload = await response.json() as GameDetailExtras
+        if (controller.signal.aborted) return
+        setGameDetailsById((previous) => ({ ...previous, [gameId]: {
+          storyHours: typeof payload.storyHours === 'number' ? payload.storyHours : null,
+          completionHours: typeof payload.completionHours === 'number' ? payload.completionHours : null,
+          storeLinks: Array.isArray(payload.storeLinks) ? payload.storeLinks : [],
+          trailerUrl: typeof payload.trailerUrl === 'string' ? payload.trailerUrl : null,
+        } }))
+      } catch (error) {
+        if (!controller.signal.aborted) setFailedGameDetailsId(gameId)
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingGameDetailsId((current) => current === gameId ? null : current)
+        }
+      }
+    }
+
+    void fetchDetails()
+    return () => controller.abort()
+  }, [authUser, selectedGameId, gameDetailsById, failedGameDetailsId])
+
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
   const selectedGame = selectedGameId ? catalogGames.find((game) => game.id === selectedGameId) : undefined
 
@@ -1249,6 +1332,8 @@ function App() {
     const igdbScore = selectedGame.igdbRating > 0
       ? String(selectedGame.igdbRating)
       : '—'
+    const gameDetails = gameDetailsById[selectedGame.id]
+    const loadingDetails = loadingGameDetailsId === selectedGame.id
 
     return (
       <div className="detail-page">
@@ -1307,18 +1392,59 @@ function App() {
             <h1>{selectedGame.title}</h1>
             <div className="detail-hero__metadata">
               <p className="detail-hero__genres">{selectedGame.genres.join(' · ') || 'Жанр не указан'}</p>
-              <p className="detail-hero__release">{formatDate(selectedGame.releaseDate) || selectedGame.year}</p>
             </div>
-            <div className="detail-source-ratings" aria-label="Рейтинги игры">
-              <div className="detail-source-rating" aria-label={`IGDB: ${igdbScore} из 100`}>
-                <span>IGDB</span>
-                <strong>{igdbScore}</strong>
-              </div>
-              <div className="detail-source-rating detail-source-rating--community" aria-label={`RateApp: ${rateAppScore} из 10`}>
-                <span>RateApp</span>
-                <strong>{rateAppScore}</strong>
-              </div>
+            <div className="detail-external-links" aria-label="Ссылки на магазины и трейлер">
+              {gameDetails?.storeLinks.map((store) => (
+                <a
+                  key={store.provider}
+                  className={`detail-external-link detail-external-link--${store.provider}`}
+                  href={store.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={store.label}
+                  aria-label={`Открыть ${store.label}`}
+                >
+                  <span className="detail-external-link__mark" aria-hidden="true">
+                    {STORE_MARKS[store.provider] || '↗'}
+                  </span>
+                </a>
+              ))}
+              {gameDetails?.trailerUrl && (
+                <a
+                  className="detail-external-link detail-external-link--trailer"
+                  href={gameDetails.trailerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Смотреть трейлер"
+                  aria-label="Смотреть трейлер на YouTube"
+                >
+                  <Icon name="video" size={19} />
+                </a>
+              )}
+              {loadingDetails && !gameDetails && (
+                <span className="detail-external-links__loading" aria-label="Загружаем ссылки" />
+              )}
+              {!loadingDetails && !gameDetails?.storeLinks.length && !gameDetails?.trailerUrl && (
+                <span className="detail-external-links__empty">Ссылок пока нет</span>
+              )}
             </div>
+          </div>
+        </section>
+
+        <section className="detail-rating-section" aria-label="Рейтинги игры">
+          <div className="detail-rating-panel detail-rating-panel--igdb" aria-label={`IGDB: ${igdbScore} из 100`}>
+            <span className="detail-rating-panel__label">IGDB</span>
+            <span className="detail-rating-panel__score">
+              <strong>{igdbScore}</strong>
+              <small>/ 100</small>
+            </span>
+          </div>
+          <div className="detail-rating-panel detail-rating-panel--community" aria-label={`RateApp: ${rateAppScore} из 10`}>
+            <span className="detail-rating-panel__label">RateApp</span>
+            <span className="detail-rating-panel__score">
+              <strong>{rateAppScore}</strong>
+              <small>/ 10</small>
+            </span>
           </div>
         </section>
 
@@ -1337,7 +1463,7 @@ function App() {
           </section>
         )}
 
-        {selectedEntry ? (
+        {selectedEntry && (
           <section className="info-card">
             <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
             <div className="info-list">
@@ -1351,16 +1477,17 @@ function App() {
               </div>
             )}
           </section>
-        ) : (
-          <section className="info-card">
-            <span className="eyebrow detail-section-eyebrow">ОБ ИГРЕ</span>
-            <div className="info-list">
-              <div><span><Icon name="gamepad" size={17} />Платформы</span><strong>{selectedGame.platforms.join(', ') || '—'}</strong></div>
-              <div><span><Icon name="cpu" size={17} />Разработчик</span><strong>{selectedGame.developer || '—'}</strong></div>
-              <div><span><Icon name="calendar" size={17} />Дата выхода</span><strong>{formatDate(selectedGame.releaseDate) || selectedGame.year || '—'}</strong></div>
-            </div>
-          </section>
         )}
+
+        <section className="info-card">
+          <span className="eyebrow detail-section-eyebrow">ОБ ИГРЕ</span>
+          <div className="info-list">
+            <div><span><Icon name="clock" size={17} />Продолжительность</span><strong>{formatPlaytime(gameDetails, loadingDetails)}</strong></div>
+            <div><span><Icon name="calendar" size={17} />Дата выхода</span><strong>{formatDate(selectedGame.releaseDate) || selectedGame.year || '—'}</strong></div>
+            <div><span><Icon name="gamepad" size={17} />Платформы</span><strong>{selectedGame.platforms.join(', ') || '—'}</strong></div>
+            <div><span><Icon name="cpu" size={17} />Разработчик</span><strong>{selectedGame.developer || '—'}</strong></div>
+          </div>
+        </section>
 
         {gameCollections.length > 0 && (
           <section className="detail-collections" aria-labelledby="detail-collections-title">
