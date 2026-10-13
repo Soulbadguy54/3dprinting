@@ -428,6 +428,8 @@ function App() {
 
     const collapseDistance = 210
     const topStart = 4
+    let scrollFrame: number | null = null
+
     libraryScrollAnchorRef.current = topStart
     libraryForceCollapsedRef.current = false
     libraryForcedRevealStartRef.current = null
@@ -437,17 +439,15 @@ function App() {
       if (libraryScrollSyncPausedRef.current) return
 
       const currentY = window.scrollY
-      const previousY = libraryLastScrollYRef.current
-      const scrollingUp = currentY < previousY - .5
-      const scrollingDown = currentY > previousY + .5
       libraryLastScrollYRef.current = currentY
 
-      // The top 210px is a bidirectional scrub zone: the same scroll
-      // distance drives collapse and reveal, without a snap at scrollY=0.
-      // It takes precedence over manual collapse and mid-list anchors.
+      // The top 210px is one bidirectional scrub zone. Updating it at most
+      // once per animation frame prevents fast touch-scroll events from
+      // forcing several height/layout recalculations before the next paint.
       if (currentY <= topStart + collapseDistance) {
         const progress = Math.min(1, Math.max(0, (currentY - topStart) / collapseDistance))
         libraryCollapseProgress.set(progress)
+
         if (currentY <= topStart) {
           libraryScrollAnchorRef.current = topStart
           libraryForceCollapsedRef.current = false
@@ -466,10 +466,22 @@ function App() {
       libraryCollapseProgress.set(progress)
     }
 
-    syncControlsToScroll()
-    window.addEventListener('scroll', syncControlsToScroll, { passive: true })
+    const queueScrollSync = () => {
+      if (scrollFrame != null) return
 
-    return () => window.removeEventListener('scroll', syncControlsToScroll)
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null
+        syncControlsToScroll()
+      })
+    }
+
+    syncControlsToScroll()
+    window.addEventListener('scroll', queueScrollSync, { passive: true })
+
+    return () => {
+      window.removeEventListener('scroll', queueScrollSync)
+      if (scrollFrame != null) window.cancelAnimationFrame(scrollFrame)
+    }
   }, [activeTab, selectedGameId, libraryCollapseProgress])
 
   useLayoutEffect(() => {
@@ -1000,8 +1012,8 @@ function App() {
         <motion.div
           className="library-control-clip"
           style={{
-            height: shouldReduceMotion ? undefined : libraryControlClipHeight,
-            opacity: shouldReduceMotion ? undefined : libraryControlClipOpacity,
+            height: libraryControlClipHeight,
+            opacity: shouldReduceMotion ? 1 : libraryControlClipOpacity,
           }}
         >
           <div ref={libraryControlContentRef} className="library-control-content">
