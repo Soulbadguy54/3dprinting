@@ -38,6 +38,7 @@ export type GameCollection = {
   title: string
   description: string
   mark: string
+  isSystem?: boolean
 }
 
 export const profile = {

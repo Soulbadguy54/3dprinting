@@ -1254,6 +1254,15 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-weight: 900;
 }
 
+.collection-system-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 18px;
+  color: #a99cbf;
+  font-size: 11px;
+  font-weight: 650;
+}
 .collection-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1351,6 +1360,36 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .detail-catalog-icon--wish {
   color: #d5b5ff;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.detail-catalog-icon--wish:hover {
+  border-color: rgba(213, 181, 255, .55);
+  background: rgba(160, 107, 236, .13);
+}
+.detail-catalog-icon--wish-active {
+  color: #e6ccff;
+  border-color: rgba(202, 149, 255, .70);
+  background: linear-gradient(145deg, rgba(166, 106, 236, .26), rgba(96, 59, 148, .16));
+  box-shadow: 0 0 0 1px rgba(201, 150, 252, .1), 0 0 22px rgba(150, 88, 223, .10);
+}
+.detail-catalog-icon--wish-active svg {
+  fill: rgba(197, 145, 255, .36);
+}
+.detail-catalog-icon--wish:active {
+  transform: scale(.94);
+}
+.detail-catalog-icon--wish:focus-visible,
+.detail-catalog-icon--add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.detail-catalog-icon--wish:disabled {
+  cursor: progress;
+  opacity: .65;
+}
+.detail-catalog-icon--add {
+  cursor: pointer;
 }
 .detail-catalog-icon--add {
   color: #8cf27d;
