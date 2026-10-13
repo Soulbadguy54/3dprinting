@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import time
+from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
@@ -649,6 +650,163 @@ def igdb_status(request: Request) -> dict[str, bool]:
 
 
 GAME_SEARCH_PAGE_SIZE = 20
+
+
+
+GAME_DETAILS_CACHE_DAYS = 30
+STORE_DOMAINS = (
+    ("steampowered.com", "steam", "Steam"),
+    ("epicgames.com", "epic", "Epic Games"),
+    ("gog.com", "gog", "GOG"),
+    ("itch.io", "itch", "itch.io"),
+    ("playstation.com", "playstation", "PlayStation Store"),
+    ("xbox.com", "xbox", "Xbox"),
+    ("microsoft.com", "xbox", "Microsoft Store"),
+    ("nintendo.com", "nintendo", "Nintendo eShop"),
+)
+
+
+def _igdb_details_request(
+    endpoint: str, body: str, client_id: str, token: str,
+) -> list[dict[str, object]]:
+    try:
+        response = httpx.post(
+            f"https://api.igdb.com/v4/{endpoint}",
+            headers={
+                "Client-ID": client_id,
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+            content=body,
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502, detail="Не удалось получить дополнительные данные из IGDB.",
+        ) from exc
+    if not isinstance(payload, list):
+        raise HTTPException(status_code=502, detail="IGDB вернул некорректные данные.")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _safe_store_links(websites: object) -> list[dict[str, str]]:
+    if not isinstance(websites, list):
+        return []
+
+    stores: dict[str, dict[str, str]] = {}
+    for website in websites:
+        if not isinstance(website, dict):
+            continue
+        raw_url = website.get("url")
+        if not isinstance(raw_url, str):
+            continue
+        try:
+            parsed = urlsplit(raw_url)
+        except ValueError:
+            continue
+        if parsed.scheme != "https" or parsed.username or parsed.password:
+            continue
+        host = (parsed.hostname or "").lower()
+        for domain, provider, label in STORE_DOMAINS:
+            if host == domain or host.endswith(f".{domain}"):
+                stores.setdefault(provider, {
+                    "provider": provider, "label": label, "url": raw_url,
+                })
+                break
+
+    return list(stores.values())[:6]
+
+
+def _safe_trailer_url(videos: object) -> str | None:
+    if not isinstance(videos, list):
+        return None
+    candidates = [video for video in videos if isinstance(video, dict)]
+    candidates.sort(
+        key=lambda item: 0 if "trailer" in str(item.get("name") or "").casefold() else 1,
+    )
+    for candidate in candidates:
+        video_id = candidate.get("video_id")
+        if isinstance(video_id, str) and re.fullmatch(r"[a-zA-Z0-9_-]{11}", video_id):
+            return f"https://www.youtube.com/watch?v={video_id}"
+    return None
+
+
+def _hours_from_igdb(value: object) -> int | None:
+    # game_time_to_beats values are in seconds, not minutes.
+    try:
+        seconds = float(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(seconds) or seconds <= 0:
+        return None
+    return max(1, round(seconds / 3600))
+
+
+@app.get("/api/games/{game_id}/details")
+def game_details(game_id: int, request: Request) -> dict[str, object]:
+    with _session() as session:
+        _current_user(request, session)
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра не найдена в нашей базе.")
+
+        cached_details = (
+            json.loads(game.details_json) if game.details_json else None
+        )
+        if (
+            isinstance(cached_details, dict)
+            and game.details_cached_at is not None
+            and game.details_cached_at.replace(tzinfo=game.details_cached_at.tzinfo or timezone.utc)
+                > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
+        ):
+            return cached_details
+
+    try:
+        client_id, token = _igdb_access_token()
+        game_rows = _igdb_details_request(
+            "games",
+            f"fields websites.url,videos.name,videos.video_id; where id = {game_id}; limit 1;",
+            client_id, token,
+        )
+    except HTTPException:
+        if isinstance(cached_details, dict):
+            return cached_details
+        raise
+
+    game_row = game_rows[0] if game_rows else {}
+    details: dict[str, object] = {
+        "storeLinks": _safe_store_links(game_row.get("websites")),
+        "trailerUrl": _safe_trailer_url(game_row.get("videos")),
+        "storyHours": None,
+        "completionHours": None,
+    }
+
+    # Time-to-beat data isn't available for every game. A failure to fetch it
+    # must never prevent the store links / trailer from being shown.
+    try:
+        times = _igdb_details_request(
+            "game_time_to_beats",
+            f"fields game_id,hastily,completely; where game_id = {game_id}; limit 1;",
+            client_id, token,
+        )
+        if times:
+            details["storyHours"] = _hours_from_igdb(times[0].get("hastily"))
+            details["completionHours"] = _hours_from_igdb(times[0].get("completely"))
+    except HTTPException:
+        if isinstance(cached_details, dict):
+            details["storyHours"] = cached_details.get("storyHours")
+            details["completionHours"] = cached_details.get("completionHours")
+
+    with _session() as session:
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is not None:
+            game.details_json = json.dumps(details, ensure_ascii=False)
+            game.details_cached_at = _now()
+            session.commit()
+
+    return details
 
 
 @app.get("/api/games/search")

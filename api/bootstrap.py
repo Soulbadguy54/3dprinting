@@ -64,6 +64,12 @@ def initialize_database() -> None:
             "ALTER TABLE games ADD COLUMN IF NOT EXISTS platforms_json TEXT"
         )
         connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS details_json TEXT"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS details_cached_at TIMESTAMPTZ"
+        )
+        connection.exec_driver_sql(
             "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS atmosphere_score NUMERIC(3, 1)"
         )
         connection.exec_driver_sql(
