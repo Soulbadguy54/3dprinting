@@ -1,4 +1,6 @@
-export type LibraryStatus = 'completed' | 'playing' | 'wishlist' | 'dropped'
+// Only completed, playing and dropped represent playthroughs. The others are
+// internal placeholders for collection-only records from the API.
+export type LibraryStatus = 'completed' | 'playing' | 'dropped' | 'wishlist' | 'untracked'
 
 export type Game = {
   id: number
