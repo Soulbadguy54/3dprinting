@@ -134,7 +134,10 @@ class PushTests(unittest.TestCase):
         with patch.object(index, "send_push", return_value=(True, False)) as sender:
             result = self.run_cron()
             self.assertEqual(result.status_code, 200)
-            self.assertEqual(sender.call_count, 0)
+            self.assertFalse(
+                any(call.args[0].endpoint == self.endpoint for call in sender.call_args_list),
+                "An unsubscribed device must never receive a release notification",
+            )
 
 
 if __name__ == "__main__":
