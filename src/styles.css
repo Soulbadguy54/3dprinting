@@ -2655,3 +2655,238 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .push-invite__later { margin-top: 9px; border: 1px solid transparent; background: transparent; color: #b9bfcf; }
 .push-invite__later:hover { background: rgba(255,255,255,.045); }
 .push-invite .push-settings__note { margin: 12px 0 0; color: #f2b5b9; }
+
+
+/* Collection editor, emojis and wishlist color synchronization */
+.detail-catalog-icon--wish {
+  color: var(--collection-accent, #ffa2ca);
+  background: linear-gradient(145deg, #242936, #11141c);
+  border-color: var(--collection-glow, rgba(255, 162, 202, .3));
+}
+.detail-catalog-icon--wish:not(.detail-catalog-icon--wish-active):hover {
+  border-color: var(--collection-accent, #ffa2ca);
+  background: var(--collection-glow, rgba(255, 162, 202, .15));
+}
+.detail-catalog-icon--wish-active {
+  color: #1c1421;
+  background: linear-gradient(140deg, var(--collection-accent, #ffa2ca), var(--collection-shade, #b94478));
+  border-color: var(--collection-accent, #ffa2ca);
+  box-shadow: 0 3px 14px var(--collection-glow, rgba(235, 87, 153, .2));
+}
+.detail-catalog-icon--wish-active .detail-catalog-icon__glyph svg {
+  fill: #43263d;
+  stroke: #43263d;
+}
+.detail-catalog-icon--wish-active:hover {
+  border-color: var(--collection-accent, #ffa2ca);
+  background: linear-gradient(140deg, var(--collection-accent, #ffa2ca), var(--collection-shade, #b94478));
+  box-shadow: 0 5px 18px var(--collection-glow, rgba(235, 87, 153, .2));
+}
+.collection-create-card--page {
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.collection-appearance-editor {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.collection-emoji-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 8px 0 12px;
+}
+.collection-icon-preview {
+  flex: 0 0 68px;
+}
+.collection-emoji-open {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 12px;
+  color: #eef1f7;
+  background: #252b37;
+  font-size: 12px;
+  font-weight: 750;
+}
+.collection-emoji-open:hover {
+  border-color: var(--accent);
+}
+.collection-emoji-quick {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+.collection-emoji-quick__item {
+  display: grid;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  background: #1e2430;
+}
+.collection-emoji-quick__item--selected {
+  border-color: var(--accent);
+  background: rgba(140, 242, 125, .12);
+  box-shadow: inset 0 0 0 1px rgba(140, 242, 125, .18);
+}
+.collection-emoji-full-picker {
+  width: 100%;
+  margin: 14px 0 2px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 14px;
+}
+.collection-emoji-full-picker .EmojiPickerReact {
+  --epr-bg-color: #181c25;
+  --epr-category-label-bg-color: #202633;
+  --epr-text-color: #e8eaf0;
+  --epr-hover-bg-color: #323b4a;
+  --epr-search-input-bg-color: #252b37;
+  --epr-search-input-text-color: #f5f6f9;
+  --epr-highlight-color: #8cf27d;
+  max-width: 100%;
+}
+.collection-detail-page {
+  padding-top: 1px;
+}
+.collection-detail-toolbar {
+  position: sticky;
+  z-index: 20;
+  top: max(0px, var(--safe-top));
+  padding: 8px 0;
+  background: var(--bg);
+}
+.collection-detail-toolbar .icon-button {
+  height: 42px;
+  width: 42px;
+  border-radius: 14px;
+}
+.collection-edit-save:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.collection-detail-hero {
+  min-width: 0;
+  padding: 17px;
+  margin-bottom: 16px;
+  border: 1px solid var(--collection-glow, var(--line));
+  border-radius: 20px;
+  background: radial-gradient(circle at 8% -45%, var(--collection-glow, transparent), transparent 78%),
+    linear-gradient(155deg, #1b1f2a, #11141b);
+}
+.collection-detail-identity {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+}
+.collection-detail-identity__icon {
+  display: grid;
+  width: 70px;
+  height: 70px;
+  flex: 0 0 70px;
+  place-items: center;
+  border-radius: 18px;
+  border: 1px solid var(--collection-accent, #c4a2ff);
+  background: linear-gradient(135deg, var(--collection-shade, #7b46c7), #20232d);
+}
+.collection-detail-identity__text {
+  flex: 1;
+  min-width: 0;
+}
+.collection-detail-identity h1 {
+  font-size: clamp(17px, 4.5vw, 23px);
+  line-height: 1.3;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.collection-detail-count {
+  color: var(--collection-accent, #c4a2ff);
+  font-size: 12px;
+  font-weight: 750;
+}
+.collection-detail-description {
+  color: #b8bdc8;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 17px 0 0;
+}
+.collection-detail-hero .collection-create-field {
+  margin-top: 17px;
+}
+.collection-detail-edit-title {
+  margin: 0 !important;
+}
+.collection-detail-hero .collection-create-field > span {
+  color: #ced1da;
+  font-size: 11px;
+}
+.collection-detail-hero .collection-create-field input,
+.collection-detail-hero .collection-create-field textarea {
+  font-size: 13px;
+}
+.collection-detail-hero .collection-color-swatch {
+  max-width: none;
+}
+.collection-edit-hint {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 8px 0 15px;
+  color: #a5adba;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.collection-edit-hint b { color: #ff9292; }
+.collection-edit-hint button {
+  padding: 7px 11px;
+  border-radius: 10px;
+  color: #a8d5ff;
+  background: rgba(116, 160, 240, .13);
+  font-size: 11px;
+  font-weight: 750;
+}
+.collection-edit-game {
+  min-width: 0;
+  position: relative;
+}
+.collection-edit-game .game-card {
+  width: 100%;
+}
+.collection-edit-game--active .game-card {
+  opacity: .75;
+  cursor: default;
+}
+.collection-edit-game__remove {
+  position: absolute;
+  z-index: 6;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  height: 35px;
+  width: 35px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .5);
+  border-radius: 50%;
+  color: #fff;
+  background: #da4252;
+  box-shadow: 0 3px 13px rgba(0, 0, 0, .55);
+}
+.collection-edit-game__remove:disabled { opacity: .5; }
+@media (max-width: 430px) {
+  .collection-emoji-quick { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .collection-detail-identity { gap: 11px; }
+  .collection-detail-identity__icon { width: 62px; height: 62px; flex-basis: 62px; }
+  .collection-detail-hero { padding: 13px; }
+}
