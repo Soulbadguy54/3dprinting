@@ -41,6 +41,7 @@ export type GameCollection = {
   description: string
   mark: string
   colorScheme?: string
+  emoji?: string | null
   iconData?: string | null
   isSystem?: boolean
 }
