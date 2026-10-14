@@ -541,9 +541,23 @@ def _local_game_search(session, query: str, offset: int) -> dict[str, object]:
         func.ln(1 + Game.popularity_count)
         + func.ln(1 + Game.hype_count) * 0.65
     )
+    # PostgreSQL can use our GIN pg_trgm indexes to shortlist candidates,
+    # instead of scoring every game and every alias on a full table scan.
+    alias_candidate = (
+        select(GameAlias.id)
+        .where(
+            GameAlias.game_id == Game.id,
+            or_(alias.op("%")(search_text), alias.op("%>")(search_text)),
+        )
+        .correlate(Game)
+        .exists()
+    )
+    title_candidate = or_(
+        title.op("%")(search_text), title.op("%>")(search_text),
+    )
     rows = session.scalars(
         select(Game)
-        .where(score >= 0.32)
+        .where(or_(title_candidate, alias_candidate), score >= 0.32)
         .order_by(
             case(
                 (title == search_text, 0),
