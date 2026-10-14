@@ -1511,10 +1511,11 @@ def test_release_push(payload: PushTestPayload, request: Request) -> dict[str, o
         for sub in subs:
             ok, expired = send_push(
                 sub,
-                title=f"Сегодня вышла {game.title}!",
-                body="Игра из списка «Хочу поиграть» уже доступна. Пора играть!",
+                title=f"Вышла {game.title}!",
+                body="Ты хотел поиграть - играй :)",
                 game_id=game.igdb_id,
                 tag=f"test-release-{game.igdb_id}",
+                cover_url=game.cover_url,
             )
             if expired:
                 session.delete(sub)
@@ -1569,10 +1570,11 @@ def release_alert_cron(request: Request) -> dict[str, object]:
                 continue
             ok, expired = send_push(
                 sub,
-                title=f"Сегодня выходит {game.title}!",
-                body="Игра из твоего списка «Хочу поиграть» выходит сегодня!",
+                title=f"Вышла {game.title}!",
+                body="Ты хотел поиграть - играй :)",
                 game_id=game.igdb_id,
                 tag=f"release-{game.igdb_id}-{today.isoformat()}",
+                cover_url=game.cover_url,
             )
             if expired:
                 session.delete(sub)

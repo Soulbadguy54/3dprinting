@@ -44,8 +44,28 @@ def push_ready() -> bool:
     return bool(os.getenv("VAPID_PUBLIC_KEY") and os.getenv("VAPID_PRIVATE_KEY"))
 
 
+def _push_cover_url(value: str | None) -> str | None:
+    """Only accept cover thumbnails served by IGDB; never relay arbitrary URLs."""
+    if not value:
+        return None
+    try:
+        url = urlsplit(value)
+    except ValueError:
+        return None
+    if (
+        url.scheme == "https"
+        and url.netloc == "images.igdb.com"
+        and url.path.startswith("/igdb/image/upload/")
+        and not url.username
+        and not url.password
+        and len(value) <= 1000
+    ):
+        return value
+    return None
+
+
 def send_push(subscription: PushSubscription, *, title: str, body: str,
-              game_id: int, tag: str) -> tuple[bool, bool]:
+              game_id: int, tag: str, cover_url: str | None = None) -> tuple[bool, bool]:
     """Returns (accepted_by_push_service, subscription_expired).
 
     A successful push-service response is not proof of an Android notification:
@@ -59,6 +79,7 @@ def send_push(subscription: PushSubscription, *, title: str, body: str,
         "body": body,
         "url": f"/?game={game_id}",
         "tag": tag,
+        "coverUrl": _push_cover_url(cover_url),
     }, ensure_ascii=False)
     try:
         webpush(
