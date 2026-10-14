@@ -2508,22 +2508,71 @@ function App() {
               />
             </label>
 
-            <label className="collection-create-field collection-create-field--mark">
-              <span>Метка <small>до 8 символов</small></span>
-              <input
-                value={collectionMark}
-                onChange={(event) => setCollectionMark(event.target.value)}
-                maxLength={8}
-                placeholder="RPG"
-              />
-            </label>
+            <div className="collection-create-field">
+              <span>Цветовая схема</span>
+              <div className="collection-color-grid" role="radiogroup" aria-label="Цветовая схема коллекции">
+                {COLLECTION_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={collectionColorScheme === theme.id}
+                    aria-label={theme.name}
+                    title={theme.name}
+                    className={collectionColorScheme === theme.id ? 'collection-color-swatch collection-color-swatch--selected' : 'collection-color-swatch'}
+                    style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.shade})` }}
+                    onClick={() => setCollectionColorScheme(theme.id)}
+                  >
+                    {collectionColorScheme === theme.id && <Icon name="check" size={18} />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="collection-create-field">
+              <span>Иконка <small>необязательно</small></span>
+              <div className="collection-icon-picker">
+                <div
+                  className="collection-icon-preview"
+                  style={collectionThemeStyle({
+                    id: 'preview',
+                    title: collectionTitle,
+                    description: collectionDescription,
+                    mark: '',
+                    colorScheme: collectionColorScheme,
+                    iconData: collectionIconData,
+                  })}
+                >
+                  <CollectionIcon collection={{ id: 'preview', title: collectionTitle, description: '', mark: '', iconData: collectionIconData }} size={34} />
+                </div>
+                <div className="collection-icon-picker__controls">
+                  <label className="collection-icon-upload">
+                    {collectionIconLoading ? 'Обрабатываем…' : collectionIconData ? 'Заменить иконку' : 'Загрузить иконку'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      disabled={collectionIconLoading}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0]
+                        event.currentTarget.value = ''
+                        void uploadCollectionIcon(file)
+                      }}
+                    />
+                  </label>
+                  {collectionIconData && (
+                    <button type="button" className="collection-icon-remove" onClick={() => setCollectionIconData(null)}>Убрать</button>
+                  )}
+                  <small>PNG, JPG, WebP или GIF · до 10 МБ. Сожмём и впишем в 256×256 px.</small>
+                </div>
+              </div>
+            </div>
 
             {collectionError && <p className="collection-create-error">{collectionError}</p>}
 
             <button
               className="primary-button collection-create-submit"
               onClick={() => { void createCollection() }}
-              disabled={!collectionTitle.trim() || collectionSaving}
+              disabled={!collectionTitle.trim() || collectionSaving || collectionIconLoading}
             >
               {collectionSaving ? 'Создаём…' : 'Создать коллекцию'}
             </button>
