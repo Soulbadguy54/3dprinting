@@ -1,4 +1,5 @@
 """Web Push subscriptions, authorized test notifications and release-day cron."""
+import json
 import os
 import secrets
 import unittest
@@ -11,7 +12,7 @@ from sqlalchemy import select
 from api import index
 from api.database import SessionLocal
 from api.models import Game, PushSubscription, ReleasePushDelivery
-from api.push import valid_push_endpoint
+from api.push import valid_push_endpoint, send_push, _push_cover_url
 
 ENV = {
     "VAPID_PUBLIC_KEY": "A" * 87,
@@ -34,6 +35,7 @@ class PushTests(unittest.TestCase):
         with SessionLocal() as session:
             session.add(Game(
                 igdb_id=self.game_id, title="Upcoming Game",
+                cover_url="https://images.igdb.com/igdb/image/upload/t_cover_big_2x/testcover.jpg",
                 release_date=datetime.now(timezone.utc).date(),
             ))
             session.commit()
@@ -78,11 +80,39 @@ class PushTests(unittest.TestCase):
             sent = self.client.post("/api/push/test", json={"gameId": self.game_id})
             self.assertEqual(sent.status_code, 200, sent.text)
             self.assertEqual(sent.json()["accepted"], 1)
-            self.assertIn("Сегодня вышла", sender.call_args.kwargs["title"])
+            self.assertEqual(sender.call_args.kwargs["title"], "Вышла Upcoming Game!")
+            self.assertEqual(sender.call_args.kwargs["body"], "Ты хотел поиграть - играй :)")
+            self.assertIn("images.igdb.com", sender.call_args.kwargs["cover_url"])
             retry = self.client.post("/api/push/test", json={"gameId": self.game_id})
             self.assertEqual(retry.status_code, 429)
         missing = self.client.post("/api/push/test", json={"gameId": 1})
         self.assertEqual(missing.status_code, 404)
+
+    def test_release_push_uses_game_cover_and_exact_text(self):
+        subscription = PushSubscription(
+            id=123, user_id=1, endpoint=self.endpoint,
+            p256dh="A" * 87, auth="B" * 22,
+        )
+        with patch("api.push.webpush") as transport:
+            ok, expired = send_push(
+                subscription, title="Вышла Upcoming Game!",
+                body="Ты хотел поиграть - играй :)",
+                game_id=self.game_id, tag="release-check",
+                cover_url="https://images.igdb.com/igdb/image/upload/t_cover_big_2x/testcover.jpg",
+            )
+        self.assertTrue(ok)
+        self.assertFalse(expired)
+        data = json.loads(transport.call_args.kwargs["data"])
+        self.assertEqual(data["title"], "Вышла Upcoming Game!")
+        self.assertEqual(data["body"], "Ты хотел поиграть - играй :)")
+        self.assertEqual(data["url"], f"/?game={self.game_id}")
+        self.assertEqual(
+            data["coverUrl"],
+            "https://images.igdb.com/igdb/image/upload/t_cover_big_2x/testcover.jpg",
+        )
+        self.assertIsNone(_push_cover_url("http://localhost/private"))
+        self.assertIsNone(_push_cover_url("https://images.igdb.com.attacker.com/private"))
+        self.assertIsNone(_push_cover_url("https://images.igdb.com/unrelated/path"))
 
     def test_cron_checks_secret_and_sends_only_once_per_release(self):
         self.assertEqual(self.subscribe().status_code, 200)

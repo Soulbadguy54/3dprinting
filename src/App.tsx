@@ -11,7 +11,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
-import PushSettings, { disconnectPushForLogout } from './PushSettings'
+import PushSettings, { PushOnboarding, disconnectPushForLogout } from './PushSettings'
 import {
   games,
   type Game,
@@ -2449,13 +2449,7 @@ function App() {
           </div>
         </section>
 
-        <PushSettings
-          user={authUser?.nickname ?? ''}
-          wishlistGames={entries
-            .filter((entry) => entry.collectionIds.includes(WISHLIST_COLLECTION_ID))
-            .map((entry) => catalogGames.find((game) => game.id === entry.gameId))
-            .filter((game): game is Game => Boolean(game))}
-        />
+        <PushSettings user={authUser?.nickname ?? ''} />
 
         <section className="info-card account-card">
           <span className="eyebrow">АККАУНТ</span>
@@ -2540,6 +2534,8 @@ function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <PushOnboarding user={authUser.nickname} />
 
       {!selectedGameId && (
         <nav className="bottom-nav" aria-label="Основная навигация">
