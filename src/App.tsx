@@ -2143,14 +2143,12 @@ function App() {
               ))}
             </div>
 
-            {addStatus !== 'wishlist' && (
-              <label className="form-field">
-                <span>Платформа</span>
-                <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
-                  {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
-                </select>
-              </label>
-            )}
+            <label className="form-field">
+              <span>Платформа</span>
+              <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
+                {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
+              </select>
+            </label>
 
             {addStatus === 'completed' && (
               <label className="form-field">
