@@ -1390,6 +1390,9 @@ function App() {
     const gameCollections = selectedEntry
       ? collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
       : []
+    // A game already being played or completed does not need a wish action,
+    // regardless of which collections it belongs to.
+    const canWish = selectedEntry?.status !== 'completed' && selectedEntry?.status !== 'playing'
     const isWished = Boolean(selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID))
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
@@ -1417,7 +1420,8 @@ function App() {
             <Icon name="back" size={20} />
           </button>
           <div className="detail-toolbar__actions">
-            <button
+            {canWish && (
+              <button
               type="button"
               className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
               onClick={() => { void toggleWishlist(selectedGame) }}
@@ -1427,7 +1431,8 @@ function App() {
               title={isWished ? 'Убрать из «Хочу пройти»' : 'Хочу пройти'}
             >
               <Icon name="bookmark" size={19} />
-            </button>
+              </button>
+            )}
             {selectedEntry ? (
               <>
                 <button
