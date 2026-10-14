@@ -1853,7 +1853,7 @@ function App() {
           ['completed', 'Пройдено'],
           ['playing', 'Прохожу'],
           ['dropped', 'Дропнуто'],
-        ] as [LibraryStatus, string][]).map(([status, label]) => (
+        ] as ['completed' | 'playing' | 'dropped', string][]).map(([status, label]) => (
           <motion.button
             layout
             key={status}
