@@ -1,3 +1,5 @@
+import base64
+import binascii
 import hashlib
 import json
 import math
@@ -65,10 +67,40 @@ class LoginPayload(BaseModel):
     pin: str = Field(min_length=4, max_length=8)
 
 
+COLLECTION_COLORS = frozenset({
+    "violet", "rose", "blue", "cyan", "teal",
+    "emerald", "lime", "amber", "orange", "slate",
+})
+
+
 class CollectionPayload(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)
-    mark: str | None = Field(default=None, max_length=8)
+    colorScheme: Literal["violet", "rose", "blue", "cyan", "teal",
+                         "emerald", "lime", "amber", "orange", "slate"] = "violet"
+    iconData: str | None = Field(default=None, max_length=150000)
+
+
+def _validated_collection_icon(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = re.fullmatch(r"data:image/(webp|png|jpeg);base64,([A-Za-z0-9+/=]+)", value)
+    if match is None:
+        raise HTTPException(status_code=422, detail="Иконка должна быть PNG, JPEG или WebP.")
+    try:
+        raw = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=422, detail="Не удалось прочитать иконку.")
+    if len(raw) > 110000 or not raw:
+        raise HTTPException(status_code=422, detail="Иконка слишком большая.")
+    kind = match.group(1)
+    if not (
+        (kind == "webp" and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP")
+        or (kind == "png" and raw.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (kind == "jpeg" and raw.startswith(b"\xff\xd8\xff"))
+    ):
+        raise HTTPException(status_code=422, detail="Неверный формат иконки.")
+    return value
 
 
 class LibraryPayload(BaseModel):
@@ -411,6 +443,7 @@ def _ensure_wishlist_collection(session, user_id: int) -> Collection:
         title=WISHLIST_TITLE,
         description=WISHLIST_DESCRIPTION,
         mark=WISHLIST_MARK,
+        color_scheme="rose",
         is_system=True,
     )
     session.add(row)
@@ -473,6 +506,7 @@ def _collections_payload(session, user: User) -> list[dict[str, object]]:
         .where(Collection.user_id == user.id)
         .order_by(
             case((Collection.slug == WISHLIST_SLUG, 0), else_=1),
+            func.lower(Collection.title),
             Collection.id,
         )
     ).all()
@@ -482,6 +516,8 @@ def _collections_payload(session, user: User) -> list[dict[str, object]]:
             "title": row.title,
             "description": row.description or "",
             "mark": row.mark or "",
+            "colorScheme": row.color_scheme,
+            "iconData": row.icon_data,
             "isSystem": row.is_system or row.slug == WISHLIST_SLUG,
         }
         for row in rows
@@ -1132,13 +1168,10 @@ def collections(request: Request) -> list[dict[str, object]]:
 def create_collection(payload: CollectionPayload, request: Request) -> dict[str, object]:
     title = payload.title.strip()
     description = (payload.description or "").strip()
-    mark = (payload.mark or "").strip().upper()
+    icon_data = _validated_collection_icon(payload.iconData)
 
     if not title:
         raise HTTPException(status_code=422, detail="Укажите название коллекции.")
-
-    if not mark:
-        mark = "".join(part[0] for part in title.split()[:2]).upper()[:3] or "★"
 
     with _session() as session:
         user = _current_user(request, session)
@@ -1160,7 +1193,8 @@ def create_collection(payload: CollectionPayload, request: Request) -> dict[str,
             slug=slug,
             title=title,
             description=description or None,
-            mark=mark[:8],
+            color_scheme=payload.colorScheme,
+            icon_data=icon_data,
         )
         session.add(collection)
         session.commit()
@@ -1170,6 +1204,8 @@ def create_collection(payload: CollectionPayload, request: Request) -> dict[str,
             "title": collection.title,
             "description": collection.description or "",
             "mark": collection.mark or "",
+            "colorScheme": collection.color_scheme,
+            "iconData": collection.icon_data,
             "isSystem": False,
         }
 
