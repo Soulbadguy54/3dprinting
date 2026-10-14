@@ -11,6 +11,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
+import EmojiPicker, { Emoji as RenderEmoji, EmojiStyle, Theme } from 'emoji-picker-react'
 import PushSettings, { PushOnboarding, disconnectPushForLogout } from './PushSettings'
 import {
   games,
@@ -168,60 +169,100 @@ function collectionThemeStyle(collection: GameCollection): CSSProperties {
   } as CSSProperties
 }
 
-function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
-  if (collection.iconData) {
-    return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
-  }
-  return <Icon name={collection.id === WISHLIST_COLLECTION_ID ? 'bookmark' : 'layers'} size={size} />
+function emojiUnified(emoji: string): string {
+  return Array.from(emoji).map((character) => character.codePointAt(0)!.toString(16)).join('-')
 }
 
-// All files are rasterized into a small, square icon before upload.
-// Transparent images are kept transparent if the browser supports WebP.
-async function resizeCollectionIcon(file: File): Promise<string> {
-  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
-    throw new Error('Выбери PNG, JPEG, WebP или GIF.')
+function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
+  const emoji = collection.emoji || (collection.id === WISHLIST_COLLECTION_ID ? '🎁' : '🗂️')
+  if (!collection.emoji && collection.iconData) {
+    return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
   }
-  if (file.size > 10 * 1024 * 1024) {
-    throw new Error('Изображение должно быть меньше 10 МБ.')
-  }
+  return <RenderEmoji unified={emojiUnified(emoji)} size={size} emojiStyle={EmojiStyle.TWITTER} />
+}
 
-  const url = URL.createObjectURL(file)
-  try {
-    const img = new Image()
-    img.src = url
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Не удалось прочитать изображение.'))
-    })
-    if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 40_000_000) {
-      throw new Error('Слишком большое разрешение изображения.')
-    }
+const POPULAR_COLLECTION_EMOJIS = ['🎮', '🏆', '💎', '🔥', '⭐', '🎯', '🎁', '💜', '🕹️', '👑', '🚀', '🌌']
 
-    for (const size of [256, 192, 160, 128]) {
-      const canvas = document.createElement('canvas')
-      canvas.width = canvas.height = size
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('Не удалось подготовить иконку.')
-      const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight)
-      const width = Math.round(img.naturalWidth * scale)
-      const height = Math.round(img.naturalHeight * scale)
-      context.drawImage(img, (size - width) / 2, (size - height) / 2, width, height)
-
-      for (const quality of [.82, .66, .5, .35]) {
-        let data = canvas.toDataURL('image/webp', quality)
-        if (!data.startsWith('data:image/webp;')) {
-          context.globalCompositeOperation = 'destination-over'
-          context.fillStyle = '#171a22'
-          context.fillRect(0, 0, size, size)
-          data = canvas.toDataURL('image/jpeg', quality)
-        }
-        if (data.length <= 140000) return data
-      }
-    }
-    throw new Error('Не получилось уменьшить иконку. Попробуй другое изображение.')
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+function CollectionAppearanceEditor({
+  colorScheme, emoji, onColorChange, onEmojiChange,
+}: {
+  colorScheme: string
+  emoji: string
+  onColorChange: (value: string) => void
+  onEmojiChange: (value: string) => void
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  return (
+    <div className="collection-appearance-editor">
+      <div className="collection-create-field">
+        <span>Цветовая схема</span>
+        <div className="collection-color-grid" role="radiogroup" aria-label="Цветовая схема коллекции">
+          {COLLECTION_THEMES.map((theme) => (
+            <button
+              key={theme.id}
+              type="button"
+              role="radio"
+              aria-checked={colorScheme === theme.id}
+              aria-label={theme.name}
+              title={theme.name}
+              className={colorScheme === theme.id ? 'collection-color-swatch collection-color-swatch--selected' : 'collection-color-swatch'}
+              style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.shade})` }}
+              onClick={() => onColorChange(theme.id)}
+            >
+              {colorScheme === theme.id && <Icon name="check" size={18} />}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="collection-create-field">
+        <span>Иконка коллекции</span>
+        <div className="collection-emoji-preview-row">
+          <div
+            className="collection-icon-preview"
+            style={collectionThemeStyle({ id: 'preview', title: '', description: '', mark: '', colorScheme })}
+          >
+            <RenderEmoji unified={emojiUnified(emoji || '🎮')} size={36} emojiStyle={EmojiStyle.TWITTER} />
+          </div>
+          <button type="button" className="collection-emoji-open" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
+            <Icon name="smile" size={17} />
+            {pickerOpen ? 'Закрыть выбор' : 'Выбрать эмодзи'}
+          </button>
+        </div>
+        <div className="collection-emoji-quick" aria-label="Популярные эмодзи">
+          {POPULAR_COLLECTION_EMOJIS.map((item) => (
+            <button
+              type="button"
+              key={item}
+              className={emoji === item ? 'collection-emoji-quick__item collection-emoji-quick__item--selected' : 'collection-emoji-quick__item'}
+              onClick={() => onEmojiChange(item)}
+              aria-label={`Выбрать ${item}`}
+              aria-pressed={emoji === item}
+            >
+              <RenderEmoji unified={emojiUnified(item)} size={25} emojiStyle={EmojiStyle.TWITTER} />
+            </button>
+          ))}
+        </div>
+        {pickerOpen && (
+          <div className="collection-emoji-full-picker">
+            <EmojiPicker
+              theme={Theme.DARK}
+              emojiStyle={EmojiStyle.TWITTER}
+              width="100%"
+              height={340}
+              lazyLoadEmojis
+              autoFocusSearch={false}
+              searchPlaceholder="Поиск эмодзи"
+              previewConfig={{ showPreview: false }}
+              onEmojiClick={(value) => {
+                onEmojiChange(value.emoji)
+                setPickerOpen(false)
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 const sortCollections = (items: GameCollection[]) =>
@@ -452,12 +493,12 @@ function Cover({
       {!game.coverUrl && <div className="cover__orb cover__orb--two" />}
       {!game.coverUrl && <span className="cover__noise" />}
       {!game.coverUrl && <span className="cover__glyph">{game.glyph}</span>}
-      {markers.length > 0 && (
+      {markers.some((collection) => collection.id !== WISHLIST_COLLECTION_ID) && (
         <span className="cover__markers" aria-label="Коллекции">
-          {markers.slice(0, 2).map((collection) => (
+          {markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).slice(0, 2).map((collection) => (
             <span className="collection-marker" style={collectionThemeStyle(collection)} key={collection.id}><CollectionIcon collection={collection} size={13} /></span>
           ))}
-          {markers.length > 2 && <span className="collection-marker">+{markers.length - 2}</span>}
+          {markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).length > 2 && <span className="collection-marker">+{markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).length - 2}</span>}
         </span>
       )}
     </div>
@@ -470,6 +511,7 @@ type GameCardProps = {
   collections: GameCollection[]
   onOpen: () => void
   animationIndex?: number
+  readOnly?: boolean
 }
 
 const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
@@ -478,10 +520,11 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   collections,
   onOpen,
   animationIndex = 0,
+  readOnly = false,
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
   void animationIndex
-  const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
+  const markers = collections.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID && entry.collectionIds.includes(collection.id))
   const activityDate =
     entry.status === 'completed' && entry.completedAt
       ? entry.completedAt
@@ -494,6 +537,7 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
       ref={ref}
       layout="position"
       className="game-card"
+      disabled={readOnly}
       onClick={onOpen}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
