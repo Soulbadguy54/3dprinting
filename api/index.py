@@ -14,7 +14,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import and_, case, delete, func, or_, select, text
+from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from api.bootstrap import initialize_database
@@ -24,6 +24,7 @@ from api.models import (
     Collection,
     CollectionGame,
     Game,
+    GameAlias,
     LoginThrottle,
     User,
     UserGame,
@@ -347,6 +348,11 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             game.title = str(row.get("name") or game.title)
             game.release_date = release_date
             game.igdb_rating = row.get("rating")
+            game.popularity_count = max(
+                int(row.get("total_rating_count") or 0),
+                int(row.get("rating_count") or 0),
+            )
+            game.hype_count = int(row.get("hypes") or 0)
             game.cover_url = _igdb_cover(str(image_id)) if image_id else None
             game.developer = developers[0] if developers else None
             game.genres_json = json.dumps(genres, ensure_ascii=False)
@@ -355,6 +361,21 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             cached_games.append(game)
 
         session.flush()
+        for row in rows:
+            # Persist publisher/IGDB-provided alternative names, not handcrafted
+            # abbreviations or special cases for individual games.
+            if "alternative_names" not in row:
+                continue
+            game = existing[int(row["id"])]
+            session.execute(delete(GameAlias).where(GameAlias.game_id == game.id))
+            seen = {game.title.casefold()}
+            for alternative in row.get("alternative_names") or []:
+                name = alternative.get("name", "").strip() if isinstance(alternative, dict) else ""
+                if not name or len(name) > 255 or name.casefold() in seen:
+                    continue
+                seen.add(name.casefold())
+                session.add(GameAlias(game_id=game.id, name=name))
+
         ratings = _community_rating_map(session, [game.id for game in cached_games])
         cached = [_game_payload(game, ratings.get(game.id)) for game in cached_games]
         session.commit()
@@ -483,75 +504,83 @@ def _normalized_search_text(value: str) -> str:
     return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
 
 
-_SEQUEL_ROMAN_NUMERALS = {
-    "2": "ii", "3": "iii", "4": "iv", "5": "v", "6": "vi",
-    "7": "vii", "8": "viii", "9": "ix", "10": "x",
-}
+def _local_game_search(session, query: str, offset: int) -> dict[str, object]:
+    """Rank cached games in PostgreSQL using indexed trigram similarity.
 
-
-def _search_query_variants(query: str) -> list[list[str]]:
-    """Accept common abbreviations and Arabic/Roman sequel numbers.
-
-    Keep numeric tokens: discarding '6' from 'GTA 6' searches for the wrong game.
+    Both game titles and their IGDB-provided alternative names participate.
+    Title relevance wins; popularity breaks near ties. No franchise-specific
+    mappings are involved.
     """
-    normalized = _normalized_search_text(query)
-    normalized = re.sub(r"\bgta(?=\d+\b)", "gta ", normalized)
-    bases = [normalized]
-    if re.search(r"\bgta\b", normalized):
-        bases.append(re.sub(r"\bgta\b", "grand theft auto", normalized))
+    search_text = _normalized_search_text(query)
+    if not search_text:
+        return {"items": [], "hasMore": False, "nextOffset": None}
 
-    variants: list[list[str]] = []
-    for base in bases:
-        tokens = [token for token in base.split() if len(token) >= 2 or token.isdigit()]
-        if tokens:
-            variants.append(tokens)
-            last = tokens[-1]
-            sequel = _SEQUEL_ROMAN_NUMERALS.get(last)
-            if sequel is None:
-                sequel = next(
-                    (number for number, roman in _SEQUEL_ROMAN_NUMERALS.items() if roman == last),
-                    None,
-                )
-            if sequel:
-                variants.append([*tokens[:-1], sequel])
+    title = func.lower(Game.title)
+    alias = func.lower(GameAlias.name)
 
-    # Preserve stable order, without generating duplicate search clauses.
-    unique: list[list[str]] = []
-    for tokens in variants:
-        if tokens and tokens not in unique:
-            unique.append(tokens)
-    return unique
+    def relevance(name):
+        return func.greatest(
+            func.similarity(name, search_text),
+            func.word_similarity(search_text, name),
+        )
 
-
-def _igdb_search_rank(row: dict[str, object], query: str) -> float:
-    query_text = _normalized_search_text(query)
-    name_text = _normalized_search_text(str(row.get("name") or ""))
-    score = 0.0
-
-    # IGDB already returns textually similar candidates. Inside that set,
-    # popularity is a stronger signal of what the user probably meant.
-    if name_text == query_text:
-        score += 45_000
-    elif name_text.startswith(query_text):
-        score += 30_000
-    elif query_text and query_text in name_text:
-        score += 15_000
-    elif query_text and all(token in name_text for token in query_text.split()):
-        score += 8_000
-
-    ratings = max(
-        int(row.get("total_rating_count") or 0),
-        int(row.get("rating_count") or 0),
+    alias_best = (
+        select(func.max(relevance(alias)))
+        .where(GameAlias.game_id == Game.id)
+        .correlate(Game)
+        .scalar_subquery()
     )
-    hypes = int(row.get("hypes") or 0)
-    rating = float(row.get("rating") or 0)
+    score = func.greatest(relevance(title), func.coalesce(alias_best, 0.0))
+    exact_alias = (
+        select(GameAlias.id)
+        .where(GameAlias.game_id == Game.id, alias == search_text)
+        .correlate(Game)
+        .exists()
+    )
+    popularity = (
+        func.ln(1 + Game.popularity_count)
+        + func.ln(1 + Game.hype_count) * 0.65
+    )
+    rows = session.scalars(
+        select(Game)
+        .where(score >= 0.32)
+        .order_by(
+            case(
+                (title == search_text, 0),
+                (exact_alias, 0),
+                (title.startswith(search_text), 1),
+                else_=2,
+            ),
+            (score + popularity * 0.012).desc(),
+            popularity.desc(),
+            Game.id,
+        )
+        .offset(offset)
+        .limit(GAME_SEARCH_PAGE_SIZE + 1)
+    ).all()
+    has_more = len(rows) > GAME_SEARCH_PAGE_SIZE
+    games = rows[:GAME_SEARCH_PAGE_SIZE]
+    ratings = _community_rating_map(session, [game.id for game in games])
+    return {
+        "items": [_game_payload(game, ratings.get(game.id)) for game in games],
+        "hasMore": has_more,
+        "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
+    }
 
-    # IGDB already sorted candidates by total_rating_count in the query.
-    # Keep popularity dominant; use quality/hype/text only as tie-breakers.
-    score += math.log1p(ratings) * 100_000
-    score += rating * 250
-    score += math.log1p(hypes) * 5_000
-    return score
+
+def _igdb_search_body(query: str, offset: int) -> str:
+    # The IGDB search command is documented as similarity-ranked by IGDB.
+    # It is not advertised as typo-tolerant, unlike our PostgreSQL search.
+    safe_query = json.dumps(query.replace(";", " "), ensure_ascii=False)[1:-1]
+    return (
+        "fields id,name,first_release_date,rating,rating_count,"
+        "total_rating_count,hypes,cover.image_id,alternative_names.name,"
+        "genres.name,platforms.name,involved_companies.developer,"
+        "involved_companies.company.name; "
+        f'search "{safe_query}"; '
+        "where version_parent = null; "
+        f"limit {GAME_SEARCH_PAGE_SIZE + 1}; offset {offset};"
+    )
 
 
 @app.get("/api/health")
@@ -941,83 +970,19 @@ def search_games(
     if len(query) < 3:
         return {"items": [], "hasMore": False, "nextOffset": None}
 
-    query_variants = _search_query_variants(query)
-    if not query_variants:
-        return {"items": [], "hasMore": False, "nextOffset": None}
-
-    # The normal search never contacts IGDB: it searches the persistent,
-    # shared games catalogue that earlier IGDB requests have already filled.
-    # Wildcards must be escaped so a title search is always a literal search.
     with _session() as session:
         _current_user(request, session)
         if source == "local":
-            def literal_like(value: str) -> str:
-                return (
-                    value.replace("\\", "\\\\")
-                    .replace("%", "\\%")
-                    .replace("_", "\\_")
-                )
-
-            match_variants = [
-                and_(*[
-                    Game.title.ilike(f"%{literal_like(token)}%", escape="\\")
-                    for token in tokens[:6]
-                ])
-                for tokens in query_variants
-            ]
-            exact = literal_like(query)
-            rows = session.scalars(
-                select(Game)
-                .where(or_(*match_variants))
-                .order_by(
-                    case(
-                        (Game.title.ilike(exact, escape="\\"), 0),
-                        (Game.title.ilike(f"{exact}%", escape="\\"), 1),
-                        else_=2,
-                    ),
-                    func.length(Game.title),
-                    Game.title,
-                )
-                .offset(offset)
-                .limit(GAME_SEARCH_PAGE_SIZE + 1)
-            ).all()
-            has_more = len(rows) > GAME_SEARCH_PAGE_SIZE
-            page_games = rows[:GAME_SEARCH_PAGE_SIZE]
-            ratings = _community_rating_map(session, [game.id for game in page_games])
-            return {
-                "items": [_game_payload(game, ratings.get(game.id)) for game in page_games],
-                "hasMore": has_more,
-                "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
-            }
+            return _local_game_search(session, query, offset)
 
     if offset >= 10000:
         return {"items": [], "hasMore": False, "nextOffset": None}
 
-    # Only an explicit user action triggers this external request. The
-    # returned games are written to PostgreSQL and shared by later searches.
+    # External search runs after an empty local search or a manual deep search.
+    # Cache the results in PostgreSQL for future local queries.
     client_id, token = _igdb_access_token()
 
-    name_filter_groups = []
-    for tokens in query_variants:
-        escaped_tokens = [
-            token.replace("\\", "\\\\").replace('"', '\\"')
-            for token in tokens[:6]
-        ]
-        name_filter_groups.append(
-            "(" + " & ".join(f'name ~ *"{token}"*' for token in escaped_tokens) + ")"
-        )
-    name_filters = " | ".join(name_filter_groups)
-
-    body = (
-        "fields id,name,game_type,first_release_date,rating,rating_count,"
-        "total_rating_count,hypes,cover.image_id,"
-        "genres.name,platforms.name,involved_companies.developer,"
-        "involved_companies.company.name; "
-        f"where ({name_filters}) & version_parent = null; "
-        "sort total_rating_count desc; "
-        f"limit {GAME_SEARCH_PAGE_SIZE + 1}; "
-        f"offset {offset};"
-    )
+    body = _igdb_search_body(query, offset)
 
     try:
         response = httpx.post(
@@ -1042,10 +1007,76 @@ def search_games(
     if not isinstance(rows, list):
         return {"items": [], "hasMore": False, "nextOffset": None}
 
+    # If IGDB's title search misses, its /search index also includes
+    # alternative-name records pointing back to the parent game.
+    if not rows and offset == 0:
+        escaped = json.dumps(query.replace(";", " "), ensure_ascii=False)[1:-1]
+        try:
+            alias_response = httpx.post(
+                "https://api.igdb.com/v4/search",
+                headers={
+                    "Client-ID": client_id,
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+                content=f'fields game,alternative_name,name; search "{escaped}"; where game != null; limit 20;',
+                timeout=12.0,
+            )
+            alias_response.raise_for_status()
+            matches = alias_response.json()
+            matches = matches if isinstance(matches, list) else []
+            ids = list(dict.fromkeys(
+                int(item["game"]) for item in matches
+                if isinstance(item, dict) and isinstance(item.get("game"), int)
+            ))[:20]
+            if ids:
+                detail_response = httpx.post(
+                    "https://api.igdb.com/v4/games",
+                    headers={
+                        "Client-ID": client_id,
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                    },
+                    content=(
+                        "fields id,name,first_release_date,rating,rating_count,"
+                        "total_rating_count,hypes,cover.image_id,alternative_names.name,"
+                        "genres.name,platforms.name,involved_companies.developer,"
+                        "involved_companies.company.name; "
+                        f"where id = ({','.join(map(str, ids))}) & version_parent = null; limit 20;"
+                    ),
+                    timeout=12.0,
+                )
+                detail_response.raise_for_status()
+                candidate_rows = detail_response.json()
+                if isinstance(candidate_rows, list):
+                    rows = candidate_rows
+        except (httpx.HTTPError, ValueError):
+            # IGDB fallback is best-effort; a failed alias lookup must not
+            # make the original (valid) empty search into an API error.
+            pass
+
     has_more = len(rows) > GAME_SEARCH_PAGE_SIZE and offset + GAME_SEARCH_PAGE_SIZE < 10000
-    # IGDB's popularity sort gives a stable page order. Persist the complete
-    # displayed page before responding, making it searchable by future users.
-    page_rows = rows[:GAME_SEARCH_PAGE_SIZE]
+    # IGDB first selects textually similar candidates. Within the returned
+    # page, prioritize exact titles/aliases and use popularity to break ties.
+    # Pagination remains tied to IGDB's offset, not our database.
+    normalized = _normalized_search_text(query)
+
+    def page_rank(row: dict[str, object]) -> tuple[int, float]:
+        names = [str(row.get("name") or "")]
+        names.extend(
+            str(alt.get("name") or "") for alt in row.get("alternative_names") or []
+            if isinstance(alt, dict)
+        )
+        names = [_normalized_search_text(name) for name in names]
+        exact = int(normalized in names)
+        prefix = int(any(name.startswith(normalized) for name in names))
+        popularity = math.log1p(max(
+            int(row.get("total_rating_count") or 0),
+            int(row.get("rating_count") or 0),
+        )) + math.log1p(int(row.get("hypes") or 0)) * 0.65
+        return (exact * 2 + prefix, popularity)
+
+    page_rows = sorted(rows[:GAME_SEARCH_PAGE_SIZE], key=page_rank, reverse=True)
     cached = _cache_igdb_games(page_rows) if page_rows else []
     return {
         "items": cached,

@@ -1,28 +1,15 @@
-"""Search aliases and unreleased-game caching for the RateApp catalog."""
+"""PostgreSQL fuzzy search, IGDB alternative names, and future releases."""
 import secrets
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from api import index
-
-
-class SearchVariantsTests(unittest.TestCase):
-    def test_gta_6_and_gta6_include_official_title(self):
-        for query in ("GTA 6", "gta6", "GTA VI"):
-            with self.subTest(query=query):
-                variants = index._search_query_variants(query)
-                self.assertIn(["grand", "theft", "auto", "vi"], variants)
-
-    def test_witcher_4_matches_roman_numeral(self):
-        self.assertIn(["witcher", "iv"], index._search_query_variants("Witcher 4"))
-        self.assertIn(["the", "witcher", "4"], index._search_query_variants("The Witcher IV"))
-
-    def test_keeps_numeric_tokens(self):
-        self.assertIn(["witcher", "3"], index._search_query_variants("Witcher 3"))
-        self.assertIn(["grand", "theft", "auto", "6"], index._search_query_variants("GTA 6"))
+from api.database import SessionLocal
+from api.models import Game, GameAlias
 
 
 class SearchApiTests(unittest.TestCase):
@@ -40,63 +27,123 @@ class SearchApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
-    def test_upcoming_gta_can_be_discovered_and_searched_locally(self):
+    def search(self, query, source="local"):
+        response = self.client.get("/api/games/search", params={"q": query, "source": source})
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["items"]
+
+    def insert_game(self, title, *, alt=None, popularity=0, hype=0, offset=0):
+        with SessionLocal() as session:
+            game = Game(
+                igdb_id=self.game_id + offset, title=title,
+                popularity_count=popularity, hype_count=hype,
+            )
+            session.add(game)
+            session.flush()
+            for name in alt or []:
+                session.add(GameAlias(game_id=game.id, name=name))
+            session.commit()
+
+    def test_fuzzy_typo_matching_happens_in_postgresql(self):
+        self.insert_game("The Witcher IV")
+        self.assertIn(self.game_id, [item["id"] for item in self.search("The Witcer IV")])
+
+    def test_witcher_number_is_not_hardcoded(self):
+        self.insert_game("The Witcher IV", alt=["Witcher 4"])
+        self.assertIn(self.game_id, [item["id"] for item in self.search("Witcher 4")])
+        self.assertFalse(hasattr(index, "_search_query_variants"))
+
+    def test_source_alternative_names_match_acronyms(self):
+        self.insert_game("Grand Theft Auto VI", alt=["GTA 6"])
+        self.assertIn(self.game_id, [item["id"] for item in self.search("GTA 6")])
+
+    def test_popularity_breaks_equally_relevant_titles(self):
+        self.insert_game("Starfall Orbit", popularity=2)
+        self.insert_game("Starfall Orbits", popularity=1000, offset=1)
+        hits = self.search("Starfall Orbit")
+        self.assertEqual(hits[0]["id"], self.game_id)  # exact title always wins
+        # Equal-quality matches use the cached IGDB popularity.
+        self.insert_game("Orbit Starfall", popularity=1500, offset=2)
+        fuzzy = self.search("Starfall Orb")
+        self.assertEqual(fuzzy[0]["id"], self.game_id + 1)
+
+    def test_future_igdb_game_is_cached_with_real_alternatives(self):
         release_epoch = int(datetime(2031, 5, 26, tzinfo=timezone.utc).timestamp())
         captured = []
 
         def fake_igdb(url, *, headers, content, timeout):
             captured.append(content)
             self.assertEqual(url, "https://api.igdb.com/v4/games")
-            self.assertIn('name ~ *"grand"*', content)
-            self.assertIn('name ~ *"theft"*', content)
-            self.assertIn('name ~ *"auto"*', content)
-            self.assertIn('name ~ *"vi"*', content)
-            self.assertIn("version_parent = null", content)
+            self.assertIn('search "GTA 6"', content)
+            self.assertIn("alternative_names.name", content)
+            self.assertNotIn('name ~ *"grand"*', content)
 
             class Response:
                 status_code = 200
-
                 def raise_for_status(self):
-                    return None
-
+                    pass
                 def json(inner_self):
                     return [{
                         "id": self.game_id,
                         "name": "Grand Theft Auto VI",
                         "first_release_date": release_epoch,
+                        "total_rating_count": 100,
+                        "alternative_names": [{"name": "GTA 6"}, {"name": "GTA VI"}],
                         "cover": {"image_id": "testcover"},
-                        "genres": [{"name": "Action"}],
-                        "platforms": [{"name": "PC"}],
                     }]
-
             return Response()
 
         with patch.object(index, "_igdb_access_token", return_value=("client", "token")):
             with patch.object(index.httpx, "post", side_effect=fake_igdb):
-                response = self.client.get("/api/games/search", params={"q": "GTA 6", "source": "igdb"})
-
-        self.assertEqual(response.status_code, 200, response.text)
-        items = response.json()["items"]
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["title"], "Grand Theft Auto VI")
-        self.assertEqual(items[0]["releaseDate"], "2031-05-26")
+                results = self.search("GTA 6", "igdb")
+        self.assertEqual(results[0]["title"], "Grand Theft Auto VI")
+        self.assertEqual(results[0]["releaseDate"], "2031-05-26")
         self.assertEqual(len(captured), 1)
-
-        cached = self.client.get("/api/games/search", params={"q": "GTA 6", "source": "local"})
-        self.assertEqual(cached.status_code, 200, cached.text)
-        self.assertIn(self.game_id, [item["id"] for item in cached.json()["items"]])
-
-    def test_local_search_witcher_4_finds_roman_title(self):
-        from api.database import SessionLocal
-        from api.models import Game
-
+        self.assertIn(self.game_id, [game["id"] for game in self.search("GTA 6")])
         with SessionLocal() as session:
-            session.add(Game(igdb_id=self.game_id, title="The Witcher IV"))
-            session.commit()
+            game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
+            self.assertEqual(game.popularity_count, 100)
+            self.assertEqual(
+                set(session.scalars(select(GameAlias.name).where(GameAlias.game_id == game.id)).all()),
+                {"GTA 6", "GTA VI"},
+            )
 
-        response = self.client.get("/api/games/search", params={"q": "Witcher 4", "source": "local"})
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertIn(self.game_id, [item["id"] for item in response.json()["items"]])
+    def test_igdb_alternative_search_fallback_when_title_search_empty(self):
+        calls = []
+
+        class Response:
+            status_code = 200
+            def __init__(self, result):
+                self.result = result
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return self.result
+
+        def fake_igdb(url, *, headers, content, timeout):
+            calls.append((url, content))
+            if url.endswith("/search"):
+                self.assertIn('search "LocalAlias"', content)
+                return Response([{"game": self.game_id, "alternative_name": "LocalAlias"}])
+            if "where id =" in content:
+                return Response([{
+                    "id": self.game_id,
+                    "name": "Another Official Name",
+                    "alternative_names": [{"name": "LocalAlias"}],
+                }])
+            return Response([])
+
+        with patch.object(index, "_igdb_access_token", return_value=("client", "token")):
+            with patch.object(index.httpx, "post", side_effect=fake_igdb):
+                results = self.search("LocalAlias", "igdb")
+
+        self.assertEqual(results[0]["id"], self.game_id)
+        self.assertEqual(len(calls), 3)
+        self.assertIn(self.game_id, [game["id"] for game in self.search("LocalAlias")])
+
+    def test_search_without_matching_titles(self):
+        self.insert_game("Elephant Kingdom")
+        self.assertEqual(self.search("xxveryunlikelyname"), [])
 
 
 if __name__ == "__main__":
