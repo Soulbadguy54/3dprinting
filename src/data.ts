@@ -40,6 +40,8 @@ export type GameCollection = {
   title: string
   description: string
   mark: string
+  colorScheme?: string
+  iconData?: string | null
   isSystem?: boolean
 }
 

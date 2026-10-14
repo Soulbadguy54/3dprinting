@@ -1,4 +1,5 @@
 """Authenticated wishlist integration tests using the CI PostgreSQL database."""
+import base64
 import secrets
 import unittest
 
@@ -45,7 +46,7 @@ class WishlistApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.text)
             data = response.json()
             self.assertTrue(data["inWishlist"])
-            self.assertEqual(data["entry"]["status"], "wishlist")
+            self.assertEqual(data["entry"]["status"], "untracked")
             self.assertEqual(data["entry"]["collectionIds"].count(WISHLIST_SLUG), 1)
 
         library = self.client.get("/api/library").json()
@@ -111,6 +112,51 @@ class WishlistApiTests(unittest.TestCase):
             WISHLIST_SLUG,
             next(row for row in self.client.get("/api/library").json() if row["gameId"] == self.game_id)["collectionIds"],
         )
+
+
+    def test_collection_theme_icon_and_sort_order(self):
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+        )
+        icon = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        response = self.client.post("/api/collections", json={
+            "title": "Яблоко", "description": "Яркий список",
+            "colorScheme": "cyan", "iconData": icon,
+        })
+        self.assertEqual(response.status_code, 201, response.text)
+        created = response.json()
+        self.assertEqual(created["colorScheme"], "cyan")
+        self.assertEqual(created["iconData"], icon)
+
+        second = self.client.post("/api/collections", json={
+            "title": "Альфа", "colorScheme": "amber",
+        })
+        self.assertEqual(second.status_code, 201, second.text)
+        self.assertIsNone(second.json()["iconData"])
+
+        collections = self.client.get("/api/collections").json()
+        self.assertEqual(collections[0]["id"], WISHLIST_SLUG)
+        filtered = [row for row in collections if row["id"] in {created["id"], second.json()["id"]}]
+        self.assertEqual([row["title"] for row in filtered], ["Альфа", "Яблоко"])
+        self.assertEqual(filtered[1]["iconData"], icon)
+
+    def test_collection_upload_validation(self):
+        wrong_color = self.client.post("/api/collections", json={
+            "title": "Неверный цвет", "colorScheme": "unknown",
+        })
+        self.assertEqual(wrong_color.status_code, 422)
+
+        unsafe = self.client.post("/api/collections", json={
+            "title": "Небезопасный формат",
+            "iconData": "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+        })
+        self.assertEqual(unsafe.status_code, 422)
+
+        invalid_bytes = self.client.post("/api/collections", json={
+            "title": "Неверная картинка",
+            "iconData": "data:image/png;base64," + base64.b64encode(b"not-a-png").decode("ascii"),
+        })
+        self.assertEqual(invalid_bytes.status_code, 422)
 
     def test_different_user_cannot_see_wishlist(self):
         self.assertEqual(self.client.put(f"/api/library/{self.game_id}/wishlist").status_code, 200)
