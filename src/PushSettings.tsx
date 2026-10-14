@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 
 type PushConfig = { enabled: boolean; publicKey: string; devices: number }
 type PushState = { config: PushConfig; subscribed: boolean; permission: NotificationPermission }
@@ -93,6 +94,9 @@ export default function PushSettings({ user }: { user: string }) {
   const supported = supportsWebPush()
   const [state, setState] = useState<PushState | null>(null)
   const [busy, setBusy] = useState(false)
+  const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
+  const pendingRef = useRef(false)
+  const shouldReduceMotion = useReducedMotion()
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -114,25 +118,45 @@ export default function PushSettings({ user }: { user: string }) {
     }
   }, [user])
 
-  const enabled = state?.subscribed === true && state.permission === 'granted'
-  const toggle = async () => {
-    if (!state?.config.enabled || !supported || busy) return
+  const confirmedEnabled = state?.subscribed === true && state.permission === 'granted'
+  const enabled = optimisticEnabled ?? confirmedEnabled
+
+  const toggle = () => {
+    if (!state?.config.enabled || !supported || pendingRef.current) return
+    const next = !enabled
+
+    // The user action updates the visual state before the network/OS flow.
+    // The browser push permission dialog must still be requested on this click.
+    pendingRef.current = true
     setBusy(true)
+    setOptimisticEnabled(next)
     setMessage('')
-    try {
-      if (enabled) {
-        await disconnectPushForLogout()
-      } else {
-        await enablePush(state.config.publicKey)
+
+    void (async () => {
+      try {
+        if (next) await enablePush(state.config.publicKey)
+        else await disconnectPushForLogout()
+
+        rememberChoice(user)
+        // Keep the success state even if a later configuration refresh fails.
+        setState((previous) => previous && ({
+          ...previous,
+          subscribed: next,
+          permission: supported ? Notification.permission : 'default',
+        }))
+        const latest = await readPushState().catch(() => null)
+        if (latest) setState(latest)
+      } catch (error) {
+        // Roll back the optimistic state on a failed request or denied permission.
+        const latest = await readPushState().catch(() => null)
+        if (latest) setState(latest)
+        setMessage(error instanceof Error ? error.message : 'Не удалось изменить настройки.')
+      } finally {
+        setOptimisticEnabled(null)
+        pendingRef.current = false
+        setBusy(false)
       }
-      rememberChoice(user)
-      setState(await readPushState())
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не удалось изменить настройки.')
-      setState(await readPushState().catch(() => state))
-    } finally {
-      setBusy(false)
-    }
+    })()
   }
 
   const iosHelp = /iPad|iPhone|iPod/.test(navigator.userAgent)
@@ -153,10 +177,30 @@ export default function PushSettings({ user }: { user: string }) {
           role="switch"
           aria-label="Уведомления о выходе игр"
           aria-checked={enabled}
+          aria-busy={busy}
+          data-pending={busy}
           disabled={!supported || !state?.config.enabled || busy}
-          onClick={() => { void toggle() }}
+          onClick={toggle}
         >
-          <span className="push-switch__track"><span className="push-switch__thumb" /></span>
+          <motion.span
+            className="push-switch__track"
+            initial={false}
+            animate={{
+              backgroundColor: enabled ? '#8cf27d' : '#424753',
+              borderColor: enabled ? '#8cf27d' : 'rgba(255,255,255,.22)',
+            }}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: .2, ease: 'easeOut' }}
+          >
+            <motion.span
+              className="push-switch__thumb"
+              initial={false}
+              animate={{
+                x: enabled ? 20 : 0,
+                backgroundColor: enabled ? '#121816' : '#ffffff',
+              }}
+              transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 31 }}
+            />
+          </motion.span>
         </button>
       </div>
       {!supported && <p className="push-settings__note">{iosHelp}</p>}
