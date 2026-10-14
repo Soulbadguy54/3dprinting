@@ -2318,7 +2318,7 @@ function App() {
                     className={addCollectionIds.includes(collection.id) ? 'collection-choice collection-choice--active' : 'collection-choice'}
                     onClick={() => toggleAddCollection(collection.id)}
                   >
-                    <b>{collection.mark}</b>
+                    <b style={collectionThemeStyle(collection)}><CollectionIcon collection={collection} size={17} /></b>
                     <span>{collection.title}</span>
                   </button>
                 ))}
