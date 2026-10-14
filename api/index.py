@@ -1312,9 +1312,22 @@ def delete_collection(collection_id: str, request: Request) -> Response:
         if collection.is_system or collection.slug == WISHLIST_SLUG:
             raise HTTPException(status_code=403, detail="Системную коллекцию удалить нельзя.")
 
+        previous_entries = session.scalars(
+            select(UserGame)
+            .join(CollectionGame, CollectionGame.user_game_id == UserGame.id)
+            .where(CollectionGame.collection_id == collection.id, UserGame.user_id == user.id)
+        ).all()
         session.execute(
             delete(CollectionGame).where(CollectionGame.collection_id == collection.id)
         )
+        session.flush()
+        for entry in previous_entries:
+            if entry.status in {"untracked", "wishlist"}:
+                other_membership = session.scalar(
+                    select(CollectionGame.id).where(CollectionGame.user_game_id == entry.id).limit(1)
+                )
+                if other_membership is None:
+                    session.delete(entry)
         session.delete(collection)
         session.commit()
     return Response(status_code=204)
