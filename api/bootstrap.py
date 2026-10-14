@@ -103,6 +103,15 @@ def initialize_database() -> None:
         connection.exec_driver_sql(
             "ALTER TABLE collections ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE"
         )
+        connection.exec_driver_sql(
+            "ALTER TABLE collections ADD COLUMN IF NOT EXISTS color_scheme VARCHAR(24) NOT NULL DEFAULT 'violet'"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE collections ADD COLUMN IF NOT EXISTS icon_data TEXT"
+        )
+        connection.exec_driver_sql(
+            "UPDATE collections SET color_scheme = 'rose' WHERE slug = 'wishlist' AND color_scheme = 'violet'"
+        )
         # A stable slug is the identity of the protected system collection.
         # This fixes any preexisting row with that slug without duplicating it.
         connection.exec_driver_sql(
