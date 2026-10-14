@@ -672,6 +672,13 @@ function App() {
   const [removedCollectionGameIds, setRemovedCollectionGameIds] = useState<number[]>([])
   const [collectionEditBusy, setCollectionEditBusy] = useState(false)
   const [collectionEditError, setCollectionEditError] = useState('')
+
+  // Navigating away always discards any uncommitted collection draft.
+  useEffect(() => {
+    setEditingCollectionId(null)
+    setRemovedCollectionGameIds([])
+    setCollectionEditError('')
+  }, [selectedCollectionId])
   const [collectionSaving, setCollectionSaving] = useState(false)
   const [collectionError, setCollectionError] = useState('')
 
