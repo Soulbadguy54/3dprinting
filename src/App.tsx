@@ -868,8 +868,16 @@ function App() {
     [entries],
   )
 
+  // A wishlist-only record belongs to «Хочу пройти», not to «Мои игры».
+  // Keep it in entries so collection membership, detail actions and release
+  // notifications continue to work as before.
+  const personalLibraryEntries = useMemo(
+    () => entries.filter((entry) => entry.status !== 'wishlist'),
+    [entries],
+  )
+
   const availableGenres = useMemo(() => {
-    const libraryGameIds = new Set(entries.map((entry) => entry.gameId))
+    const libraryGameIds = new Set(personalLibraryEntries.map((entry) => entry.gameId))
     return Array.from(
       new Set(
         catalogGames
@@ -877,18 +885,18 @@ function App() {
           .flatMap((game) => game.genres),
       ),
     ).sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [entries, catalogGames])
+  }, [personalLibraryEntries, catalogGames])
 
   const availablePlatforms = useMemo(() => {
     return Array.from(
-      new Set(entries.map((entry) => entry.platform).filter((platform): platform is string => Boolean(platform))),
+      new Set(personalLibraryEntries.map((entry) => entry.platform).filter((platform): platform is string => Boolean(platform))),
     ).sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [entries])
+  }, [personalLibraryEntries])
 
   const libraryGames = useMemo(() => {
     const normalized = query.trim().toLowerCase()
 
-    const result = entries
+    const result = personalLibraryEntries
       .filter((entry) => statusFilters.length === 0 || statusFilters.includes(entry.status))
       .map((entry) => ({ entry, game: catalogGames.find((game) => game.id === entry.gameId)! }))
       .filter(({ game, entry }) => {
@@ -922,7 +930,7 @@ function App() {
       const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
       return dateB.localeCompare(dateA)
     })
-  }, [entries, query, statusFilters, genreFilter, platformFilter, sortMode, catalogGames])
+  }, [personalLibraryEntries, query, statusFilters, genreFilter, platformFilter, sortMode, catalogGames])
 
   const activeExtraFilters =
     (genreFilter !== 'all' ? 1 : 0) +
@@ -1444,17 +1452,20 @@ function App() {
           </button>
           <div className="detail-toolbar__actions">
             {canWish && (
-              <button
-              type="button"
-              className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
-              onClick={() => { void toggleWishlist(selectedGame) }}
-              disabled={wishlistBusyGameId === selectedGame.id}
-              aria-pressed={isWished}
-              aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
-              title={isWished ? 'Убрать из «Хочу пройти»' : 'Хочу пройти'}
-            >
-              <Icon name="bookmark" size={19} />
-              </button>
+              <motion.button
+                type="button"
+                className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
+                onClick={() => { void toggleWishlist(selectedGame) }}
+                disabled={wishlistBusyGameId === selectedGame.id}
+                aria-pressed={isWished}
+                aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
+                title={isWished ? 'В «Хочу пройти» — нажми, чтобы убрать' : 'Добавить в «Хочу пройти»'}
+                whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
+                transition={{ type: 'spring', stiffness: 460, damping: 27 }}
+              >
+                <Icon name="bookmark" size={19} />
+                {isWished && <span className="detail-catalog-icon__wish-check" aria-hidden="true"><Icon name="check" size={10} /></span>}
+              </motion.button>
             )}
             {selectedEntry ? (
               <>
@@ -1491,7 +1502,7 @@ function App() {
 
         <section className="detail-hero">
           <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
-            <Cover game={selectedGame} markers={gameCollections} priority />
+            <Cover game={selectedGame} markers={gameCollections.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID)} priority />
           </div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>

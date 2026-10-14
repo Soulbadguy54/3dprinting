@@ -1359,26 +1359,46 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: linear-gradient(145deg, #242936, #11141c);
 }
 .detail-catalog-icon--wish {
-  color: #d5b5ff;
+  position: relative;
+  color: #c8a3f8;
   cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
-.detail-catalog-icon--wish:hover {
+.detail-catalog-icon--wish:not(.detail-catalog-icon--wish-active):hover {
   border-color: rgba(213, 181, 255, .55);
   background: rgba(160, 107, 236, .13);
 }
+/* A solid filled action with a check is immediately distinguishable from
+   the neutral bookmark, without relying on color alone. */
 .detail-catalog-icon--wish-active {
-  color: #e6ccff;
-  border-color: rgba(202, 149, 255, .70);
-  background: linear-gradient(145deg, rgba(166, 106, 236, .26), rgba(96, 59, 148, .16));
-  box-shadow: 0 0 0 1px rgba(201, 150, 252, .1), 0 0 22px rgba(150, 88, 223, .10);
+  color: #28193e;
+  border: 1px solid #e1c4ff;
+  background: linear-gradient(140deg, #d7b9ff, #b284fa);
+  box-shadow: 0 3px 14px rgba(166, 106, 236, .34), inset 0 1px 0 rgba(255,255,255,.45);
 }
-.detail-catalog-icon--wish-active svg {
-  fill: rgba(197, 145, 255, .36);
+.detail-catalog-icon--wish-active > svg {
+  fill: #41285f;
+  stroke: #41285f;
 }
-.detail-catalog-icon--wish:active {
-  transform: scale(.94);
+.detail-catalog-icon--wish-active:hover {
+  border-color: #f5e9ff;
+  background: linear-gradient(140deg, #e2caff, #c29aff);
+  box-shadow: 0 4px 19px rgba(166, 106, 236, .44);
 }
+.detail-catalog-icon__wish-check {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  color: #f3eaff;
+  background: #42245e;
+  border: 2px solid #161923;
+  border-radius: 50%;
+}
+.detail-catalog-icon__wish-check svg { stroke-width: 2.8; }
 .detail-catalog-icon--wish:focus-visible,
 .detail-catalog-icon--add:focus-visible {
   outline: 2px solid var(--accent);
@@ -2498,20 +2518,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .push-switch__track {
   display: block; position: relative; width: 48px; height: 28px; border-radius: 30px;
   border: 1px solid rgba(255,255,255,.22); background: #424753;
-  transition: background .2s ease, border-color .2s ease;
 }
 .push-switch__thumb {
   position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
   border-radius: 50%; background: #fff; box-shadow: 0 2px 5px #0005;
-  transition: transform .2s cubic-bezier(.2,.7,.2,1);
 }
-.push-switch[aria-checked="true"] .push-switch__track { background: #8cf27d; border-color: #8cf27d; }
-.push-switch[aria-checked="true"] .push-switch__thumb { transform: translateX(20px); background: #121816; }
 .push-switch:focus-visible { outline: 2px solid #b6a4ff; outline-offset: 1px; }
 .push-switch:disabled { opacity: .48; cursor: not-allowed; }
-@media (prefers-reduced-motion: reduce) {
-  .push-switch__thumb, .push-switch__track { transition: none; }
-}
+.push-switch:disabled[data-pending="true"] { opacity: 1; cursor: progress; }
 
 /* A one-time opt-in invitation, not an unsolicited browser permission prompt. */
 .push-invite__backdrop {
