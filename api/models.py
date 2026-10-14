@@ -51,12 +51,23 @@ class Game(Base):
     cover_url: Mapped[str | None] = mapped_column(String(1000))
     release_date: Mapped[date | None] = mapped_column(Date)
     igdb_rating: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    popularity_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    hype_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     developer: Mapped[str | None] = mapped_column(String(255))
     genres_json: Mapped[str | None] = mapped_column(Text)
     platforms_json: Mapped[str | None] = mapped_column(Text)
     details_json: Mapped[str | None] = mapped_column(Text)
     details_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GameAlias(Base):
+    __tablename__ = "game_aliases"
+    __table_args__ = (UniqueConstraint("game_id", "name", name="uq_game_alias"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
 class UserGame(Base):

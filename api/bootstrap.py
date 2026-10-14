@@ -58,6 +58,21 @@ def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
 
     with engine.begin() as connection:
+        # Neon/PostgreSQL ships pg_trgm; the extension indexes typo-tolerant
+        # lookups against both canonical and IGDB alternative game titles.
+        connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS popularity_count INTEGER NOT NULL DEFAULT 0"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE games ADD COLUMN IF NOT EXISTS hype_count INTEGER NOT NULL DEFAULT 0"
+        )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_games_title_trgm ON games USING gin (lower(title) gin_trgm_ops)"
+        )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_game_aliases_name_trgm ON game_aliases USING gin (lower(name) gin_trgm_ops)"
+        )
         connection.exec_driver_sql(
             "ALTER TABLE games ADD COLUMN IF NOT EXISTS developer VARCHAR(255)"
         )
