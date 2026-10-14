@@ -1228,9 +1228,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   place-items: center;
   border-radius: 9px;
   color: #0b0d12;
-  background: #69717e;
+  background: var(--collection-accent, #69717e);
   font-size: 8px;
+  overflow: hidden;
 }
+.collection-choice b svg { display: block; }
 .collection-choice span {
   overflow: hidden;
   font-size: 9px;
@@ -1243,7 +1245,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: rgba(140, 242, 125, .35);
   background: var(--accent-soft);
 }
-.collection-choice--active b { background: var(--accent); }
+.collection-choice--active b { background: var(--collection-accent, var(--accent)); }
 .primary-button {
   width: 100%;
   margin-top: 20px;
