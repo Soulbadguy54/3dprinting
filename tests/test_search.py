@@ -18,7 +18,7 @@ class SearchVariantsTests(unittest.TestCase):
 
     def test_witcher_4_matches_roman_numeral(self):
         self.assertIn(["witcher", "iv"], index._search_query_variants("Witcher 4"))
-        self.assertIn(["witcher", "4"], index._search_query_variants("The Witcher IV"))
+        self.assertIn(["the", "witcher", "4"], index._search_query_variants("The Witcher IV"))
 
     def test_keeps_numeric_tokens(self):
         self.assertIn(["witcher", "3"], index._search_query_variants("Witcher 3"))
