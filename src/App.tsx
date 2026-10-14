@@ -11,6 +11,8 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
+import EmojiPicker, { Emoji as RenderEmoji, EmojiStyle, Theme } from 'emoji-picker-react'
+import russianEmojis from 'emoji-picker-react/dist/data/emojis-ru'
 import PushSettings, { PushOnboarding, disconnectPushForLogout } from './PushSettings'
 import {
   games,
@@ -168,60 +170,101 @@ function collectionThemeStyle(collection: GameCollection): CSSProperties {
   } as CSSProperties
 }
 
-function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
-  if (collection.iconData) {
-    return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
-  }
-  return <Icon name={collection.id === WISHLIST_COLLECTION_ID ? 'bookmark' : 'layers'} size={size} />
+function emojiUnified(emoji: string): string {
+  return Array.from(emoji).map((character) => character.codePointAt(0)!.toString(16)).join('-')
 }
 
-// All files are rasterized into a small, square icon before upload.
-// Transparent images are kept transparent if the browser supports WebP.
-async function resizeCollectionIcon(file: File): Promise<string> {
-  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
-    throw new Error('Выбери PNG, JPEG, WebP или GIF.')
+function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
+  const emoji = collection.emoji || (collection.id === WISHLIST_COLLECTION_ID ? '🎁' : '🗂️')
+  if (!collection.emoji && collection.iconData) {
+    return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
   }
-  if (file.size > 10 * 1024 * 1024) {
-    throw new Error('Изображение должно быть меньше 10 МБ.')
-  }
+  return <RenderEmoji unified={emojiUnified(emoji)} size={size} emojiStyle={EmojiStyle.TWITTER} />
+}
 
-  const url = URL.createObjectURL(file)
-  try {
-    const img = new Image()
-    img.src = url
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Не удалось прочитать изображение.'))
-    })
-    if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 40_000_000) {
-      throw new Error('Слишком большое разрешение изображения.')
-    }
+const POPULAR_COLLECTION_EMOJIS = ['🎮', '🏆', '💎', '🔥', '⭐', '🎯', '🎁', '💜', '🕹️', '👑', '🚀', '🌌']
 
-    for (const size of [256, 192, 160, 128]) {
-      const canvas = document.createElement('canvas')
-      canvas.width = canvas.height = size
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('Не удалось подготовить иконку.')
-      const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight)
-      const width = Math.round(img.naturalWidth * scale)
-      const height = Math.round(img.naturalHeight * scale)
-      context.drawImage(img, (size - width) / 2, (size - height) / 2, width, height)
-
-      for (const quality of [.82, .66, .5, .35]) {
-        let data = canvas.toDataURL('image/webp', quality)
-        if (!data.startsWith('data:image/webp;')) {
-          context.globalCompositeOperation = 'destination-over'
-          context.fillStyle = '#171a22'
-          context.fillRect(0, 0, size, size)
-          data = canvas.toDataURL('image/jpeg', quality)
-        }
-        if (data.length <= 140000) return data
-      }
-    }
-    throw new Error('Не получилось уменьшить иконку. Попробуй другое изображение.')
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+function CollectionAppearanceEditor({
+  colorScheme, emoji, onColorChange, onEmojiChange,
+}: {
+  colorScheme: string
+  emoji: string
+  onColorChange: (value: string) => void
+  onEmojiChange: (value: string) => void
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  return (
+    <div className="collection-appearance-editor">
+      <div className="collection-create-field">
+        <span>Цветовая схема</span>
+        <div className="collection-color-grid" role="radiogroup" aria-label="Цветовая схема коллекции">
+          {COLLECTION_THEMES.map((theme) => (
+            <button
+              key={theme.id}
+              type="button"
+              role="radio"
+              aria-checked={colorScheme === theme.id}
+              aria-label={theme.name}
+              title={theme.name}
+              className={colorScheme === theme.id ? 'collection-color-swatch collection-color-swatch--selected' : 'collection-color-swatch'}
+              style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.shade})` }}
+              onClick={() => onColorChange(theme.id)}
+            >
+              {colorScheme === theme.id && <Icon name="check" size={18} />}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="collection-create-field">
+        <span>Иконка коллекции</span>
+        <div className="collection-emoji-preview-row">
+          <div
+            className="collection-icon-preview"
+            style={collectionThemeStyle({ id: 'preview', title: '', description: '', mark: '', colorScheme })}
+          >
+            <RenderEmoji unified={emojiUnified(emoji || '🎮')} size={36} emojiStyle={EmojiStyle.TWITTER} />
+          </div>
+          <button type="button" className="collection-emoji-open" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
+            <Icon name="sparkles" size={17} />
+            {pickerOpen ? 'Закрыть выбор' : 'Выбрать эмодзи'}
+          </button>
+        </div>
+        <div className="collection-emoji-quick" aria-label="Популярные эмодзи">
+          {POPULAR_COLLECTION_EMOJIS.map((item) => (
+            <button
+              type="button"
+              key={item}
+              className={emoji === item ? 'collection-emoji-quick__item collection-emoji-quick__item--selected' : 'collection-emoji-quick__item'}
+              onClick={() => onEmojiChange(item)}
+              aria-label={`Выбрать ${item}`}
+              aria-pressed={emoji === item}
+            >
+              <RenderEmoji unified={emojiUnified(item)} size={25} emojiStyle={EmojiStyle.TWITTER} />
+            </button>
+          ))}
+        </div>
+        {pickerOpen && (
+          <div className="collection-emoji-full-picker">
+            <EmojiPicker
+              theme={Theme.DARK}
+              emojiData={russianEmojis}
+              emojiStyle={EmojiStyle.TWITTER}
+              width="100%"
+              height={340}
+              lazyLoadEmojis
+              autoFocusSearch={false}
+              searchPlaceholder="Поиск эмодзи"
+              previewConfig={{ showPreview: false }}
+              onEmojiClick={(value) => {
+                onEmojiChange(value.emoji)
+                setPickerOpen(false)
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 const sortCollections = (items: GameCollection[]) =>
@@ -452,12 +495,12 @@ function Cover({
       {!game.coverUrl && <div className="cover__orb cover__orb--two" />}
       {!game.coverUrl && <span className="cover__noise" />}
       {!game.coverUrl && <span className="cover__glyph">{game.glyph}</span>}
-      {markers.length > 0 && (
+      {markers.some((collection) => collection.id !== WISHLIST_COLLECTION_ID) && (
         <span className="cover__markers" aria-label="Коллекции">
-          {markers.slice(0, 2).map((collection) => (
+          {markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).slice(0, 2).map((collection) => (
             <span className="collection-marker" style={collectionThemeStyle(collection)} key={collection.id}><CollectionIcon collection={collection} size={13} /></span>
           ))}
-          {markers.length > 2 && <span className="collection-marker">+{markers.length - 2}</span>}
+          {markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).length > 2 && <span className="collection-marker">+{markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).length - 2}</span>}
         </span>
       )}
     </div>
@@ -470,6 +513,7 @@ type GameCardProps = {
   collections: GameCollection[]
   onOpen: () => void
   animationIndex?: number
+  readOnly?: boolean
 }
 
 const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
@@ -478,10 +522,11 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   collections,
   onOpen,
   animationIndex = 0,
+  readOnly = false,
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
   void animationIndex
-  const markers = collections.filter((collection) => entry.collectionIds.includes(collection.id))
+  const markers = collections.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID && entry.collectionIds.includes(collection.id))
   const activityDate =
     entry.status === 'completed' && entry.completedAt
       ? entry.completedAt
@@ -494,6 +539,7 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
       ref={ref}
       layout="position"
       className="game-card"
+      disabled={readOnly}
       onClick={onOpen}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -616,12 +662,25 @@ function App() {
   const currentViewRef = useRef<AppView>(firstViewRef.current)
   const pendingScreenRestoreRef = useRef<AppHistoryEntry | null>(null)
   const libraryLastSnapshotRef = useRef<AppHistoryEntry | null>(null)
-  const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
   const [collectionTitle, setCollectionTitle] = useState('')
   const [collectionDescription, setCollectionDescription] = useState('')
   const [collectionColorScheme, setCollectionColorScheme] = useState('violet')
-  const [collectionIconData, setCollectionIconData] = useState<string | null>(null)
-  const [collectionIconLoading, setCollectionIconLoading] = useState(false)
+  const [collectionEmoji, setCollectionEmoji] = useState('🎮')
+  const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null)
+  const [editCollectionTitle, setEditCollectionTitle] = useState('')
+  const [editCollectionDescription, setEditCollectionDescription] = useState('')
+  const [editCollectionColor, setEditCollectionColor] = useState('violet')
+  const [editCollectionEmoji, setEditCollectionEmoji] = useState('🎮')
+  const [removedCollectionGameIds, setRemovedCollectionGameIds] = useState<number[]>([])
+  const [collectionEditBusy, setCollectionEditBusy] = useState(false)
+  const [collectionEditError, setCollectionEditError] = useState('')
+
+  // Navigating away always discards any uncommitted collection draft.
+  useEffect(() => {
+    setEditingCollectionId(null)
+    setRemovedCollectionGameIds([])
+    setCollectionEditError('')
+  }, [selectedCollectionId])
   const [collectionSaving, setCollectionSaving] = useState(false)
   const [collectionError, setCollectionError] = useState('')
 
@@ -1439,22 +1498,9 @@ function App() {
     }
   }
 
-  const uploadCollectionIcon = async (file?: File) => {
-    if (!file) return
-    setCollectionIconLoading(true)
-    setCollectionError('')
-    try {
-      setCollectionIconData(await resizeCollectionIcon(file))
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : 'Не удалось обработать изображение.')
-    } finally {
-      setCollectionIconLoading(false)
-    }
-  }
-
   const createCollection = async () => {
     const title = collectionTitle.trim()
-    if (!title || collectionSaving || collectionIconLoading) return
+    if (!title || collectionSaving) return
 
     setCollectionSaving(true)
     setCollectionError('')
@@ -1467,7 +1513,7 @@ function App() {
           title,
           description: collectionDescription.trim() || undefined,
           colorScheme: collectionColorScheme,
-          iconData: collectionIconData,
+          emoji: collectionEmoji,
         }),
       })
       const payload = await response.json().catch(() => null) as GameCollection | { detail?: string } | null
@@ -1485,14 +1531,94 @@ function App() {
       setCollectionTitle('')
       setCollectionDescription('')
       setCollectionColorScheme('violet')
-      setCollectionIconData(null)
-      setCollectionCreatorOpen(false)
+      setCollectionEmoji('🎮')
       navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null })
     } catch {
       setCollectionError('Не удалось создать коллекцию. Проверьте соединение.')
     } finally {
       setCollectionSaving(false)
     }
+  }
+
+
+  const startCollectionEdit = (collection: GameCollection) => {
+    setEditingCollectionId(collection.id)
+    setEditCollectionTitle(collection.title)
+    setEditCollectionDescription(collection.description)
+    setEditCollectionColor(collection.colorScheme ?? 'violet')
+    setEditCollectionEmoji(collection.emoji || (collection.id === WISHLIST_COLLECTION_ID ? '🎁' : '🗂️'))
+    setRemovedCollectionGameIds([])
+    setCollectionEditError('')
+  }
+
+  const cancelCollectionEdit = () => {
+    setEditingCollectionId(null)
+    setRemovedCollectionGameIds([])
+    setCollectionEditError('')
+  }
+
+  const saveCollectionEdit = async (collection: GameCollection) => {
+    if (collectionEditBusy || !editCollectionTitle.trim()) return
+    setCollectionEditBusy(true)
+    setCollectionEditError('')
+    try {
+      const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editCollectionTitle.trim(),
+          description: editCollectionDescription.trim(),
+          colorScheme: editCollectionColor,
+          emoji: editCollectionEmoji,
+          removedGameIds: removedCollectionGameIds,
+        }),
+      })
+      const payload = await response.json().catch(() => null) as {
+        collection?: GameCollection
+        library?: ApiLibraryEntry[]
+        detail?: string
+      } | null
+      if (!response.ok || !payload?.collection || !payload.library) {
+        throw new Error(payload?.detail || 'Не удалось сохранить изменения.')
+      }
+      setCollections((current) => sortCollections(current.map((item) =>
+        item.id === collection.id ? payload.collection! : item,
+      )))
+      setEntries(payload.library.map(normalizeEntry))
+      cancelCollectionEdit()
+    } catch (error) {
+      setCollectionEditError(error instanceof Error ? error.message : 'Не удалось сохранить изменения.')
+    } finally {
+      setCollectionEditBusy(false)
+    }
+  }
+
+  const deleteCollection = async (collection: GameCollection) => {
+    if (collection.isSystem) return
+    if (!window.confirm(`Удалить коллекцию «${collection.title}»? Игры и прохождения сохранятся.`)) return
+    try {
+      const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Не удалось удалить коллекцию.')
+      setCollections((current) => current.filter((item) => item.id !== collection.id))
+      setEntries((current) => current.flatMap((entry) => {
+        const ids = entry.collectionIds.filter((id) => id !== collection.id)
+        return !isPlaythrough(entry) && ids.length === 0 ? [] : [{ ...entry, collectionIds: ids }]
+      }))
+      cancelCollectionEdit()
+      navigateTo({ tab: 'collections', gameId: null, collectionId: null, formGameId: null }, { replace: true })
+    } catch {
+      window.alert('Не удалось удалить коллекцию. Попробуйте ещё раз.')
+    }
+  }
+
+  const openCollectionCreator = () => {
+    setCollectionTitle('')
+    setCollectionDescription('')
+    setCollectionColorScheme('violet')
+    setCollectionEmoji('🎮')
+    setCollectionError('')
+    cancelCollectionEdit()
+    navigateTo({ tab: 'collections', gameId: null, collectionId: 'new', formGameId: null })
   }
 
   const toggleAddCollection = (collectionId: string) => {
@@ -1574,6 +1700,7 @@ function App() {
     // regardless of which collections it belongs to.
     const canWish = selectedEntry?.status !== 'completed' && selectedEntry?.status !== 'playing'
     const isWished = Boolean(selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID))
+    const wishlistCollection = collections.find((collection) => collection.id === WISHLIST_COLLECTION_ID)
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
       : '—'
@@ -1604,6 +1731,7 @@ function App() {
               <motion.button
                 type="button"
                 className={`round-add detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
+                style={wishlistCollection ? collectionThemeStyle(wishlistCollection) : collectionThemeStyle({ id: WISHLIST_COLLECTION_ID, title: '', description: '', mark: '' })}
                 onClick={() => { void toggleWishlist(selectedGame) }}
                 aria-pressed={isWished}
                 aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
@@ -2430,62 +2558,22 @@ function App() {
   }
 
   const renderCollections = () => {
-    if (selectedCollectionId) {
-      const collection = collections.find((item) => item.id === selectedCollectionId)
-      if (!collection) return null
-      const collectionEntries = entries.filter((entry) => entry.collectionIds.includes(collection.id))
-
+    if (selectedCollectionId === 'new') {
       return (
-        <>
+        <div className="collection-create-screen">
           <header className="subpage-header">
-            <button className="icon-button" onClick={() => goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
-            <div>
-              <h1>{collection.title}</h1>
-            </div>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Вернуться к коллекциям"
+              onClick={() => goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })}
+            >
+              <Icon name="back" size={20} />
+            </button>
+            <div><h1>Новая коллекция</h1></div>
           </header>
-          <p className="page-lead">{collection.description}</p>
-          <div className="game-grid">
-            {collectionEntries.map((entry) => {
-              const game = catalogGames.find((item) => item.id === entry.gameId)!
-              return <GameCard key={game.id} game={game} entry={entry} collections={collections} onOpen={() => openGame(game.id)} />
-            })}
-          </div>
-        </>
-      )
-    }
 
-    return (
-      <>
-        <header className="topbar">
-          <div>
-            <h1>Коллекции</h1>
-          </div>
-          <button
-            className="round-add"
-            aria-label="Создать коллекцию"
-            onClick={() => {
-              setCollectionCreatorOpen((current) => !current)
-              setCollectionError('')
-            }}
-          >
-            <Icon name="plus" size={20} />
-          </button>
-        </header>
-
-        {collectionCreatorOpen && (
-          <section className="collection-create-card">
-            <div className="collection-create-card__heading">
-              <strong>Новая коллекция</strong>
-              <button
-                onClick={() => {
-                  setCollectionCreatorOpen(false)
-                  setCollectionError('')
-                }}
-              >
-                ×
-              </button>
-            </div>
-
+          <section className="collection-create-card collection-create-card--page">
             <label className="collection-create-field">
               <span>Название</span>
               <input
@@ -2496,7 +2584,6 @@ function App() {
                 autoFocus
               />
             </label>
-
             <label className="collection-create-field">
               <span>Описание <small>необязательно</small></span>
               <textarea
@@ -2507,93 +2594,220 @@ function App() {
                 placeholder="Коротко о том, что здесь собрано"
               />
             </label>
-
-            <div className="collection-create-field">
-              <span>Цветовая схема</span>
-              <div className="collection-color-grid" role="radiogroup" aria-label="Цветовая схема коллекции">
-                {COLLECTION_THEMES.map((theme) => (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={collectionColorScheme === theme.id}
-                    aria-label={theme.name}
-                    title={theme.name}
-                    className={collectionColorScheme === theme.id ? 'collection-color-swatch collection-color-swatch--selected' : 'collection-color-swatch'}
-                    style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.shade})` }}
-                    onClick={() => setCollectionColorScheme(theme.id)}
-                  >
-                    {collectionColorScheme === theme.id && <Icon name="check" size={18} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="collection-create-field">
-              <span>Иконка <small>необязательно</small></span>
-              <div className="collection-icon-picker">
-                <div
-                  className="collection-icon-preview"
-                  style={collectionThemeStyle({
-                    id: 'preview',
-                    title: collectionTitle,
-                    description: collectionDescription,
-                    mark: '',
-                    colorScheme: collectionColorScheme,
-                    iconData: collectionIconData,
-                  })}
-                >
-                  <CollectionIcon collection={{ id: 'preview', title: collectionTitle, description: '', mark: '', iconData: collectionIconData }} size={34} />
-                </div>
-                <div className="collection-icon-picker__controls">
-                  <label className="collection-icon-upload">
-                    {collectionIconLoading ? 'Обрабатываем…' : collectionIconData ? 'Заменить иконку' : 'Загрузить иконку'}
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      disabled={collectionIconLoading}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0]
-                        event.currentTarget.value = ''
-                        void uploadCollectionIcon(file)
-                      }}
-                    />
-                  </label>
-                  {collectionIconData && (
-                    <button type="button" className="collection-icon-remove" onClick={() => setCollectionIconData(null)}>Убрать</button>
-                  )}
-                  <small>PNG, JPG, WebP или GIF · до 10 МБ. Сожмём и впишем в 256×256 px.</small>
-                </div>
-              </div>
-            </div>
-
-            {collectionError && <p className="collection-create-error">{collectionError}</p>}
-
+            <CollectionAppearanceEditor
+              colorScheme={collectionColorScheme}
+              emoji={collectionEmoji}
+              onColorChange={setCollectionColorScheme}
+              onEmojiChange={setCollectionEmoji}
+            />
+            {collectionError && <p className="collection-create-error" role="alert">{collectionError}</p>}
             <button
               className="primary-button collection-create-submit"
               onClick={() => { void createCollection() }}
-              disabled={!collectionTitle.trim() || collectionSaving || collectionIconLoading}
+              disabled={!collectionTitle.trim() || collectionSaving}
             >
               {collectionSaving ? 'Создаём…' : 'Создать коллекцию'}
             </button>
           </section>
-        )}
+        </div>
+      )
+    }
 
-        {collections.length === 0 && !collectionCreatorOpen && (
+    if (selectedCollectionId) {
+      const collection = collections.find((item) => item.id === selectedCollectionId)
+      if (!collection) return null
+      const editing = editingCollectionId === collection.id
+      const draftCollection = editing
+        ? { ...collection, title: editCollectionTitle, description: editCollectionDescription, colorScheme: editCollectionColor, emoji: editCollectionEmoji, iconData: null }
+        : collection
+      const collectionEntries = entries.filter((entry) =>
+        entry.collectionIds.includes(collection.id) && (!editing || !removedCollectionGameIds.includes(entry.gameId)),
+      )
+
+      return (
+        <div className="collection-detail-page">
+          <header className="detail-toolbar collection-detail-toolbar">
+            <button
+              type="button"
+              className="icon-button detail-back"
+              aria-label="Вернуться к коллекциям"
+              onClick={() => {
+                if (editing) cancelCollectionEdit()
+                goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })
+              }}
+            >
+              <Icon name="back" size={20} />
+            </button>
+            <div className="detail-toolbar__actions">
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Отменить редактирование"
+                    title="Отменить"
+                    disabled={collectionEditBusy}
+                    onClick={cancelCollectionEdit}
+                  ><Icon name="close" size={19} /></button>
+                  <motion.button
+                    type="button"
+                    className="round-add collection-edit-save"
+                    aria-label="Сохранить изменения"
+                    title="Сохранить"
+                    disabled={collectionEditBusy || !editCollectionTitle.trim()}
+                    whileTap={shouldReduceMotion ? undefined : { scale: .93 }}
+                    onClick={() => { void saveCollectionEdit(collection) }}
+                  ><Icon name="check" size={21} /></motion.button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="icon-button detail-edit"
+                    title="Редактировать коллекцию"
+                    aria-label="Редактировать коллекцию"
+                    onClick={() => startCollectionEdit(collection)}
+                  ><Icon name="edit" size={19} /></button>
+                  {!collection.isSystem && (
+                    <button
+                      type="button"
+                      className="icon-button detail-delete"
+                      title="Удалить коллекцию"
+                      aria-label="Удалить коллекцию"
+                      onClick={() => { void deleteCollection(collection) }}
+                    ><Icon name="trash" size={19} /></button>
+                  )}
+                </>
+              )}
+            </div>
+          </header>
+
+          <section className="collection-detail-hero" style={collectionThemeStyle(draftCollection)}>
+            <div className="collection-detail-identity">
+              <span className="collection-detail-identity__icon"><CollectionIcon collection={draftCollection} size={45} /></span>
+              <div className="collection-detail-identity__text">
+                {editing ? (
+                  <label className="collection-create-field collection-detail-edit-title">
+                    <span>Название</span>
+                    <input
+                      value={editCollectionTitle}
+                      onChange={(event) => setEditCollectionTitle(event.target.value)}
+                      maxLength={100}
+                      placeholder="Название коллекции"
+                      autoFocus
+                    />
+                  </label>
+                ) : (
+                  <h1>{collection.title}</h1>
+                )}
+                <span className="collection-detail-count">{collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}</span>
+              </div>
+            </div>
+
+            {editing ? (
+              <>
+                <label className="collection-create-field">
+                  <span>Описание</span>
+                  <textarea
+                    value={editCollectionDescription}
+                    maxLength={500}
+                    rows={2}
+                    placeholder="Добавь описание коллекции"
+                    onChange={(event) => setEditCollectionDescription(event.target.value)}
+                  />
+                </label>
+                <CollectionAppearanceEditor
+                  colorScheme={editCollectionColor}
+                  emoji={editCollectionEmoji}
+                  onColorChange={setEditCollectionColor}
+                  onEmojiChange={setEditCollectionEmoji}
+                />
+              </>
+            ) : collection.description ? (
+              <p className="collection-detail-description">{collection.description}</p>
+            ) : null}
+          </section>
+
+          {editing && (
+            <div className="collection-edit-hint">
+              <span>Нажми <b>×</b> на игре, чтобы убрать её из коллекции. Данные прохождения сохранятся.</span>
+              {removedCollectionGameIds.length > 0 && (
+                <button type="button" onClick={() => setRemovedCollectionGameIds([])}>
+                  Вернуть удалённые ({removedCollectionGameIds.length})
+                </button>
+              )}
+            </div>
+          )}
+          {collectionEditError && <p className="collection-create-error" role="alert">{collectionEditError}</p>}
+          {collectionEntries.length ? (
+            <div className="game-grid collection-edit-grid">
+              {collectionEntries.flatMap((entry) => {
+                const game = catalogGames.find((item) => item.id === entry.gameId)
+                if (!game) return []
+                return [
+                  <div className={editing ? 'collection-edit-game collection-edit-game--active' : 'collection-edit-game'} key={game.id}>
+                    <GameCard
+                      game={game}
+                      entry={entry}
+                      collections={collections}
+                      readOnly={editing}
+                      onOpen={() => openGame(game.id)}
+                    />
+                    {editing && (
+                      <motion.button
+                        type="button"
+                        className="collection-edit-game__remove"
+                        aria-label={`Убрать «${game.title}» из коллекции`}
+                        title="Убрать из коллекции"
+                        whileTap={shouldReduceMotion ? undefined : { scale: .9 }}
+                        onClick={() => setRemovedCollectionGameIds((current) => [...current, game.id])}
+                        disabled={collectionEditBusy}
+                      ><Icon name="close" size={18} /></motion.button>
+                    )}
+                  </div>,
+                ]
+              })}
+            </div>
+          ) : (
+            <div className="empty-state collection-empty-state">
+              <strong>ПУСТО</strong>
+              <p>{editing ? 'Все игры убраны из черновика. Сохрани изменения галочкой.' : 'В коллекции пока нет игр.'}</p>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <>
+        <header className="topbar">
+          <div><h1>Коллекции</h1></div>
+          <button className="round-add" aria-label="Создать коллекцию" onClick={openCollectionCreator}>
+            <Icon name="plus" size={20} />
+          </button>
+        </header>
+        {collections.length === 0 && (
           <div className="empty-state collection-empty-state">
             <strong>Коллекций пока нет</strong>
-            <p>Создай первую — потом её можно будет выбрать при добавлении любой игры.</p>
-            <button onClick={() => setCollectionCreatorOpen(true)}>Создать коллекцию</button>
+            <p>Создай первую коллекцию.</p>
+            <button onClick={openCollectionCreator}>Создать коллекцию</button>
           </div>
         )}
-
         <section className="collection-grid">
           {sortCollections(collections).map((collection) => {
             const items = entries
               .filter((entry) => entry.collectionIds.includes(collection.id))
-              .map((entry) => catalogGames.find((game) => game.id === entry.gameId)!)
+              .flatMap((entry) => {
+                const game = catalogGames.find((candidate) => candidate.id === entry.gameId)
+                return game ? [game] : []
+              })
             return (
-              <button className="collection-card" key={collection.id} style={collectionThemeStyle(collection)} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
+              <button
+                className="collection-card"
+                key={collection.id}
+                style={collectionThemeStyle(collection)}
+                onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}
+              >
                 <div className="collection-card__mosaic">
                   {items.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
                   {items.length === 0 && <div className="collection-card__empty">ПУСТО</div>}

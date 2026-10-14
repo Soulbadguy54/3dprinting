@@ -79,6 +79,26 @@ class CollectionPayload(BaseModel):
     colorScheme: Literal["violet", "rose", "blue", "cyan", "teal",
                          "emerald", "lime", "amber", "orange", "slate"] = "violet"
     iconData: str | None = Field(default=None, max_length=150000)
+    emoji: str | None = Field(default=None, max_length=24)
+
+
+class CollectionEditPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    colorScheme: Literal["violet", "rose", "blue", "cyan", "teal",
+                         "emerald", "lime", "amber", "orange", "slate"]
+    emoji: str | None = Field(default=None, max_length=24)
+    removedGameIds: list[int] = Field(default_factory=list, max_length=500)
+
+
+def _validated_collection_emoji(value: str | None) -> str | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    # Allow Unicode emoji sequences (ZWJ, modifiers, variation selectors and flags), not arbitrary text.
+    if len(value) > 24 or not any(ord(ch) > 0x2000 for ch in value) or any(ord(ch) < 0x20 for ch in value):
+        raise HTTPException(status_code=422, detail="Выберите эмодзи из каталога.")
+    return value
 
 
 def _validated_collection_icon(value: str | None) -> str | None:
@@ -518,6 +538,7 @@ def _collections_payload(session, user: User) -> list[dict[str, object]]:
             "mark": row.mark or "",
             "colorScheme": row.color_scheme,
             "iconData": row.icon_data,
+            "emoji": row.emoji,
             "isSystem": row.is_system or row.slug == WISHLIST_SLUG,
         }
         for row in rows
@@ -1195,6 +1216,7 @@ def create_collection(payload: CollectionPayload, request: Request) -> dict[str,
             description=description or None,
             color_scheme=payload.colorScheme,
             icon_data=icon_data,
+            emoji=_validated_collection_emoji(payload.emoji),
         )
         session.add(collection)
         session.commit()
@@ -1206,7 +1228,72 @@ def create_collection(payload: CollectionPayload, request: Request) -> dict[str,
             "mark": collection.mark or "",
             "colorScheme": collection.color_scheme,
             "iconData": collection.icon_data,
+            "emoji": collection.emoji,
             "isSystem": False,
+        }
+
+
+
+@app.patch("/api/collections/{collection_id}")
+def update_collection(collection_id: str, payload: CollectionEditPayload, request: Request) -> dict[str, object]:
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Укажите название коллекции.")
+    emoji = _validated_collection_emoji(payload.emoji)
+    removed = set(payload.removedGameIds)
+
+    with _session() as session:
+        user = _current_user(request, session)
+        collection = session.scalar(
+            select(Collection).where(
+                Collection.user_id == user.id,
+                Collection.slug == collection_id,
+            )
+        )
+        if collection is None:
+            raise HTTPException(status_code=404, detail="Коллекция не найдена.")
+
+        collection.title = title
+        collection.description = (payload.description or "").strip() or None
+        collection.color_scheme = payload.colorScheme
+        collection.emoji = emoji
+        # Previous uploaded icons are superseded by the selected emoji.
+        collection.icon_data = None
+
+        if removed:
+            member_entries = session.scalars(
+                select(UserGame)
+                .join(CollectionGame, CollectionGame.user_game_id == UserGame.id)
+                .join(Game, Game.id == UserGame.game_id)
+                .where(
+                    CollectionGame.collection_id == collection.id,
+                    UserGame.user_id == user.id,
+                    Game.igdb_id.in_(removed),
+                )
+            ).all()
+            member_ids = [entry.id for entry in member_entries]
+            if member_ids:
+                session.execute(
+                    delete(CollectionGame).where(
+                        CollectionGame.collection_id == collection.id,
+                        CollectionGame.user_game_id.in_(member_ids),
+                    )
+                )
+                session.flush()
+                for entry in member_entries:
+                    if entry.status in {"wishlist", "untracked"}:
+                        other_membership = session.scalar(
+                            select(CollectionGame.id)
+                            .where(CollectionGame.user_game_id == entry.id)
+                            .limit(1)
+                        )
+                        if other_membership is None:
+                            session.delete(entry)
+
+        session.commit()
+        return {
+            "collection": next(row for row in _collections_payload(session, user) if row["id"] == collection_id),
+            "library": _library_payload(session, user),
         }
 
 
@@ -1225,9 +1312,22 @@ def delete_collection(collection_id: str, request: Request) -> Response:
         if collection.is_system or collection.slug == WISHLIST_SLUG:
             raise HTTPException(status_code=403, detail="Системную коллекцию удалить нельзя.")
 
+        previous_entries = session.scalars(
+            select(UserGame)
+            .join(CollectionGame, CollectionGame.user_game_id == UserGame.id)
+            .where(CollectionGame.collection_id == collection.id, UserGame.user_id == user.id)
+        ).all()
         session.execute(
             delete(CollectionGame).where(CollectionGame.collection_id == collection.id)
         )
+        session.flush()
+        for entry in previous_entries:
+            if entry.status in {"untracked", "wishlist"}:
+                other_membership = session.scalar(
+                    select(CollectionGame.id).where(CollectionGame.user_game_id == entry.id).limit(1)
+                )
+                if other_membership is None:
+                    session.delete(entry)
         session.delete(collection)
         session.commit()
     return Response(status_code=204)
