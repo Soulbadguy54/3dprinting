@@ -12,6 +12,7 @@ import {
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import EmojiPicker, { Emoji as RenderEmoji, EmojiStyle, Theme } from 'emoji-picker-react'
+import russianEmojis from 'emoji-picker-react/dist/data/emojis-ru'
 import PushSettings, { PushOnboarding, disconnectPushForLogout } from './PushSettings'
 import {
   games,
@@ -246,6 +247,7 @@ function CollectionAppearanceEditor({
           <div className="collection-emoji-full-picker">
             <EmojiPicker
               theme={Theme.DARK}
+              emojiData={russianEmojis}
               emojiStyle={EmojiStyle.TWITTER}
               width="100%"
               height={340}
