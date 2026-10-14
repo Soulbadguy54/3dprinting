@@ -118,9 +118,7 @@ def initialize_database() -> None:
         # A stable slug is the identity of the protected system collection.
         # This fixes any preexisting row with that slug without duplicating it.
         connection.exec_driver_sql(
-            "UPDATE collections SET is_system = TRUE, title = 'Хочу пройти', "
-            "description = 'Игры, которые планирую пройти.', mark = '♡' "
-            "WHERE slug = 'wishlist'"
+            "UPDATE collections SET is_system = TRUE WHERE slug = 'wishlist'"
         )
         # Backfill each user's collection, including existing accounts.
         # Migrate old wishlist entries only for newly created collections:
