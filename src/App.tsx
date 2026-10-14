@@ -11,6 +11,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
+import PushSettings, { disconnectPushForLogout } from './PushSettings'
 import {
   games,
   type Game,
@@ -2448,6 +2449,14 @@ function App() {
           </div>
         </section>
 
+        <PushSettings
+          user={authUser?.nickname ?? ''}
+          wishlistGames={entries
+            .filter((entry) => entry.collectionIds.includes(WISHLIST_COLLECTION_ID))
+            .map((entry) => catalogGames.find((game) => game.id === entry.gameId))
+            .filter((game): game is Game => Boolean(game))}
+        />
+
         <section className="info-card account-card">
           <span className="eyebrow">АККАУНТ</span>
           <h2>Вход и восстановление</h2>
@@ -2463,6 +2472,7 @@ function App() {
           <button
             className="logout-button"
             onClick={async () => {
+              try { await disconnectPushForLogout() } catch { /* Log out regardless of push API availability. */ }
               await fetch('/api/auth/logout', { method: 'POST' })
               setAuthUser(null)
               setEntries([])
