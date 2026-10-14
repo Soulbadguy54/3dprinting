@@ -1603,7 +1603,7 @@ function App() {
             {canWish && (
               <motion.button
                 type="button"
-                className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
+                className={`round-add detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
                 onClick={() => { void toggleWishlist(selectedGame) }}
                 aria-pressed={isWished}
                 aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
@@ -1644,7 +1644,7 @@ function App() {
             ) : (
               <button
                 type="button"
-                className="detail-catalog-icon detail-catalog-icon--add"
+                className="round-add detail-catalog-icon detail-catalog-icon--add"
                 onClick={() => startAdding(selectedGame)}
                 aria-label="Добавить игру в библиотеку"
                 title="Добавить игру"
@@ -1777,6 +1777,7 @@ function App() {
                   <button
                     type="button"
                     className="collection-card detail-collection-card"
+                    style={collectionThemeStyle(collection)}
                     key={collection.id}
                     onClick={() => navigateTo({
                       tab: 'collections',
@@ -1790,6 +1791,7 @@ function App() {
                       {collectionGames.slice(0, 4).map((game) => (
                         <Cover game={game} compact key={game.id} />
                       ))}
+                      {collectionGames.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
                     </div>
                     <div className="collection-card__footer">
                       <div className="detail-collection-card__label">
@@ -2310,7 +2312,7 @@ function App() {
             <div className="form-field">
               <span>Коллекции <small>необязательно</small></span>
               <div className="collection-choices">
-                {collections.map((collection) => (
+                {sortCollections(collections).map((collection) => (
                   <button
                     key={collection.id}
                     className={addCollectionIds.includes(collection.id) ? 'collection-choice collection-choice--active' : 'collection-choice'}
@@ -2442,9 +2444,6 @@ function App() {
             </div>
           </header>
           <p className="page-lead">{collection.description}</p>
-          {collection.isSystem && (
-            <p className="collection-system-label"><Icon name="lock" size={13} /> Системная коллекция — всегда доступна</p>
-          )}
           <div className="game-grid">
             {collectionEntries.map((entry) => {
               const game = catalogGames.find((item) => item.id === entry.gameId)!
@@ -2472,7 +2471,6 @@ function App() {
             <Icon name="plus" size={20} />
           </button>
         </header>
-        <p className="page-lead">Собирай игры в свои списки. Одна игра может быть сразу в нескольких коллекциях.</p>
 
         {collectionCreatorOpen && (
           <section className="collection-create-card">
@@ -2541,20 +2539,20 @@ function App() {
         )}
 
         <section className="collection-grid">
-          {collections.map((collection) => {
+          {sortCollections(collections).map((collection) => {
             const items = entries
               .filter((entry) => entry.collectionIds.includes(collection.id))
               .map((entry) => catalogGames.find((game) => game.id === entry.gameId)!)
             return (
-              <button className="collection-card" key={collection.id} title={collection.isSystem ? 'Системная коллекция — нельзя удалить' : undefined} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
+              <button className="collection-card" key={collection.id} style={collectionThemeStyle(collection)} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
                 <div className="collection-card__mosaic">
                   {items.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
-                  {items.length === 0 && <div className="collection-card__empty">{collection.mark}</div>}
+                  {items.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
                 </div>
                 <div className="collection-card__footer">
                   <div>
                     <strong>{collection.title}</strong>
-                    <span>{items.length} {items.length === 1 ? 'игра' : 'игр'}{collection.isSystem ? ' · системная' : ''}</span>
+                    <span>{items.length} {items.length === 1 ? 'игра' : 'игр'}</span>
                   </div>
                   <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
                 </div>
