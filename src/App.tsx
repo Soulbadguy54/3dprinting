@@ -145,6 +145,34 @@ type GameSearchPage = {
 type SearchSource = 'local' | 'igdb'
 const WISHLIST_COLLECTION_ID = 'wishlist'
 
+// Wishlist-only records hold collection membership, not a playthrough.
+const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
+  Boolean(entry && ['completed', 'playing', 'dropped'].includes(entry.status))
+
+// Apply membership optimistically while preserving all playthrough fields.
+function withWishlistMembership(entries: LibraryEntry[], gameId: number, enabled: boolean): LibraryEntry[] {
+  const entry = entries.find((item) => item.gameId === gameId)
+  if (!entry) {
+    if (!enabled) return entries
+    return [...entries, {
+      gameId,
+      status: 'untracked', // API placeholder, not a playthrough status.
+      collectionIds: [WISHLIST_COLLECTION_ID],
+      addedAt: new Date().toISOString().slice(0, 10),
+    }]
+  }
+
+  const collectionIds = enabled
+    ? Array.from(new Set([...entry.collectionIds, WISHLIST_COLLECTION_ID]))
+    : entry.collectionIds.filter((id) => id !== WISHLIST_COLLECTION_ID)
+  const others = entries.filter((item) => item.gameId !== gameId)
+  return !isPlaythrough(entry) && collectionIds.length === 0
+    ? others
+    : [...others, { ...entry, collectionIds }]
+}
+
+type WishlistUpdate = { desired: boolean; persisted: boolean; syncing: boolean }
+
 type GameStoreLink = {
   provider: string
   label: string
@@ -205,7 +233,8 @@ const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => 
 const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   completed: { label: 'Пройдено', short: 'Пройдено' },
   playing: { label: 'Прохожу', short: 'Прохожу' },
-  wishlist: { label: 'Хочу пройти', short: 'Хочу' },
+  wishlist: { label: 'В коллекции', short: 'В коллекции' },
+  untracked: { label: 'В коллекции', short: 'В коллекции' },
   dropped: { label: 'Дропнуто', short: 'Дропнуто' },
 }
 
@@ -213,6 +242,7 @@ const statusIcons: Record<LibraryStatus, IconName> = {
   completed: 'check',
   playing: 'play',
   wishlist: 'bookmark',
+  untracked: 'layers',
   dropped: 'close',
 }
 
@@ -394,11 +424,13 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
         {entry.score != null && (
           <span className="score-badge">{entry.score.toFixed(1)}</span>
         )}
-        <span className={`status-badge status-badge--${entry.status}`}>
-          <Icon name={statusIcons[entry.status]} size={12} />
-          <span className="status-badge__label">{statusMeta[entry.status].short}</span>
-          <span className="status-badge__date">{formatCardDate(activityDate)}</span>
-        </span>
+        {isPlaythrough(entry) && (
+          <span className={`status-badge status-badge--${entry.status}`}>
+            <Icon name={statusIcons[entry.status]} size={12} />
+            <span className="status-badge__label">{statusMeta[entry.status].short}</span>
+            <span className="status-badge__date">{formatCardDate(activityDate)}</span>
+          </span>
+        )}
       </div>
       <div className="game-card__body">
         <h3>{game.title}</h3>
@@ -489,8 +521,7 @@ function App() {
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
-  const [wishlistBusyGameId, setWishlistBusyGameId] = useState<number | null>(null)
-  const wishlistBusyRef = useRef(false)
+  const wishlistUpdatesRef = useRef(new Map<number, WishlistUpdate>())
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
@@ -872,7 +903,7 @@ function App() {
   // Keep it in entries so collection membership, detail actions and release
   // notifications continue to work as before.
   const personalLibraryEntries = useMemo(
-    () => entries.filter((entry) => entry.status !== 'wishlist'),
+    () => entries.filter(isPlaythrough),
     [entries],
   )
 
@@ -1134,7 +1165,7 @@ function App() {
   const counts = useMemo(() => ({
     completed: entries.filter((entry) => entry.status === 'completed').length,
     playing: entries.filter((entry) => entry.status === 'playing').length,
-    wishlist: entries.filter((entry) => entry.status === 'wishlist').length,
+    wishlist: entries.filter((entry) => entry.collectionIds.includes(WISHLIST_COLLECTION_ID)).length,
     dropped: entries.filter((entry) => entry.status === 'dropped').length,
   }), [entries])
 
@@ -1181,7 +1212,8 @@ function App() {
     setAddGameplayScore(8)
     setAddReview('')
     setAddReviewOpen(false)
-    setAddCollectionIds([])
+    // Preserve memberships when a wishlist-only game gains a playthrough.
+    setAddCollectionIds(entryMap.get(game.id)?.collectionIds ?? [])
     navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: game.id })
   }
 
@@ -1252,36 +1284,44 @@ function App() {
     }
   }
 
-  const toggleWishlist = async (game: Game) => {
-    if (wishlistBusyRef.current) return
-    wishlistBusyRef.current = true
-    setWishlistBusyGameId(game.id)
-
-    const inWishlist = entries.some(
-      (entry) => entry.gameId === game.id && entry.collectionIds.includes(WISHLIST_COLLECTION_ID),
-    )
+  const syncWishlist = async (gameId: number, update: WishlistUpdate) => {
+    if (update.syncing) return
+    update.syncing = true
     try {
-      const response = await fetch(`/api/library/${game.id}/wishlist`, {
-        method: inWishlist ? 'DELETE' : 'PUT',
-      })
-      if (!response.ok) throw new Error('Wishlist update failed')
-      const payload = await response.json() as {
-        inWishlist: boolean
-        entry: ApiLibraryEntry | null
+      // Serialize requests per game so fast repeated taps cannot race on the server.
+      while (update.desired !== update.persisted) {
+        const next = update.desired
+        const response = await fetch(`/api/library/${gameId}/wishlist`, {
+          method: next ? 'PUT' : 'DELETE',
+        })
+        if (!response.ok) throw new Error('Wishlist update failed')
+        update.persisted = next
       }
-      setEntries((current) => {
-        const unchanged = current.filter((entry) => entry.gameId !== game.id)
-        return payload.entry
-          ? [...unchanged, normalizeEntry(payload.entry)]
-          : unchanged
-      })
-      if (payload.entry?.game) rememberCatalogResults([payload.entry.game])
     } catch {
+      // Restore the last confirmed state only if persistence fails.
+      setEntries((current) => withWishlistMembership(current, gameId, update.persisted))
       window.alert('Не удалось обновить список «Хочу пройти». Попробуйте ещё раз.')
     } finally {
-      wishlistBusyRef.current = false
-      setWishlistBusyGameId(null)
+      wishlistUpdatesRef.current.delete(gameId)
+      update.syncing = false
     }
+  }
+
+  const toggleWishlist = (game: Game) => {
+    let update = wishlistUpdatesRef.current.get(game.id)
+    const inWishlist = update?.desired ?? Boolean(
+      entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID),
+    )
+    if (!update) {
+      update = { desired: !inWishlist, persisted: inWishlist, syncing: false }
+      wishlistUpdatesRef.current.set(game.id, update)
+    } else {
+      update.desired = !inWishlist
+    }
+
+    // Update the interface immediately; persist in the background.
+    setEntries((current) => withWishlistMembership(current, game.id, !inWishlist))
+    void syncWishlist(game.id, update)
   }
 
   const deleteGame = async (game: Game) => {
@@ -1294,7 +1334,12 @@ function App() {
         return
       }
 
-      setEntries((current) => current.filter((entry) => entry.gameId !== game.id))
+      setEntries((current) => current.flatMap((entry) => {
+        if (entry.gameId !== game.id) return [entry]
+        return entry.collectionIds.length > 0
+          ? [{ gameId: entry.gameId, status: 'untracked' as const, collectionIds: entry.collectionIds, addedAt: entry.addedAt }]
+          : []
+      }))
       if (currentViewRef.current.gameId === game.id) {
         goBackOr({ tab: 'library', gameId: null, collectionId: null, formGameId: null })
       } else {
@@ -1456,18 +1501,24 @@ function App() {
                 type="button"
                 className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
                 onClick={() => { void toggleWishlist(selectedGame) }}
-                disabled={wishlistBusyGameId === selectedGame.id}
                 aria-pressed={isWished}
                 aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
                 title={isWished ? 'В «Хочу пройти» — нажми, чтобы убрать' : 'Добавить в «Хочу пройти»'}
                 whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
                 transition={{ type: 'spring', stiffness: 460, damping: 27 }}
               >
-                <Icon name="bookmark" size={19} />
-                {isWished && <span className="detail-catalog-icon__wish-check" aria-hidden="true"><Icon name="check" size={10} /></span>}
+                <motion.span
+                  key={isWished ? 'wished' : 'not-wished'}
+                  className="detail-catalog-icon__glyph"
+                  initial={shouldReduceMotion ? false : { opacity: .55, scale: .72, rotate: -12 }}
+                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                >
+                  <Icon name="bookmark" size={19} />
+                </motion.span>
               </motion.button>
             )}
-            {selectedEntry ? (
+            {isPlaythrough(selectedEntry) ? (
               <>
                 <button
                   className="icon-button detail-edit"
@@ -1577,7 +1628,7 @@ function App() {
           </section>
         )}
 
-        {selectedEntry && (
+        {isPlaythrough(selectedEntry) && (
           <section className="info-card">
             <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
             <div className="info-list">
@@ -1774,7 +1825,7 @@ function App() {
           <span className="library-overview-card__icon"><Icon name="gamepad" size={20} /></span>
           <span>
             <small>Всего игр</small>
-            <strong>{entries.length}</strong>
+            <strong>{personalLibraryEntries.length}</strong>
           </span>
         </motion.div>
         <motion.div
@@ -1802,7 +1853,7 @@ function App() {
           ['completed', 'Пройдено'],
           ['playing', 'Прохожу'],
           ['dropped', 'Дропнуто'],
-        ] as [LibraryStatus, string][]).map(([status, label]) => (
+        ] as ['completed' | 'playing' | 'dropped', string][]).map(([status, label]) => (
           <motion.button
             layout
             key={status}
@@ -2064,7 +2115,8 @@ function App() {
 
   const renderAdd = () => {
     const addGame = addGameId ? catalogGames.find((game) => game.id === addGameId) : undefined
-    const editingEntry = addGame ? entryMap.get(addGame.id) : undefined
+    const entryForGame = addGame ? entryMap.get(addGame.id) : undefined
+    const editingEntry = isPlaythrough(entryForGame) ? entryForGame : undefined
 
     if (addGame) {
       return (
@@ -2087,7 +2139,7 @@ function App() {
           <section className="form-card">
             <label className="field-label">Статус</label>
             <div className="choice-grid">
-              {(['completed', 'playing', 'dropped', 'wishlist'] as LibraryStatus[]).map((status) => (
+              {(['completed', 'playing', 'dropped'] as LibraryStatus[]).map((status) => (
                 <button
                   key={status}
                   className={addStatus === status ? 'choice-button choice-button--active' : 'choice-button'}
@@ -2098,14 +2150,12 @@ function App() {
               ))}
             </div>
 
-            {addStatus !== 'wishlist' && (
-              <label className="form-field">
-                <span>Платформа</span>
-                <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
-                  {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
-                </select>
-              </label>
-            )}
+            <label className="form-field">
+              <span>Платформа</span>
+              <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
+                {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
+              </select>
+            </label>
 
             {addStatus === 'completed' && (
               <label className="form-field">

@@ -766,7 +766,10 @@ def public_profile(nickname: str) -> dict[str, object]:
         if user is None or user.email == "demo@rateapp.local":
             raise HTTPException(status_code=404, detail="Профиль не найден.")
 
-        total = session.scalar(select(func.count(UserGame.id)).where(UserGame.user_id == user.id)) or 0
+        total = session.scalar(select(func.count(UserGame.id)).where(
+            UserGame.user_id == user.id,
+            UserGame.status.in_(["completed", "playing", "dropped"]),
+        )) or 0
         completed = session.scalar(
             select(func.count(UserGame.id)).where(
                 UserGame.user_id == user.id,
@@ -780,9 +783,13 @@ def public_profile(nickname: str) -> dict[str, object]:
             )
         ) or 0
         wishlist = session.scalar(
-            select(func.count(UserGame.id)).where(
+            select(func.count(UserGame.id))
+            .join(CollectionGame, CollectionGame.user_game_id == UserGame.id)
+            .join(Collection, Collection.id == CollectionGame.collection_id)
+            .where(
                 UserGame.user_id == user.id,
-                UserGame.status == "wishlist",
+                Collection.user_id == user.id,
+                Collection.slug == WISHLIST_SLUG,
             )
         ) or 0
         dropped = session.scalar(
@@ -1307,7 +1314,7 @@ def add_game_to_wishlist(game_id: int, request: Request) -> dict[str, object]:
             )
         )
         if entry is None:
-            entry = UserGame(user_id=user.id, game_id=game.id, status="wishlist")
+            entry = UserGame(user_id=user.id, game_id=game.id, status="untracked")
             session.add(entry)
             session.flush()
 
@@ -1361,12 +1368,14 @@ def remove_game_from_wishlist(game_id: int, request: Request) -> dict[str, objec
             select(CollectionGame.id).where(CollectionGame.user_game_id == entry.id).limit(1)
         )
 
-        # A standalone wishlist entry is no longer needed, but a played game
-        # or an entry in another collection must retain its status and scores.
-        if entry.status == "wishlist" and other_memberships is None:
-            session.delete(entry)
-            session.commit()
-            return {"inWishlist": False, "entry": None}
+        # A collection-only record can be removed when it has no memberships.
+        if entry.status in {"wishlist", "untracked"}:
+            if other_memberships is None:
+                session.delete(entry)
+                session.commit()
+                return {"inWishlist": False, "entry": None}
+            # Old wishlist placeholders that remain in other collections are not wishes.
+            entry.status = "untracked"
 
         session.commit()
         session.refresh(entry)
@@ -1393,11 +1402,26 @@ def delete_library_game(game_id: int, request: Request) -> Response:
                 UserGame.game_id == game.id,
             )
         )
-        if entry is not None:
-            session.execute(
-                delete(CollectionGame).where(CollectionGame.user_game_id == entry.id)
-            )
-            session.delete(entry)
+        if entry is not None and entry.status in {"completed", "playing", "dropped"}:
+            has_collections = session.scalar(
+                select(CollectionGame.id)
+                .where(CollectionGame.user_game_id == entry.id)
+                .limit(1)
+            ) is not None
+            if has_collections:
+                # Delete the playthrough only, never its collection memberships.
+                entry.status = "untracked"
+                entry.platform = None
+                entry.completed_at = None
+                entry.started_at = None
+                entry.score = None
+                entry.atmosphere_score = None
+                entry.story_score = None
+                entry.technology_score = None
+                entry.gameplay_score = None
+                entry.review = None
+            else:
+                session.delete(entry)
             session.commit()
 
     return Response(status_code=204)

@@ -1368,15 +1368,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: rgba(213, 181, 255, .55);
   background: rgba(160, 107, 236, .13);
 }
-/* A solid filled action with a check is immediately distinguishable from
-   the neutral bookmark, without relying on color alone. */
+/* The filled bookmark indicates membership, without an extra corner badge. */
 .detail-catalog-icon--wish-active {
   color: #28193e;
   border: 1px solid #e1c4ff;
   background: linear-gradient(140deg, #d7b9ff, #b284fa);
   box-shadow: 0 3px 14px rgba(166, 106, 236, .34), inset 0 1px 0 rgba(255,255,255,.45);
 }
-.detail-catalog-icon--wish-active > svg {
+.detail-catalog-icon__glyph {
+  display: grid;
+  place-items: center;
+}
+.detail-catalog-icon--wish-active .detail-catalog-icon__glyph svg {
   fill: #41285f;
   stroke: #41285f;
 }
@@ -1385,28 +1388,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: linear-gradient(140deg, #e2caff, #c29aff);
   box-shadow: 0 4px 19px rgba(166, 106, 236, .44);
 }
-.detail-catalog-icon__wish-check {
-  position: absolute;
-  bottom: -4px;
-  right: -4px;
-  display: grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  color: #f3eaff;
-  background: #42245e;
-  border: 2px solid #161923;
-  border-radius: 50%;
-}
-.detail-catalog-icon__wish-check svg { stroke-width: 2.8; }
 .detail-catalog-icon--wish:focus-visible,
 .detail-catalog-icon--add:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
-}
-.detail-catalog-icon--wish:disabled {
-  cursor: progress;
-  opacity: .65;
 }
 .detail-catalog-icon--add {
   cursor: pointer;
