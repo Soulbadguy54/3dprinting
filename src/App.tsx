@@ -145,6 +145,93 @@ type GameSearchPage = {
 type SearchSource = 'local' | 'igdb'
 const WISHLIST_COLLECTION_ID = 'wishlist'
 
+const COLLECTION_THEMES = [
+  { id: 'violet', name: 'Фиолетовый', accent: '#c4a2ff', shade: '#7b46c7', glow: 'rgba(155, 105, 230, .22)' },
+  { id: 'rose', name: 'Розовый', accent: '#ffa2ca', shade: '#b94478', glow: 'rgba(235, 87, 153, .22)' },
+  { id: 'blue', name: 'Синий', accent: '#8ebaff', shade: '#366ac1', glow: 'rgba(75, 129, 225, .24)' },
+  { id: 'cyan', name: 'Голубой', accent: '#85ddf2', shade: '#238ba8', glow: 'rgba(50, 170, 198, .23)' },
+  { id: 'teal', name: 'Бирюзовый', accent: '#7ee2d7', shade: '#218e88', glow: 'rgba(47, 181, 166, .22)' },
+  { id: 'emerald', name: 'Зелёный', accent: '#92e9ae', shade: '#35895a', glow: 'rgba(59, 175, 102, .22)' },
+  { id: 'lime', name: 'Лаймовый', accent: '#d7ee86', shade: '#859831', glow: 'rgba(175, 194, 65, .21)' },
+  { id: 'amber', name: 'Жёлтый', accent: '#f8d783', shade: '#ae7b29', glow: 'rgba(221, 171, 57, .21)' },
+  { id: 'orange', name: 'Оранжевый', accent: '#ffb285', shade: '#bc623a', glow: 'rgba(226, 120, 64, .22)' },
+  { id: 'slate', name: 'Серый', accent: '#b8c7d8', shade: '#61758d', glow: 'rgba(117, 143, 171, .20)' },
+] as const
+
+function collectionThemeStyle(collection: GameCollection): CSSProperties {
+  const id = collection.colorScheme ?? (collection.id === WISHLIST_COLLECTION_ID ? 'rose' : 'violet')
+  const theme = COLLECTION_THEMES.find((choice) => choice.id === id) ?? COLLECTION_THEMES[0]
+  return {
+    '--collection-accent': theme.accent,
+    '--collection-shade': theme.shade,
+    '--collection-glow': theme.glow,
+  } as CSSProperties
+}
+
+function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
+  if (collection.iconData) {
+    return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
+  }
+  return <Icon name={collection.id === WISHLIST_COLLECTION_ID ? 'bookmark' : 'layers'} size={size} />
+}
+
+// All files are rasterized into a small, square icon before upload.
+// Transparent images are kept transparent if the browser supports WebP.
+async function resizeCollectionIcon(file: File): Promise<string> {
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+    throw new Error('Выбери PNG, JPEG, WebP или GIF.')
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('Изображение должно быть меньше 10 МБ.')
+  }
+
+  const url = URL.createObjectURL(file)
+  try {
+    const img = new Image()
+    img.src = url
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('Не удалось прочитать изображение.'))
+    })
+    if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 40_000_000) {
+      throw new Error('Слишком большое разрешение изображения.')
+    }
+
+    for (const size of [256, 192, 160, 128]) {
+      const canvas = document.createElement('canvas')
+      canvas.width = canvas.height = size
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Не удалось подготовить иконку.')
+      const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight)
+      const width = Math.round(img.naturalWidth * scale)
+      const height = Math.round(img.naturalHeight * scale)
+      context.drawImage(img, (size - width) / 2, (size - height) / 2, width, height)
+
+      for (const quality of [.82, .66, .5, .35]) {
+        let data = canvas.toDataURL('image/webp', quality)
+        if (!data.startsWith('data:image/webp;')) {
+          context.globalCompositeOperation = 'destination-over'
+          context.fillStyle = '#171a22'
+          context.fillRect(0, 0, size, size)
+          data = canvas.toDataURL('image/jpeg', quality)
+        }
+        if (data.length <= 140000) return data
+      }
+    }
+    throw new Error('Не получилось уменьшить иконку. Попробуй другое изображение.')
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+const sortCollections = (items: GameCollection[]) =>
+  [...items].sort((a, b) =>
+    a.id === WISHLIST_COLLECTION_ID ? -1 :
+    b.id === WISHLIST_COLLECTION_ID ? 1 :
+    a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' }),
+  )
+
+
 // Wishlist-only records hold collection membership, not a playthrough.
 const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
   Boolean(entry && ['completed', 'playing', 'dropped'].includes(entry.status))
