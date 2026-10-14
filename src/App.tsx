@@ -147,7 +147,7 @@ const WISHLIST_COLLECTION_ID = 'wishlist'
 
 // Wishlist-only records hold collection membership, not a playthrough.
 const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
-  Boolean(entry && entry.status !== 'wishlist')
+  Boolean(entry && ['completed', 'playing', 'dropped'].includes(entry.status))
 
 // Apply membership optimistically while preserving all playthrough fields.
 function withWishlistMembership(entries: LibraryEntry[], gameId: number, enabled: boolean): LibraryEntry[] {
@@ -156,7 +156,7 @@ function withWishlistMembership(entries: LibraryEntry[], gameId: number, enabled
     if (!enabled) return entries
     return [...entries, {
       gameId,
-      status: 'wishlist', // API placeholder, not a playthrough status.
+      status: 'untracked', // API placeholder, not a playthrough status.
       collectionIds: [WISHLIST_COLLECTION_ID],
       addedAt: new Date().toISOString().slice(0, 10),
     }]
@@ -166,7 +166,7 @@ function withWishlistMembership(entries: LibraryEntry[], gameId: number, enabled
     ? Array.from(new Set([...entry.collectionIds, WISHLIST_COLLECTION_ID]))
     : entry.collectionIds.filter((id) => id !== WISHLIST_COLLECTION_ID)
   const others = entries.filter((item) => item.gameId !== gameId)
-  return entry.status === 'wishlist' && collectionIds.length === 0
+  return !isPlaythrough(entry) && collectionIds.length === 0
     ? others
     : [...others, { ...entry, collectionIds }]
 }
@@ -233,7 +233,8 @@ const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => 
 const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
   completed: { label: 'Пройдено', short: 'Пройдено' },
   playing: { label: 'Прохожу', short: 'Прохожу' },
-  wishlist: { label: 'Хочу пройти', short: 'Хочу' },
+  wishlist: { label: 'В коллекции', short: 'В коллекции' },
+  untracked: { label: 'В коллекции', short: 'В коллекции' },
   dropped: { label: 'Дропнуто', short: 'Дропнуто' },
 }
 
@@ -241,6 +242,7 @@ const statusIcons: Record<LibraryStatus, IconName> = {
   completed: 'check',
   playing: 'play',
   wishlist: 'bookmark',
+  untracked: 'layers',
   dropped: 'close',
 }
 
@@ -901,7 +903,7 @@ function App() {
   // Keep it in entries so collection membership, detail actions and release
   // notifications continue to work as before.
   const personalLibraryEntries = useMemo(
-    () => entries.filter((entry) => entry.status !== 'wishlist'),
+    () => entries.filter(isPlaythrough),
     [entries],
   )
 
@@ -1163,7 +1165,7 @@ function App() {
   const counts = useMemo(() => ({
     completed: entries.filter((entry) => entry.status === 'completed').length,
     playing: entries.filter((entry) => entry.status === 'playing').length,
-    wishlist: entries.filter((entry) => entry.status === 'wishlist').length,
+    wishlist: entries.filter((entry) => entry.collectionIds.includes(WISHLIST_COLLECTION_ID)).length,
     dropped: entries.filter((entry) => entry.status === 'dropped').length,
   }), [entries])
 
@@ -1332,7 +1334,12 @@ function App() {
         return
       }
 
-      setEntries((current) => current.filter((entry) => entry.gameId !== game.id))
+      setEntries((current) => current.flatMap((entry) => {
+        if (entry.gameId !== game.id) return [entry]
+        return entry.collectionIds.length > 0
+          ? [{ gameId: entry.gameId, status: 'untracked' as const, collectionIds: entry.collectionIds, addedAt: entry.addedAt }]
+          : []
+      }))
       if (currentViewRef.current.gameId === game.id) {
         goBackOr({ tab: 'library', gameId: null, collectionId: null, formGameId: null })
       } else {
