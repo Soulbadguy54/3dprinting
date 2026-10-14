@@ -149,6 +149,30 @@ const WISHLIST_COLLECTION_ID = 'wishlist'
 const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
   Boolean(entry && entry.status !== 'wishlist')
 
+// Apply membership optimistically while preserving all playthrough fields.
+function withWishlistMembership(entries: LibraryEntry[], gameId: number, enabled: boolean): LibraryEntry[] {
+  const entry = entries.find((item) => item.gameId === gameId)
+  if (!entry) {
+    if (!enabled) return entries
+    return [...entries, {
+      gameId,
+      status: 'wishlist', // API placeholder, not a playthrough status.
+      collectionIds: [WISHLIST_COLLECTION_ID],
+      addedAt: new Date().toISOString().slice(0, 10),
+    }]
+  }
+
+  const collectionIds = enabled
+    ? Array.from(new Set([...entry.collectionIds, WISHLIST_COLLECTION_ID]))
+    : entry.collectionIds.filter((id) => id !== WISHLIST_COLLECTION_ID)
+  const others = entries.filter((item) => item.gameId !== gameId)
+  return entry.status === 'wishlist' && collectionIds.length === 0
+    ? others
+    : [...others, { ...entry, collectionIds }]
+}
+
+type WishlistUpdate = { desired: boolean; persisted: boolean; syncing: boolean }
+
 type GameStoreLink = {
   provider: string
   label: string
@@ -495,8 +519,7 @@ function App() {
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
-  const [wishlistBusyGameId, setWishlistBusyGameId] = useState<number | null>(null)
-  const wishlistBusyRef = useRef(false)
+  const wishlistUpdatesRef = useRef(new Map<number, WishlistUpdate>())
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
@@ -1259,36 +1282,44 @@ function App() {
     }
   }
 
-  const toggleWishlist = async (game: Game) => {
-    if (wishlistBusyRef.current) return
-    wishlistBusyRef.current = true
-    setWishlistBusyGameId(game.id)
-
-    const inWishlist = entries.some(
-      (entry) => entry.gameId === game.id && entry.collectionIds.includes(WISHLIST_COLLECTION_ID),
-    )
+  const syncWishlist = async (gameId: number, update: WishlistUpdate) => {
+    if (update.syncing) return
+    update.syncing = true
     try {
-      const response = await fetch(`/api/library/${game.id}/wishlist`, {
-        method: inWishlist ? 'DELETE' : 'PUT',
-      })
-      if (!response.ok) throw new Error('Wishlist update failed')
-      const payload = await response.json() as {
-        inWishlist: boolean
-        entry: ApiLibraryEntry | null
+      // Serialize requests per game so fast repeated taps cannot race on the server.
+      while (update.desired !== update.persisted) {
+        const next = update.desired
+        const response = await fetch(`/api/library/${gameId}/wishlist`, {
+          method: next ? 'PUT' : 'DELETE',
+        })
+        if (!response.ok) throw new Error('Wishlist update failed')
+        update.persisted = next
       }
-      setEntries((current) => {
-        const unchanged = current.filter((entry) => entry.gameId !== game.id)
-        return payload.entry
-          ? [...unchanged, normalizeEntry(payload.entry)]
-          : unchanged
-      })
-      if (payload.entry?.game) rememberCatalogResults([payload.entry.game])
     } catch {
+      // Restore the last confirmed state only if persistence fails.
+      setEntries((current) => withWishlistMembership(current, gameId, update.persisted))
       window.alert('Не удалось обновить список «Хочу пройти». Попробуйте ещё раз.')
     } finally {
-      wishlistBusyRef.current = false
-      setWishlistBusyGameId(null)
+      wishlistUpdatesRef.current.delete(gameId)
+      update.syncing = false
     }
+  }
+
+  const toggleWishlist = (game: Game) => {
+    let update = wishlistUpdatesRef.current.get(game.id)
+    const inWishlist = update?.desired ?? Boolean(
+      entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID),
+    )
+    if (!update) {
+      update = { desired: !inWishlist, persisted: inWishlist, syncing: false }
+      wishlistUpdatesRef.current.set(game.id, update)
+    } else {
+      update.desired = !inWishlist
+    }
+
+    // Update the interface immediately; persist in the background.
+    setEntries((current) => withWishlistMembership(current, game.id, !inWishlist))
+    void syncWishlist(game.id, update)
   }
 
   const deleteGame = async (game: Game) => {
@@ -1463,15 +1494,21 @@ function App() {
                 type="button"
                 className={`detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
                 onClick={() => { void toggleWishlist(selectedGame) }}
-                disabled={wishlistBusyGameId === selectedGame.id}
                 aria-pressed={isWished}
                 aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
                 title={isWished ? 'В «Хочу пройти» — нажми, чтобы убрать' : 'Добавить в «Хочу пройти»'}
                 whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
                 transition={{ type: 'spring', stiffness: 460, damping: 27 }}
               >
-                <Icon name="bookmark" size={19} />
-                {isWished && <span className="detail-catalog-icon__wish-check" aria-hidden="true"><Icon name="check" size={10} /></span>}
+                <motion.span
+                  key={isWished ? 'wished' : 'not-wished'}
+                  className="detail-catalog-icon__glyph"
+                  initial={shouldReduceMotion ? false : { opacity: .55, scale: .72, rotate: -12 }}
+                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                >
+                  <Icon name="bookmark" size={19} />
+                </motion.span>
               </motion.button>
             )}
             {isPlaythrough(selectedEntry) ? (
