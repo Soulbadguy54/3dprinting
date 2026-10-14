@@ -449,6 +449,7 @@ function App() {
   const [addSearchLoading, setAddSearchLoading] = useState(false)
   const [addSearchError, setAddSearchError] = useState('')
   const [addSearchSource, setAddSearchSource] = useState<SearchSource>('local')
+  const [localSearchMissQuery, setLocalSearchMissQuery] = useState<string | null>(null)
   const [addSearchHasMore, setAddSearchHasMore] = useState(false)
   const [addSearchNextOffset, setAddSearchNextOffset] = useState(0)
   const addSearchGenerationRef = useRef(0)
@@ -992,6 +993,10 @@ function App() {
       })
       setAddSearchHasMore(Boolean(page.hasMore))
       setAddSearchNextOffset(page.nextOffset ?? offset + page.items.length)
+      if (source === 'local' && !append && page.items.length === 0) {
+        // IGDB includes uncached games, including announced future releases.
+        setLocalSearchMissQuery(query)
+      }
       rememberCatalogResults(page.items)
     } catch (error) {
       if (!controller.signal.aborted && generation === addSearchGenerationRef.current) {
@@ -1016,6 +1021,7 @@ function App() {
     addSearchBusyRef.current = false
 
     setAddSearchSource('local')
+    setLocalSearchMissQuery(null)
     setAddResults([])
     setAddSearchError('')
     setAddSearchHasMore(false)
@@ -1088,6 +1094,22 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     void loadSearchPage({ query, source: 'igdb', offset: 0, append: false, generation })
   }
+
+  useEffect(() => {
+    const currentQuery = addQuery.trim()
+    if (
+      !localSearchMissQuery ||
+      localSearchMissQuery !== currentQuery ||
+      addSearchSource !== 'local' ||
+      addSearchLoading ||
+      addSearchBusyRef.current
+    ) return
+
+    // Empty local results should seamlessly search IGDB without making the
+    // user guess that a separate database search is required.
+    setLocalSearchMissQuery(null)
+    searchIgdb()
+  }, [localSearchMissQuery, addQuery, addSearchSource, addSearchLoading])
 
   const retrySearch = () => {
     if (addSearchBusyRef.current) return

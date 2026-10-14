@@ -14,7 +14,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import case, delete, func, or_, select, text
+from sqlalchemy import and_, case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from api.bootstrap import initialize_database
@@ -483,6 +483,46 @@ def _normalized_search_text(value: str) -> str:
     return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
 
 
+_SEQUEL_ROMAN_NUMERALS = {
+    "2": "ii", "3": "iii", "4": "iv", "5": "v", "6": "vi",
+    "7": "vii", "8": "viii", "9": "ix", "10": "x",
+}
+
+
+def _search_query_variants(query: str) -> list[list[str]]:
+    """Accept common abbreviations and Arabic/Roman sequel numbers.
+
+    Keep numeric tokens: discarding '6' from 'GTA 6' searches for the wrong game.
+    """
+    normalized = _normalized_search_text(query)
+    normalized = re.sub(r"\bgta(?=\d+\b)", "gta ", normalized)
+    bases = [normalized]
+    if re.search(r"\bgta\b", normalized):
+        bases.append(re.sub(r"\bgta\b", "grand theft auto", normalized))
+
+    variants: list[list[str]] = []
+    for base in bases:
+        tokens = [token for token in base.split() if len(token) >= 2 or token.isdigit()]
+        if tokens:
+            variants.append(tokens)
+            last = tokens[-1]
+            sequel = _SEQUEL_ROMAN_NUMERALS.get(last)
+            if sequel is None:
+                sequel = next(
+                    (number for number, roman in _SEQUEL_ROMAN_NUMERALS.items() if roman == last),
+                    None,
+                )
+            if sequel:
+                variants.append([*tokens[:-1], sequel])
+
+    # Preserve stable order, without generating duplicate search clauses.
+    unique: list[list[str]] = []
+    for tokens in variants:
+        if tokens and tokens not in unique:
+            unique.append(tokens)
+    return unique
+
+
 def _igdb_search_rank(row: dict[str, object], query: str) -> float:
     query_text = _normalized_search_text(query)
     name_text = _normalized_search_text(str(row.get("name") or ""))
@@ -901,12 +941,8 @@ def search_games(
     if len(query) < 3:
         return {"items": [], "hasMore": False, "nextOffset": None}
 
-    query_tokens = [
-        token
-        for token in _normalized_search_text(query).split()
-        if len(token) >= 2
-    ]
-    if not query_tokens:
+    query_variants = _search_query_variants(query)
+    if not query_variants:
         return {"items": [], "hasMore": False, "nextOffset": None}
 
     # The normal search never contacts IGDB: it searches the persistent,
@@ -922,14 +958,17 @@ def search_games(
                     .replace("_", "\\_")
                 )
 
-            matches = [
-                Game.title.ilike(f"%{literal_like(token)}%", escape="\\")
-                for token in query_tokens[:6]
+            match_variants = [
+                and_(*[
+                    Game.title.ilike(f"%{literal_like(token)}%", escape="\\")
+                    for token in tokens[:6]
+                ])
+                for tokens in query_variants
             ]
             exact = literal_like(query)
             rows = session.scalars(
                 select(Game)
-                .where(*matches)
+                .where(or_(*match_variants))
                 .order_by(
                     case(
                         (Game.title.ilike(exact, escape="\\"), 0),
@@ -958,21 +997,23 @@ def search_games(
     # returned games are written to PostgreSQL and shared by later searches.
     client_id, token = _igdb_access_token()
 
-    escaped_tokens = [
-        token.replace("\\", "\\\\").replace('"', '\\"')
-        for token in query_tokens[:6]
-    ]
-    name_filters = " & ".join(
-        f'name ~ *"{token}"*'
-        for token in escaped_tokens
-    )
+    name_filter_groups = []
+    for tokens in query_variants:
+        escaped_tokens = [
+            token.replace("\\", "\\\\").replace('"', '\\"')
+            for token in tokens[:6]
+        ]
+        name_filter_groups.append(
+            "(" + " & ".join(f'name ~ *"{token}"*' for token in escaped_tokens) + ")"
+        )
+    name_filters = " | ".join(name_filter_groups)
 
     body = (
         "fields id,name,game_type,first_release_date,rating,rating_count,"
         "total_rating_count,hypes,cover.image_id,"
         "genres.name,platforms.name,involved_companies.developer,"
         "involved_companies.company.name; "
-        f"where {name_filters} & version_parent = null; "
+        f"where ({name_filters}) & version_parent = null; "
         "sort total_rating_count desc; "
         f"limit {GAME_SEARCH_PAGE_SIZE + 1}; "
         f"offset {offset};"
