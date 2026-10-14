@@ -2547,62 +2547,22 @@ function App() {
   }
 
   const renderCollections = () => {
-    if (selectedCollectionId) {
-      const collection = collections.find((item) => item.id === selectedCollectionId)
-      if (!collection) return null
-      const collectionEntries = entries.filter((entry) => entry.collectionIds.includes(collection.id))
-
+    if (selectedCollectionId === 'new') {
       return (
-        <>
+        <div className="collection-create-screen">
           <header className="subpage-header">
-            <button className="icon-button" onClick={() => goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
-            <div>
-              <h1>{collection.title}</h1>
-            </div>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Вернуться к коллекциям"
+              onClick={() => goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })}
+            >
+              <Icon name="back" size={20} />
+            </button>
+            <div><h1>Новая коллекция</h1></div>
           </header>
-          <p className="page-lead">{collection.description}</p>
-          <div className="game-grid">
-            {collectionEntries.map((entry) => {
-              const game = catalogGames.find((item) => item.id === entry.gameId)!
-              return <GameCard key={game.id} game={game} entry={entry} collections={collections} onOpen={() => openGame(game.id)} />
-            })}
-          </div>
-        </>
-      )
-    }
 
-    return (
-      <>
-        <header className="topbar">
-          <div>
-            <h1>Коллекции</h1>
-          </div>
-          <button
-            className="round-add"
-            aria-label="Создать коллекцию"
-            onClick={() => {
-              setCollectionCreatorOpen((current) => !current)
-              setCollectionError('')
-            }}
-          >
-            <Icon name="plus" size={20} />
-          </button>
-        </header>
-
-        {collectionCreatorOpen && (
-          <section className="collection-create-card">
-            <div className="collection-create-card__heading">
-              <strong>Новая коллекция</strong>
-              <button
-                onClick={() => {
-                  setCollectionCreatorOpen(false)
-                  setCollectionError('')
-                }}
-              >
-                ×
-              </button>
-            </div>
-
+          <section className="collection-create-card collection-create-card--page">
             <label className="collection-create-field">
               <span>Название</span>
               <input
@@ -2613,7 +2573,6 @@ function App() {
                 autoFocus
               />
             </label>
-
             <label className="collection-create-field">
               <span>Описание <small>необязательно</small></span>
               <textarea
@@ -2624,93 +2583,220 @@ function App() {
                 placeholder="Коротко о том, что здесь собрано"
               />
             </label>
-
-            <div className="collection-create-field">
-              <span>Цветовая схема</span>
-              <div className="collection-color-grid" role="radiogroup" aria-label="Цветовая схема коллекции">
-                {COLLECTION_THEMES.map((theme) => (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={collectionColorScheme === theme.id}
-                    aria-label={theme.name}
-                    title={theme.name}
-                    className={collectionColorScheme === theme.id ? 'collection-color-swatch collection-color-swatch--selected' : 'collection-color-swatch'}
-                    style={{ background: `linear-gradient(135deg, ${theme.accent}, ${theme.shade})` }}
-                    onClick={() => setCollectionColorScheme(theme.id)}
-                  >
-                    {collectionColorScheme === theme.id && <Icon name="check" size={18} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="collection-create-field">
-              <span>Иконка <small>необязательно</small></span>
-              <div className="collection-icon-picker">
-                <div
-                  className="collection-icon-preview"
-                  style={collectionThemeStyle({
-                    id: 'preview',
-                    title: collectionTitle,
-                    description: collectionDescription,
-                    mark: '',
-                    colorScheme: collectionColorScheme,
-                    iconData: collectionIconData,
-                  })}
-                >
-                  <CollectionIcon collection={{ id: 'preview', title: collectionTitle, description: '', mark: '', iconData: collectionIconData }} size={34} />
-                </div>
-                <div className="collection-icon-picker__controls">
-                  <label className="collection-icon-upload">
-                    {collectionIconLoading ? 'Обрабатываем…' : collectionIconData ? 'Заменить иконку' : 'Загрузить иконку'}
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      disabled={collectionIconLoading}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0]
-                        event.currentTarget.value = ''
-                        void uploadCollectionIcon(file)
-                      }}
-                    />
-                  </label>
-                  {collectionIconData && (
-                    <button type="button" className="collection-icon-remove" onClick={() => setCollectionIconData(null)}>Убрать</button>
-                  )}
-                  <small>PNG, JPG, WebP или GIF · до 10 МБ. Сожмём и впишем в 256×256 px.</small>
-                </div>
-              </div>
-            </div>
-
-            {collectionError && <p className="collection-create-error">{collectionError}</p>}
-
+            <CollectionAppearanceEditor
+              colorScheme={collectionColorScheme}
+              emoji={collectionEmoji}
+              onColorChange={setCollectionColorScheme}
+              onEmojiChange={setCollectionEmoji}
+            />
+            {collectionError && <p className="collection-create-error" role="alert">{collectionError}</p>}
             <button
               className="primary-button collection-create-submit"
               onClick={() => { void createCollection() }}
-              disabled={!collectionTitle.trim() || collectionSaving || collectionIconLoading}
+              disabled={!collectionTitle.trim() || collectionSaving}
             >
               {collectionSaving ? 'Создаём…' : 'Создать коллекцию'}
             </button>
           </section>
-        )}
+        </div>
+      )
+    }
 
-        {collections.length === 0 && !collectionCreatorOpen && (
+    if (selectedCollectionId) {
+      const collection = collections.find((item) => item.id === selectedCollectionId)
+      if (!collection) return null
+      const editing = editingCollectionId === collection.id
+      const draftCollection = editing
+        ? { ...collection, title: editCollectionTitle, description: editCollectionDescription, colorScheme: editCollectionColor, emoji: editCollectionEmoji, iconData: null }
+        : collection
+      const collectionEntries = entries.filter((entry) =>
+        entry.collectionIds.includes(collection.id) && (!editing || !removedCollectionGameIds.includes(entry.gameId)),
+      )
+
+      return (
+        <div className="collection-detail-page">
+          <header className="detail-toolbar collection-detail-toolbar">
+            <button
+              type="button"
+              className="icon-button detail-back"
+              aria-label="Вернуться к коллекциям"
+              onClick={() => {
+                if (editing) cancelCollectionEdit()
+                goBackOr({ tab: 'collections', gameId: null, collectionId: null, formGameId: null })
+              }}
+            >
+              <Icon name="back" size={20} />
+            </button>
+            <div className="detail-toolbar__actions">
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Отменить редактирование"
+                    title="Отменить"
+                    disabled={collectionEditBusy}
+                    onClick={cancelCollectionEdit}
+                  ><Icon name="close" size={19} /></button>
+                  <motion.button
+                    type="button"
+                    className="round-add collection-edit-save"
+                    aria-label="Сохранить изменения"
+                    title="Сохранить"
+                    disabled={collectionEditBusy || !editCollectionTitle.trim()}
+                    whileTap={shouldReduceMotion ? undefined : { scale: .93 }}
+                    onClick={() => { void saveCollectionEdit(collection) }}
+                  ><Icon name="check" size={21} /></motion.button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="icon-button detail-edit"
+                    title="Редактировать коллекцию"
+                    aria-label="Редактировать коллекцию"
+                    onClick={() => startCollectionEdit(collection)}
+                  ><Icon name="edit" size={19} /></button>
+                  {!collection.isSystem && (
+                    <button
+                      type="button"
+                      className="icon-button detail-delete"
+                      title="Удалить коллекцию"
+                      aria-label="Удалить коллекцию"
+                      onClick={() => { void deleteCollection(collection) }}
+                    ><Icon name="trash" size={19} /></button>
+                  )}
+                </>
+              )}
+            </div>
+          </header>
+
+          <section className="collection-detail-hero" style={collectionThemeStyle(draftCollection)}>
+            <div className="collection-detail-identity">
+              <span className="collection-detail-identity__icon"><CollectionIcon collection={draftCollection} size={45} /></span>
+              <div className="collection-detail-identity__text">
+                {editing ? (
+                  <label className="collection-create-field collection-detail-edit-title">
+                    <span>Название</span>
+                    <input
+                      value={editCollectionTitle}
+                      onChange={(event) => setEditCollectionTitle(event.target.value)}
+                      maxLength={100}
+                      placeholder="Название коллекции"
+                      autoFocus
+                    />
+                  </label>
+                ) : (
+                  <h1>{collection.title}</h1>
+                )}
+                <span className="collection-detail-count">{collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}</span>
+              </div>
+            </div>
+
+            {editing ? (
+              <>
+                <label className="collection-create-field">
+                  <span>Описание</span>
+                  <textarea
+                    value={editCollectionDescription}
+                    maxLength={500}
+                    rows={2}
+                    placeholder="Добавь описание коллекции"
+                    onChange={(event) => setEditCollectionDescription(event.target.value)}
+                  />
+                </label>
+                <CollectionAppearanceEditor
+                  colorScheme={editCollectionColor}
+                  emoji={editCollectionEmoji}
+                  onColorChange={setEditCollectionColor}
+                  onEmojiChange={setEditCollectionEmoji}
+                />
+              </>
+            ) : collection.description ? (
+              <p className="collection-detail-description">{collection.description}</p>
+            ) : null}
+          </section>
+
+          {editing && (
+            <div className="collection-edit-hint">
+              <span>Нажми <b>×</b> на игре, чтобы убрать её из коллекции. Данные прохождения сохранятся.</span>
+              {removedCollectionGameIds.length > 0 && (
+                <button type="button" onClick={() => setRemovedCollectionGameIds([])}>
+                  Вернуть удалённые ({removedCollectionGameIds.length})
+                </button>
+              )}
+            </div>
+          )}
+          {collectionEditError && <p className="collection-create-error" role="alert">{collectionEditError}</p>}
+          {collectionEntries.length ? (
+            <div className="game-grid collection-edit-grid">
+              {collectionEntries.flatMap((entry) => {
+                const game = catalogGames.find((item) => item.id === entry.gameId)
+                if (!game) return []
+                return [
+                  <div className={editing ? 'collection-edit-game collection-edit-game--active' : 'collection-edit-game'} key={game.id}>
+                    <GameCard
+                      game={game}
+                      entry={entry}
+                      collections={collections}
+                      readOnly={editing}
+                      onOpen={() => openGame(game.id)}
+                    />
+                    {editing && (
+                      <motion.button
+                        type="button"
+                        className="collection-edit-game__remove"
+                        aria-label={`Убрать «${game.title}» из коллекции`}
+                        title="Убрать из коллекции"
+                        whileTap={shouldReduceMotion ? undefined : { scale: .9 }}
+                        onClick={() => setRemovedCollectionGameIds((current) => [...current, game.id])}
+                        disabled={collectionEditBusy}
+                      ><Icon name="close" size={18} /></motion.button>
+                    )}
+                  </div>,
+                ]
+              })}
+            </div>
+          ) : (
+            <div className="empty-state collection-empty-state">
+              <strong>ПУСТО</strong>
+              <p>{editing ? 'Все игры убраны из черновика. Сохрани изменения галочкой.' : 'В коллекции пока нет игр.'}</p>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <>
+        <header className="topbar">
+          <div><h1>Коллекции</h1></div>
+          <button className="round-add" aria-label="Создать коллекцию" onClick={openCollectionCreator}>
+            <Icon name="plus" size={20} />
+          </button>
+        </header>
+        {collections.length === 0 && (
           <div className="empty-state collection-empty-state">
             <strong>Коллекций пока нет</strong>
-            <p>Создай первую — потом её можно будет выбрать при добавлении любой игры.</p>
-            <button onClick={() => setCollectionCreatorOpen(true)}>Создать коллекцию</button>
+            <p>Создай первую коллекцию.</p>
+            <button onClick={openCollectionCreator}>Создать коллекцию</button>
           </div>
         )}
-
         <section className="collection-grid">
           {sortCollections(collections).map((collection) => {
             const items = entries
               .filter((entry) => entry.collectionIds.includes(collection.id))
-              .map((entry) => catalogGames.find((game) => game.id === entry.gameId)!)
+              .flatMap((entry) => {
+                const game = catalogGames.find((candidate) => candidate.id === entry.gameId)
+                return game ? [game] : []
+              })
             return (
-              <button className="collection-card" key={collection.id} style={collectionThemeStyle(collection)} onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}>
+              <button
+                className="collection-card"
+                key={collection.id}
+                style={collectionThemeStyle(collection)}
+                onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}
+              >
                 <div className="collection-card__mosaic">
                   {items.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
                   {items.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
