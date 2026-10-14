@@ -112,9 +112,6 @@ def initialize_database() -> None:
         connection.exec_driver_sql(
             "ALTER TABLE collections ADD COLUMN IF NOT EXISTS emoji VARCHAR(48)"
         )
-        connection.exec_driver_sql(
-            "UPDATE collections SET color_scheme = 'rose' WHERE slug = 'wishlist' AND color_scheme = 'violet'"
-        )
         # A stable slug is the identity of the protected system collection.
         # This fixes any preexisting row with that slug without duplicating it.
         connection.exec_driver_sql(
