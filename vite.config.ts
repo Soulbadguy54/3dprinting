@@ -7,9 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'push-sw.js'],
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
+        importScripts: ['/push-sw.js'],
       },
       manifest: {
         name: 'RateApp',

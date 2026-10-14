@@ -2482,3 +2482,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   margin-bottom: 1px;
 }
 
+
+/* Native Android Web Push preferences */
+.push-settings { display: grid; gap: 12px; }
+.push-settings > p, .push-settings__test p { margin: 0; color: #a9b0c0; font-size: 13px; line-height: 1.5; }
+.push-settings__status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: rgba(255,255,255,.02); font-size: 12px; color: #dfe4ee; }
+.push-settings__dot { flex: 0 0 9px; height: 9px; background: #7b8292; border-radius: 100%; }
+.push-settings__dot[data-connected="true"] { background: #8cf27d; box-shadow: 0 0 10px #8cf27d55; }
+.push-settings__action { width: 100%; padding: 12px 15px; border: 1px solid rgba(168,155,255,.3); border-radius: 12px; background: rgba(139,111,255,.13); color: #eeeaff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.push-settings__action:disabled { opacity: .45; cursor: not-allowed; }
+.push-settings__action:not(:disabled):hover { background: rgba(139,111,255,.22); }
+.push-settings__test { display: grid; gap: 10px; margin-top: 4px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.08); }
+.push-settings__test strong { font-size: 14px; }
+.push-settings__test select { width: 100%; min-height: 42px; padding: 8px 12px; color: #e6e9f5; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; background: #181b27; font: inherit; }
+.push-settings__note { margin: 0; color: #b9a9f0; font-size: 12px; line-height: 1.5; }

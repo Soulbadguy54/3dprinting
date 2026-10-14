@@ -121,3 +121,32 @@ class CollectionGame(Base):
         ForeignKey("user_games.id", ondelete="CASCADE"),
         index=True,
     )
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    p256dh: Mapped[str] = mapped_column(String(200), nullable=False)
+    auth: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReleasePushDelivery(Base):
+    __tablename__ = "release_push_deliveries"
+    __table_args__ = (
+        UniqueConstraint("subscription_id", "game_id", "release_date",
+                         name="uq_release_push_delivery"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscription_id: Mapped[int] = mapped_column(
+        ForeignKey("push_subscriptions.id", ondelete="CASCADE"), index=True,
+    )
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"))
+    release_date: Mapped[date] = mapped_column(Date, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
