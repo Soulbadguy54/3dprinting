@@ -145,6 +145,10 @@ type GameSearchPage = {
 type SearchSource = 'local' | 'igdb'
 const WISHLIST_COLLECTION_ID = 'wishlist'
 
+// Wishlist-only records hold collection membership, not a playthrough.
+const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
+  Boolean(entry && entry.status !== 'wishlist')
+
 type GameStoreLink = {
   provider: string
   label: string
@@ -394,11 +398,13 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
         {entry.score != null && (
           <span className="score-badge">{entry.score.toFixed(1)}</span>
         )}
-        <span className={`status-badge status-badge--${entry.status}`}>
-          <Icon name={statusIcons[entry.status]} size={12} />
-          <span className="status-badge__label">{statusMeta[entry.status].short}</span>
-          <span className="status-badge__date">{formatCardDate(activityDate)}</span>
-        </span>
+        {isPlaythrough(entry) && (
+          <span className={`status-badge status-badge--${entry.status}`}>
+            <Icon name={statusIcons[entry.status]} size={12} />
+            <span className="status-badge__label">{statusMeta[entry.status].short}</span>
+            <span className="status-badge__date">{formatCardDate(activityDate)}</span>
+          </span>
+        )}
       </div>
       <div className="game-card__body">
         <h3>{game.title}</h3>
@@ -1181,7 +1187,8 @@ function App() {
     setAddGameplayScore(8)
     setAddReview('')
     setAddReviewOpen(false)
-    setAddCollectionIds([])
+    // Preserve memberships when a wishlist-only game gains a playthrough.
+    setAddCollectionIds(entryMap.get(game.id)?.collectionIds ?? [])
     navigateTo({ tab: 'add', gameId: null, collectionId: null, formGameId: game.id })
   }
 
@@ -1467,7 +1474,7 @@ function App() {
                 {isWished && <span className="detail-catalog-icon__wish-check" aria-hidden="true"><Icon name="check" size={10} /></span>}
               </motion.button>
             )}
-            {selectedEntry ? (
+            {isPlaythrough(selectedEntry) ? (
               <>
                 <button
                   className="icon-button detail-edit"
@@ -1577,7 +1584,7 @@ function App() {
           </section>
         )}
 
-        {selectedEntry && (
+        {isPlaythrough(selectedEntry) && (
           <section className="info-card">
             <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
             <div className="info-list">
@@ -1774,7 +1781,7 @@ function App() {
           <span className="library-overview-card__icon"><Icon name="gamepad" size={20} /></span>
           <span>
             <small>Всего игр</small>
-            <strong>{entries.length}</strong>
+            <strong>{personalLibraryEntries.length}</strong>
           </span>
         </motion.div>
         <motion.div
@@ -2064,7 +2071,8 @@ function App() {
 
   const renderAdd = () => {
     const addGame = addGameId ? catalogGames.find((game) => game.id === addGameId) : undefined
-    const editingEntry = addGame ? entryMap.get(addGame.id) : undefined
+    const entryForGame = addGame ? entryMap.get(addGame.id) : undefined
+    const editingEntry = isPlaythrough(entryForGame) ? entryForGame : undefined
 
     if (addGame) {
       return (
@@ -2087,7 +2095,7 @@ function App() {
           <section className="form-card">
             <label className="field-label">Статус</label>
             <div className="choice-grid">
-              {(['completed', 'playing', 'dropped', 'wishlist'] as LibraryStatus[]).map((status) => (
+              {(['completed', 'playing', 'dropped'] as LibraryStatus[]).map((status) => (
                 <button
                   key={status}
                   className={addStatus === status ? 'choice-button choice-button--active' : 'choice-button'}
