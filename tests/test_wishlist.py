@@ -158,6 +158,98 @@ class WishlistApiTests(unittest.TestCase):
         })
         self.assertEqual(invalid_bytes.status_code, 422)
 
+    def test_edit_collection_updates_emoji_color_and_name(self):
+        created = self.client.post("/api/collections", json={
+            "title": "Изначально", "colorScheme": "violet",
+        })
+        self.assertEqual(created.status_code, 201, created.text)
+        slug = created.json()["id"]
+        changed = self.client.patch(f"/api/collections/{slug}", json={
+            "title": "Новая коллекция", "description": "Описание обновлено",
+            "emoji": "🎮", "colorScheme": "cyan", "removedGameIds": [],
+        })
+        self.assertEqual(changed.status_code, 200, changed.text)
+        updated = changed.json()["collection"]
+        self.assertEqual(updated["title"], "Новая коллекция")
+        self.assertEqual(updated["description"], "Описание обновлено")
+        self.assertEqual(updated["emoji"], "🎮")
+        self.assertEqual(updated["colorScheme"], "cyan")
+        self.assertIsNone(updated["iconData"])
+        self.assertEqual(
+            next(row for row in self.client.get("/api/collections").json() if row["id"] == slug)["emoji"],
+            "🎮",
+        )
+
+    def test_remove_collection_game_keeps_playthrough_and_other_collections(self):
+        first = self.client.post("/api/collections", json={"title": "Первая"}).json()["id"]
+        second = self.client.post("/api/collections", json={"title": "Вторая"}).json()["id"]
+        saved = self.client.put(f"/api/library/{self.game_id}", json={
+            "status": "completed", "platform": "PC", "score": 9.0,
+            "collectionIds": [first, second],
+        })
+        self.assertEqual(saved.status_code, 200, saved.text)
+        result = self.client.patch(f"/api/collections/{first}", json={
+            "title": "Первая", "description": "", "colorScheme": "rose",
+            "emoji": "🏆", "removedGameIds": [self.game_id],
+        })
+        self.assertEqual(result.status_code, 200, result.text)
+        entry = next(row for row in result.json()["library"] if row["gameId"] == self.game_id)
+        self.assertEqual(entry["status"], "completed")
+        self.assertEqual(entry["platform"], "PC")
+        self.assertEqual(entry["score"], 9.0)
+        self.assertNotIn(first, entry["collectionIds"])
+        self.assertIn(second, entry["collectionIds"])
+
+        # Deleting the collection must likewise leave the real game record intact.
+        self.assertEqual(self.client.delete(f"/api/collections/{second}").status_code, 204)
+        after = next(row for row in self.client.get("/api/library").json() if row["gameId"] == self.game_id)
+        self.assertEqual(after["status"], "completed")
+        self.assertEqual(after["collectionIds"], [])
+
+    def test_remove_collection_only_game_prunes_orphan_record(self):
+        slug = self.client.post("/api/collections", json={"title": "Ожидаю"}).json()["id"]
+        self.assertEqual(self.client.put(f"/api/library/{self.game_id}", json={
+            "status": "wishlist", "collectionIds": [slug],
+        }).status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/library/{self.game_id}/wishlist").status_code, 200)
+        result = self.client.patch(f"/api/collections/{slug}", json={
+            "title": "Ожидаю", "description": "", "colorScheme": "amber",
+            "emoji": "🌌", "removedGameIds": [self.game_id],
+        })
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertFalse(any(row["gameId"] == self.game_id for row in result.json()["library"]))
+
+    def test_wishlist_theme_is_editable_and_survives_bootstrap(self):
+        changed = self.client.patch(f"/api/collections/{WISHLIST_SLUG}", json={
+            "title": "Хочу поиграть", "description": "Мои планы",
+            "emoji": "🎁", "colorScheme": "violet", "removedGameIds": [],
+        })
+        self.assertEqual(changed.status_code, 200, changed.text)
+        initialize_database()
+        first = self.client.get("/api/collections").json()[0]
+        self.assertEqual(first["id"], WISHLIST_SLUG)
+        self.assertEqual(first["title"], "Хочу поиграть")
+        self.assertEqual(first["colorScheme"], "violet")
+        self.assertEqual(first["emoji"], "🎁")
+        self.assertEqual(self.client.delete(f"/api/collections/{WISHLIST_SLUG}").status_code, 403)
+
+    def test_collection_update_does_not_accept_unauthorized_user(self):
+        slug = self.client.post("/api/collections", json={"title": "Приватная"}).json()["id"]
+        second = TestClient(index.app, base_url="https://testserver")
+        suffix = secrets.token_hex(6)
+        try:
+            register = second.post("/api/auth/register", json={
+                "email": f"{suffix}@example.com", "nickname": f"other_{suffix}", "pin": "13572468",
+            })
+            self.assertEqual(register.status_code, 201, register.text)
+            response = second.patch(f"/api/collections/{slug}", json={
+                "title": "Чужая", "description": "", "colorScheme": "blue",
+                "emoji": "⭐", "removedGameIds": [self.game_id],
+            })
+            self.assertEqual(response.status_code, 404)
+        finally:
+            second.close()
+
     def test_different_user_cannot_see_wishlist(self):
         self.assertEqual(self.client.put(f"/api/library/{self.game_id}/wishlist").status_code, 200)
         second = TestClient(index.app, base_url="https://testserver")
