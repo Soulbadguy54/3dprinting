@@ -963,9 +963,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border: 2px solid rgba(11, 13, 18, .8);
   border-radius: 50%;
   color: #0b0d12;
-  background: var(--accent);
+  background: var(--collection-accent, var(--accent));
   font-size: 8px;
   font-weight: 900;
+  overflow: hidden;
 }
 
 .empty-state {
@@ -1254,15 +1255,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-weight: 900;
 }
 
-.collection-system-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 18px;
-  color: #a99cbf;
-  font-size: 11px;
-  font-weight: 650;
-}
 .collection-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1272,17 +1264,24 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   min-width: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--collection-glow, var(--line));
   border-radius: 20px;
   background: var(--surface);
   text-align: left;
+  box-shadow: inset 0 1px 0 var(--collection-glow, transparent);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.collection-card:hover {
+  border-color: var(--collection-accent, var(--line-strong));
+  box-shadow: 0 6px 22px var(--collection-glow, transparent);
 }
 .collection-card__mosaic {
   display: grid;
   grid-template-columns: 1fr 1fr;
   height: 150px;
   overflow: hidden;
-  background: #10131a;
+  background: radial-gradient(circle at 25% 10%, var(--collection-shade, #303743), transparent 125%),
+    linear-gradient(145deg, #1a1e29, #10131a);
 }
 .collection-card__mosaic > .cover {
   min-height: 0;
@@ -1293,9 +1292,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: grid;
   grid-column: 1 / -1;
   place-items: center;
-  color: #313845;
-  font-size: 38px;
+  color: var(--collection-accent, #a7b1c3);
+  opacity: .64;
+  font-size: clamp(20px, 6vw, 38px);
   font-weight: 900;
+  letter-spacing: .045em;
+  line-height: 1;
+  text-shadow: 0 5px 22px var(--collection-glow, transparent);
 }
 .collection-card__footer {
   display: flex;
@@ -1303,6 +1306,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   justify-content: space-between;
   gap: 7px;
   padding: 12px;
+  background: linear-gradient(105deg, var(--collection-glow, transparent), transparent 90%);
 }
 .collection-card__footer strong,
 .collection-card__footer span { display: block; }
@@ -1325,10 +1329,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   margin: 0 !important;
   place-items: center;
   border-radius: 9px;
-  color: #0b0d12 !important;
-  background: var(--accent);
+  color: #10131a !important;
+  background: var(--collection-accent, var(--accent));
   font-size: 8px !important;
   font-weight: 900;
+  overflow: hidden;
+}
+.collection-card__mark svg,
+.collection-marker svg {
+  display: block;
+}
+.collection-icon__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 .detail-page { padding-top: 2px; }
@@ -1360,7 +1376,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .detail-catalog-icon--wish {
   position: relative;
-  color: #c8a3f8;
+  color: #0b0d12;
+  border-color: transparent;
+  background: var(--accent);
   cursor: pointer;
   transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
@@ -1397,7 +1415,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   cursor: pointer;
 }
 .detail-catalog-icon--add {
-  color: #8cf27d;
+  color: #0b0d12;
+  border-color: transparent;
+  background: var(--accent);
 }
 .detail-edit {
   color: #b6ceff;
