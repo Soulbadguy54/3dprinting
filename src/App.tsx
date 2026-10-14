@@ -224,7 +224,7 @@ function CollectionAppearanceEditor({
             <RenderEmoji unified={emojiUnified(emoji || '🎮')} size={36} emojiStyle={EmojiStyle.TWITTER} />
           </div>
           <button type="button" className="collection-emoji-open" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
-            <Icon name="smile" size={17} />
+            <Icon name="sparkles" size={17} />
             {pickerOpen ? 'Закрыть выбор' : 'Выбрать эмодзи'}
           </button>
         </div>
@@ -660,12 +660,18 @@ function App() {
   const currentViewRef = useRef<AppView>(firstViewRef.current)
   const pendingScreenRestoreRef = useRef<AppHistoryEntry | null>(null)
   const libraryLastSnapshotRef = useRef<AppHistoryEntry | null>(null)
-  const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
   const [collectionTitle, setCollectionTitle] = useState('')
   const [collectionDescription, setCollectionDescription] = useState('')
   const [collectionColorScheme, setCollectionColorScheme] = useState('violet')
-  const [collectionIconData, setCollectionIconData] = useState<string | null>(null)
-  const [collectionIconLoading, setCollectionIconLoading] = useState(false)
+  const [collectionEmoji, setCollectionEmoji] = useState('🎮')
+  const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null)
+  const [editCollectionTitle, setEditCollectionTitle] = useState('')
+  const [editCollectionDescription, setEditCollectionDescription] = useState('')
+  const [editCollectionColor, setEditCollectionColor] = useState('violet')
+  const [editCollectionEmoji, setEditCollectionEmoji] = useState('🎮')
+  const [removedCollectionGameIds, setRemovedCollectionGameIds] = useState<number[]>([])
+  const [collectionEditBusy, setCollectionEditBusy] = useState(false)
+  const [collectionEditError, setCollectionEditError] = useState('')
   const [collectionSaving, setCollectionSaving] = useState(false)
   const [collectionError, setCollectionError] = useState('')
 
@@ -1483,22 +1489,9 @@ function App() {
     }
   }
 
-  const uploadCollectionIcon = async (file?: File) => {
-    if (!file) return
-    setCollectionIconLoading(true)
-    setCollectionError('')
-    try {
-      setCollectionIconData(await resizeCollectionIcon(file))
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : 'Не удалось обработать изображение.')
-    } finally {
-      setCollectionIconLoading(false)
-    }
-  }
-
   const createCollection = async () => {
     const title = collectionTitle.trim()
-    if (!title || collectionSaving || collectionIconLoading) return
+    if (!title || collectionSaving) return
 
     setCollectionSaving(true)
     setCollectionError('')
@@ -1511,7 +1504,7 @@ function App() {
           title,
           description: collectionDescription.trim() || undefined,
           colorScheme: collectionColorScheme,
-          iconData: collectionIconData,
+          emoji: collectionEmoji,
         }),
       })
       const payload = await response.json().catch(() => null) as GameCollection | { detail?: string } | null
@@ -1529,14 +1522,94 @@ function App() {
       setCollectionTitle('')
       setCollectionDescription('')
       setCollectionColorScheme('violet')
-      setCollectionIconData(null)
-      setCollectionCreatorOpen(false)
+      setCollectionEmoji('🎮')
       navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null })
     } catch {
       setCollectionError('Не удалось создать коллекцию. Проверьте соединение.')
     } finally {
       setCollectionSaving(false)
     }
+  }
+
+
+  const startCollectionEdit = (collection: GameCollection) => {
+    setEditingCollectionId(collection.id)
+    setEditCollectionTitle(collection.title)
+    setEditCollectionDescription(collection.description)
+    setEditCollectionColor(collection.colorScheme ?? 'violet')
+    setEditCollectionEmoji(collection.emoji || (collection.id === WISHLIST_COLLECTION_ID ? '🎁' : '🗂️'))
+    setRemovedCollectionGameIds([])
+    setCollectionEditError('')
+  }
+
+  const cancelCollectionEdit = () => {
+    setEditingCollectionId(null)
+    setRemovedCollectionGameIds([])
+    setCollectionEditError('')
+  }
+
+  const saveCollectionEdit = async (collection: GameCollection) => {
+    if (collectionEditBusy || !editCollectionTitle.trim()) return
+    setCollectionEditBusy(true)
+    setCollectionEditError('')
+    try {
+      const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editCollectionTitle.trim(),
+          description: editCollectionDescription.trim(),
+          colorScheme: editCollectionColor,
+          emoji: editCollectionEmoji,
+          removedGameIds: removedCollectionGameIds,
+        }),
+      })
+      const payload = await response.json().catch(() => null) as {
+        collection?: GameCollection
+        library?: ApiLibraryEntry[]
+        detail?: string
+      } | null
+      if (!response.ok || !payload?.collection || !payload.library) {
+        throw new Error(payload?.detail || 'Не удалось сохранить изменения.')
+      }
+      setCollections((current) => sortCollections(current.map((item) =>
+        item.id === collection.id ? payload.collection! : item,
+      )))
+      setEntries(payload.library.map(normalizeEntry))
+      cancelCollectionEdit()
+    } catch (error) {
+      setCollectionEditError(error instanceof Error ? error.message : 'Не удалось сохранить изменения.')
+    } finally {
+      setCollectionEditBusy(false)
+    }
+  }
+
+  const deleteCollection = async (collection: GameCollection) => {
+    if (collection.isSystem) return
+    if (!window.confirm(`Удалить коллекцию «${collection.title}»? Игры и прохождения сохранятся.`)) return
+    try {
+      const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Не удалось удалить коллекцию.')
+      setCollections((current) => current.filter((item) => item.id !== collection.id))
+      setEntries((current) => current.flatMap((entry) => {
+        const ids = entry.collectionIds.filter((id) => id !== collection.id)
+        return !isPlaythrough(entry) && ids.length === 0 ? [] : [{ ...entry, collectionIds: ids }]
+      }))
+      cancelCollectionEdit()
+      navigateTo({ tab: 'collections', gameId: null, collectionId: null, formGameId: null }, { replace: true })
+    } catch {
+      window.alert('Не удалось удалить коллекцию. Попробуйте ещё раз.')
+    }
+  }
+
+  const openCollectionCreator = () => {
+    setCollectionTitle('')
+    setCollectionDescription('')
+    setCollectionColorScheme('violet')
+    setCollectionEmoji('🎮')
+    setCollectionError('')
+    cancelCollectionEdit()
+    navigateTo({ tab: 'collections', gameId: null, collectionId: 'new', formGameId: null })
   }
 
   const toggleAddCollection = (collectionId: string) => {
