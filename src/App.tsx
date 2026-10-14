@@ -1691,6 +1691,7 @@ function App() {
     // regardless of which collections it belongs to.
     const canWish = selectedEntry?.status !== 'completed' && selectedEntry?.status !== 'playing'
     const isWished = Boolean(selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID))
+    const wishlistCollection = collections.find((collection) => collection.id === WISHLIST_COLLECTION_ID)
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
       : '—'
@@ -1721,6 +1722,7 @@ function App() {
               <motion.button
                 type="button"
                 className={`round-add detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
+                style={wishlistCollection ? collectionThemeStyle(wishlistCollection) : collectionThemeStyle({ id: WISHLIST_COLLECTION_ID, title: '', description: '', mark: '' })}
                 onClick={() => { void toggleWishlist(selectedGame) }}
                 aria-pressed={isWished}
                 aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
