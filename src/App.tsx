@@ -455,7 +455,7 @@ function Cover({
       {markers.length > 0 && (
         <span className="cover__markers" aria-label="Коллекции">
           {markers.slice(0, 2).map((collection) => (
-            <span className="collection-marker" key={collection.id}>{collection.mark}</span>
+            <span className="collection-marker" style={collectionThemeStyle(collection)} key={collection.id}><CollectionIcon collection={collection} size={13} /></span>
           ))}
           {markers.length > 2 && <span className="collection-marker">+{markers.length - 2}</span>}
         </span>
@@ -619,7 +619,9 @@ function App() {
   const [collectionCreatorOpen, setCollectionCreatorOpen] = useState(false)
   const [collectionTitle, setCollectionTitle] = useState('')
   const [collectionDescription, setCollectionDescription] = useState('')
-  const [collectionMark, setCollectionMark] = useState('')
+  const [collectionColorScheme, setCollectionColorScheme] = useState('violet')
+  const [collectionIconData, setCollectionIconData] = useState<string | null>(null)
+  const [collectionIconLoading, setCollectionIconLoading] = useState(false)
   const [collectionSaving, setCollectionSaving] = useState(false)
   const [collectionError, setCollectionError] = useState('')
 
@@ -648,7 +650,7 @@ function App() {
   const applyBootstrap = (payload: BootstrapPayload) => {
     setAuthUser(payload.user)
     setEntries(payload.library.map(normalizeEntry))
-    setCollections(payload.collections)
+    setCollections(sortCollections(payload.collections))
 
     const libraryMetadata = payload.library.flatMap((entry) => entry.game ? [entry.game] : [])
     setCatalogGames((current) => {
@@ -1437,9 +1439,22 @@ function App() {
     }
   }
 
+  const uploadCollectionIcon = async (file?: File) => {
+    if (!file) return
+    setCollectionIconLoading(true)
+    setCollectionError('')
+    try {
+      setCollectionIconData(await resizeCollectionIcon(file))
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : 'Не удалось обработать изображение.')
+    } finally {
+      setCollectionIconLoading(false)
+    }
+  }
+
   const createCollection = async () => {
     const title = collectionTitle.trim()
-    if (!title || collectionSaving) return
+    if (!title || collectionSaving || collectionIconLoading) return
 
     setCollectionSaving(true)
     setCollectionError('')
@@ -1451,7 +1466,8 @@ function App() {
         body: JSON.stringify({
           title,
           description: collectionDescription.trim() || undefined,
-          mark: collectionMark.trim() || undefined,
+          colorScheme: collectionColorScheme,
+          iconData: collectionIconData,
         }),
       })
       const payload = await response.json().catch(() => null) as GameCollection | { detail?: string } | null
@@ -1465,10 +1481,11 @@ function App() {
         return
       }
 
-      setCollections((current) => [...current, payload])
+      setCollections((current) => sortCollections([...current, payload]))
       setCollectionTitle('')
       setCollectionDescription('')
-      setCollectionMark('')
+      setCollectionColorScheme('violet')
+      setCollectionIconData(null)
       setCollectionCreatorOpen(false)
       navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null })
     } catch {
@@ -1779,7 +1796,7 @@ function App() {
                         <strong>{collection.title}</strong>
                         <span>{collectionGames.length} {collectionGames.length === 1 ? 'игра' : 'игр'}</span>
                       </div>
-                      <span className="collection-card__mark">{collection.mark}</span>
+                      <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
                     </div>
                   </button>
                 )
@@ -2539,7 +2556,7 @@ function App() {
                     <strong>{collection.title}</strong>
                     <span>{items.length} {items.length === 1 ? 'игра' : 'игр'}{collection.isSystem ? ' · системная' : ''}</span>
                   </div>
-                  <span className="collection-card__mark">{collection.mark}</span>
+                  <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
                 </div>
               </button>
             )
