@@ -2368,8 +2368,101 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: rgba(140,242,125,.36);
   box-shadow: 0 0 0 3px rgba(140,242,125,.05);
 }
-.collection-create-field--mark {
-  max-width: 180px;
+.collection-color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.collection-color-swatch {
+  position: relative;
+  display: grid;
+  width: 100%;
+  max-width: 64px;
+  height: 42px;
+  align-items: center;
+  justify-items: center;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  color: #12151c;
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.collection-color-swatch:hover { transform: translateY(-2px); }
+.collection-color-swatch--selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px #11161e, 0 0 0 4px rgba(255, 255, 255, .55);
+}
+.collection-color-swatch svg { stroke-width: 3; }
+.collection-icon-picker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+.collection-icon-preview {
+  display: grid;
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--collection-accent);
+  border-radius: 17px;
+  color: var(--collection-accent);
+  background: linear-gradient(145deg, var(--collection-shade), #11141c);
+}
+.collection-icon-preview .collection-icon__image {
+  width: 100%;
+  height: 100%;
+  padding: 7px;
+  border-radius: 12px;
+}
+.collection-icon-picker__controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.collection-icon-upload,
+.collection-icon-remove {
+  position: relative;
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 8px 11px;
+  border: 1px solid rgba(140, 242, 125, .3);
+  border-radius: 10px;
+  color: #9eea96;
+  background: rgba(140, 242, 125, .065);
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.collection-icon-upload input[type="file"] {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.collection-icon-upload:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.collection-icon-remove {
+  color: #aab1bd;
+  border-color: var(--line);
+  background: #252a35;
+}
+.collection-icon-picker__controls > small {
+  flex-basis: 100%;
+  line-height: 1.5;
 }
 .collection-create-error {
   margin: 10px 0 0;
