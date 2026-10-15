@@ -6,20 +6,39 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Read public collection cards
+      - name: Read public collection games
         run: |
           python -m pip install -q beautifulsoup4 requests
           python - <<'PY'
           import requests,re,json
           from bs4 import BeautifulSoup
-          u='https://stash.games/users/Soulbadguy/collections/'
-          r=requests.get(u, timeout=30,headers={'User-Agent':'Mozilla/5.0'})
-          print('STATUS',r.status_code,'LEN',len(r.content),'URL',r.url)
-          soup=BeautifulSoup(r.text,'html.parser')
-          print('TITLE',soup.title.get_text(' ',strip=True) if soup.title else None)
-          for x in soup.select('a[href]'):
-              h=x.get('href','')
-              if 'collection' not in h and 'games' not in h:continue
-              print('LINK',json.dumps({'href':h,'text':x.get_text(' ',strip=True)[:180],'class':x.get('class'),'outer':str(x)[:1200]},ensure_ascii=False))
-          print('MAIN',str(soup.select_one('main'))[:4000])
+          root='https://stash.games'
+          for cid in ('dfhpn','zdpqj','hgwtg'):
+              allg=[]
+              for page in range(1,5):
+                  u=f'{root}/users/Soulbadguy/collections/{cid}' + (f'?page={page}' if page>1 else '')
+                  r=requests.get(u,timeout=30,headers={'User-Agent':'Mozilla/5.0'})
+                  soup=BeautifulSoup(r.text,'html.parser')
+                  card=soup.select('a.games-list__item-link')
+                  print('PAGE',json.dumps({'collection':cid,'page':page,'status':r.status_code,'url':r.url,'length':len(r.content),'title':soup.title.get_text(' ',strip=True) if soup.title else '', 'games_list_item_links':len(card)},ensure_ascii=False))
+                  if page==1:
+                      main=soup.select_one('main')
+                      print('MAIN_TEXT',cid,repr(main.get_text(' ',strip=True)[:1800] if main else ''))
+                      print('HEADINGS',cid,json.dumps([x.get_text(' ',strip=True) for x in soup.select('h1,h2,h3')][:25],ensure_ascii=False))
+                      for a in soup.select('main a[href]'):
+                          if ('games' in a.get('href','') or 'page=' in a.get('href','')):
+                              print('SAMPLE_LINK',cid,json.dumps({'href':a.get('href'),'class':a.get('class'),'text':a.get_text(' ',strip=True)[:140],'html':str(a)[:550]},ensure_ascii=False))
+                              if len(allg)>15:break
+                  if not card:break
+                  games=[]
+                  for a in card:
+                      imgs=a.select('img')
+                      img=imgs[0] if imgs else None
+                      str_img=(img.get('data-src') or img.get('src') or '') if img else ''
+                      cover=re.search(r'/([a-z0-9]+)\.(?:jpg|png|webp)',str_img)
+                      games.append({'title':a.get('aria-label') or a.get('title') or a.get_text(' ',strip=True),'href':a.get('href'),'cover':cover.group(1) if cover else None,'img':str_img})
+                  if page>1 and games==allg[:len(games)]:break
+                  allg.extend(games)
+                  if len(card)<20:break
+              print('COLLECTION_GAMES',cid,json.dumps(allg,ensure_ascii=False))
           PY
