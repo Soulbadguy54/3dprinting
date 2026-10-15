@@ -831,7 +831,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: var(--surface);
   transition: transform .18s ease, border-color .18s ease;
 }
-.game-card__cover-wrap > .cover { position: absolute; inset: 0; min-height: 100%; }
+.game-card__cover-wrap > .cover { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; }
 .game-card__body { padding: 9px 3px 0; }
 .game-card h3 {
   margin: 0;
@@ -1286,7 +1286,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
     linear-gradient(145deg, #1a1e29, #10131a);
 }
 .collection-card__mosaic > .cover {
+  min-width: 0;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   border: 1px solid rgba(11,13,18,.45);
 }
 .collection-card__mosaic .cover__glyph { font-size: 26px; right: 7px; bottom: 5px; }
@@ -1477,7 +1480,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   content: none;
 }
 .detail-hero__cover .cover__image {
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
 }
 .detail-hero__cover .cover__glyph {
   right: 10px;
@@ -2100,9 +2104,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   position: absolute;
   z-index: 1;
   inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 .search-hint {
   margin-top: 14px;
@@ -3059,9 +3065,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .collection-detail-hero--editing { padding: 13px; }
 }
 
-/* Database and collections use one viewport-sized scroll surface.
-   No phantom window scrollbar for short pages; long lists still scroll.
-   Other views retain the existing document-scrolling behavior. */
+/* Detail, Database, Collections, and Profile share a viewport-sized
+   scrolling surface; content scrolls only beyond available screen height.
+   My Games keeps its separate window-based scroll/collapse mechanics. */
 .app-shell--viewport {
   height: 100dvh;
   min-height: 0;
@@ -3214,4 +3220,49 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 27px;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+/* Link inside release notification settings; behaves like normal navigation. */
+.push-settings__collection-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #a9ee9f;
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.push-settings__collection-link:hover { color: #d4ffcb; }
+.push-settings__collection-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+/* A neutral placeholder, not an incorrect "off" state, while push
+   permission and saved subscription are being checked at sign-in. */
+.push-switch__loading {
+  display: block;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 28px;
+  border-radius: 28px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(90deg, #3b4050 25%, #545b69 50%, #3b4050 75%);
+  background-size: 200% 100%;
+  animation: push-loading-glow 1.25s ease-in-out infinite;
+}
+@keyframes push-loading-glow {
+  from { background-position: 100% center; }
+  to { background-position: -100% center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .push-switch__loading { animation: none; }
+}
+/* The bottom bar remains visible while viewing game details.
+   The scroll surface already reserves space for it via .page padding. */
+.page--viewport {
+  scrollbar-gutter: auto;
 }

@@ -13,7 +13,7 @@ import {
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import EmojiPicker, { Emoji as RenderEmoji, EmojiStyle, Theme } from 'emoji-picker-react'
 import russianEmojis from 'emoji-picker-react/dist/data/emojis-ru'
-import PushSettings, { PushOnboarding, disconnectPushForLogout } from './PushSettings'
+import PushSettings, { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
 import {
   games,
   type Game,
@@ -543,7 +543,6 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   readOnly = false,
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
-  void animationIndex
   const activityDate =
     entry.status === 'completed' && entry.completedAt
       ? entry.completedAt
@@ -558,15 +557,15 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
       className="game-card"
       disabled={readOnly}
       onClick={onOpen}
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: .985 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 28, scale: .96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
       whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
       transition={{
         layout: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
-        opacity: { duration: .16 },
-        scale: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
-        y: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
+        opacity: { duration: .3, delay: Math.min(animationIndex, 12) * .045 },
+        scale: { type: 'spring', stiffness: 330, damping: 29, delay: Math.min(animationIndex, 12) * .045 },
+        y: { type: 'spring', stiffness: 335, damping: 29, delay: Math.min(animationIndex, 12) * .045 },
       }}
     >
       <div className="game-card__cover-wrap">
@@ -752,6 +751,7 @@ function App() {
   ).toFixed(1))
 
   const applyBootstrap = (payload: BootstrapPayload) => {
+    void preloadPushState(payload.user.nickname).catch(() => { /* Push is optional. */ })
     setAuthUser(payload.user)
     setEntries(payload.library.map(normalizeEntry))
     setCollections(sortCollections(payload.collections))
@@ -765,6 +765,7 @@ function App() {
   }
 
   const hydrateAfterLogin = async (fallbackUser: AuthUser) => {
+    void preloadPushState(fallbackUser.nickname).catch(() => { /* Push is optional. */ })
     setAuthUser(fallbackUser)
     setAuthReady(true)
 
@@ -786,8 +787,8 @@ function App() {
       fromApp: existing?.fromApp ?? false,
       collectionPickerOpen: view.gameId != null ? collectionPickerOpen : false,
       scrollY: Math.max(0,
-        view.gameId == null && (view.tab === 'collections' || (view.tab === 'add' && view.formGameId == null))
-          ? (viewportPageRef.current?.scrollTop ?? 0)
+        viewportPageRef.current?.classList.contains('page--viewport')
+          ? viewportPageRef.current.scrollTop
           : window.scrollY,
       ),
     }
@@ -2479,7 +2480,7 @@ function App() {
           )}
         </AnimatePresence>
 
-        <AnimatePresence mode="popLayout" initial={false}>
+        <AnimatePresence mode="popLayout">
           {libraryGames.length > 0 ? (
             <motion.div
               key="library-game-grid"
@@ -2656,6 +2657,13 @@ function App() {
             ref={addSearchInputRef}
             value={addQuery}
             onChange={(event) => setAddQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.blur()
+              }
+            }}
+            enterKeyHint="search"
             placeholder="Название игры..."
             aria-label="Поиск по базе игр"
           />
@@ -3002,9 +3010,18 @@ function App() {
                 return game ? [game] : []
               })
             return (
-              <button
+              <motion.button
                 className="collection-card"
                 key={collection.id}
+                layout="position"
+                initial={shouldReduceMotion ? false : { opacity: 0, y: 25, scale: .965 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{
+                  layout: { type: 'spring', stiffness: 380, damping: 32 },
+                  opacity: { duration: .3, delay: Math.min(sortCollections(collections).findIndex((item) => item.id === collection.id), 12) * .055 },
+                  y: { type: 'spring', stiffness: 320, damping: 30, delay: Math.min(sortCollections(collections).findIndex((item) => item.id === collection.id), 12) * .055 },
+                  scale: { type: 'spring', stiffness: 320, damping: 30, delay: Math.min(sortCollections(collections).findIndex((item) => item.id === collection.id), 12) * .055 },
+                }}
                 style={collectionThemeStyle(collection)}
                 onClick={() => navigateTo({ tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null })}
               >
@@ -3019,7 +3036,7 @@ function App() {
                   </div>
                   <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
                 </div>
-              </button>
+              </motion.button>
             )
           })}
         </section>
@@ -3034,7 +3051,12 @@ function App() {
         <h1>@{authUser?.nickname}</h1>
       </section>
 
-      <PushSettings user={authUser?.nickname ?? ''} />
+      <PushSettings
+        user={authUser?.nickname ?? ''}
+        onOpenWishlist={() => navigateTo({
+          tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
+        })}
+      />
 
       <section className="info-card account-card">
           <span className="eyebrow">АККАУНТ</span>
@@ -3053,6 +3075,7 @@ function App() {
             onClick={async () => {
               try { await disconnectPushForLogout() } catch { /* Log out regardless of push API availability. */ }
               await fetch('/api/auth/logout', { method: 'POST' })
+              clearPushStateCache(authUser?.nickname ?? '')
               setAuthUser(null)
               setEntries([])
               setCollections([])
@@ -3089,18 +3112,14 @@ function App() {
   }
 
   return (
-    <div className={selectedGameId == null && (activeTab === 'collections' || (activeTab === 'add' && addGameId == null))
+    <div className={activeTab !== 'library' || selectedGameId != null
       ? 'app-shell app-shell--viewport'
       : 'app-shell'}>
       <main
         ref={viewportPageRef}
-        className={
-          activeTab === 'library' && selectedGameId == null
-            ? 'page page--library'
-            : selectedGameId == null && (activeTab === 'collections' || (activeTab === 'add' && addGameId == null))
-              ? 'page page--viewport'
-              : 'page'
-        }
+        className={activeTab === 'library' && selectedGameId == null
+          ? 'page page--library'
+          : 'page page--viewport'}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
@@ -3159,8 +3178,7 @@ function App() {
         </div>
       )}
 
-      {!selectedGameId && (
-        <nav className="bottom-nav" aria-label="Основная навигация">
+      <nav className="bottom-nav" aria-label="Основная навигация">
           {nav.map((item) => (
             <motion.button
               layout
@@ -3192,8 +3210,7 @@ function App() {
               </span>
             </motion.button>
           ))}
-        </nav>
-      )}
+      </nav>
     </div>
   )
 }
