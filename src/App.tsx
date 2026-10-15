@@ -1919,14 +1919,6 @@ function App() {
     navigateTo({ tab: 'collections', gameId: null, collectionId: 'new', formGameId: null })
   }
 
-  const toggleAddCollection = (collectionId: string) => {
-    setAddCollectionIds((current) =>
-      current.includes(collectionId)
-        ? current.filter((id) => id !== collectionId)
-        : current.length >= 100 ? current : [...current, collectionId],
-    )
-  }
-
   // IGDB metadata is fetched only when the detail screen opens; search
   // results remain fast. The API caches enriched data for future opens.
   useEffect(() => {
@@ -2708,59 +2700,76 @@ function App() {
               </label>
             )}
 
-            {ratedStatuses.has(addStatus) && (
-              <div className="rating-builder">
-                  <div className="rating-builder__summary">
-                    <span>Итоговая оценка</span>
-                    <strong>{calculatedAddScore.toFixed(1)}</strong>
-                    <small>среднее четырёх критериев</small>
+            <AnimatePresence initial={false}>
+              {ratedStatuses.has(addStatus) && (
+                <motion.div
+                  key="playthrough-rating"
+                  initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, height: 0 }}
+                  transition={{ duration: .26, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div className="rating-builder">
+                    <div className="rating-builder__summary">
+                      <span>Итоговая оценка</span>
+                      <strong>{calculatedAddScore.toFixed(1)}</strong>
+                      <small>среднее четырёх критериев</small>
+                    </div>
+                    <div className="rating-builder__wheels">
+                      <RatingWheel label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
+                      <RatingWheel label="Сюжет" value={addStoryScore} onChange={setAddStoryScore} />
+                      <RatingWheel label="Технологичность" value={addTechnologyScore} onChange={setAddTechnologyScore} />
+                      <RatingWheel label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
+                    </div>
                   </div>
-                  <RatingSlider label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
-                  <RatingSlider label="Сюжет" value={addStoryScore} onChange={setAddStoryScore} />
-                  <RatingSlider label="Технологичность" value={addTechnologyScore} onChange={setAddTechnologyScore} />
-                <RatingSlider label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
-              </div>
-            )}
 
-            {ratedStatuses.has(addStatus) && (
-              <details
-                className="review-editor"
-                open={addReviewOpen}
-                onToggle={(event) => setAddReviewOpen(event.currentTarget.open)}
-              >
-                <summary>
-                  <span>
-                    <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
-                    <small>необязательно</small>
-                  </span>
-                  <b>{addReviewOpen ? '−' : '+'}</b>
-                </summary>
-                <textarea
-                  value={addReview}
-                  onChange={(event) => setAddReview(event.target.value)}
-                  maxLength={5000}
-                  placeholder="Что запомнилось, что понравилось или не понравилось?"
-                  rows={5}
-                />
-                <small className="review-editor__counter">{addReview.length}/5000</small>
-              </details>
-            )}
-
-            <div className="form-field">
-              <span>Коллекции <small>необязательно</small></span>
-              <div className="collection-choices">
-                {sortCollections(collections).map((collection) => (
-                  <button
-                    key={collection.id}
-                    className={addCollectionIds.includes(collection.id) ? 'collection-choice collection-choice--active' : 'collection-choice'}
-                    onClick={() => toggleAddCollection(collection.id)}
-                  >
-                    <b style={collectionThemeStyle(collection)}><CollectionIcon collection={collection} size={17} /></b>
-                    <span>{collection.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                  <div className="review-editor">
+                    <motion.button
+                      type="button"
+                      className="review-editor__trigger"
+                      aria-expanded={addReviewOpen}
+                      aria-controls="playthrough-review-content"
+                      whileTap={shouldReduceMotion ? undefined : { scale: .99 }}
+                      onClick={() => setAddReviewOpen((open) => !open)}
+                    >
+                      <span>
+                        <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
+                        <small>необязательно</small>
+                      </span>
+                      <motion.b
+                        animate={{ rotate: addReviewOpen ? 45 : 0 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                        aria-hidden="true"
+                      >+</motion.b>
+                    </motion.button>
+                    <AnimatePresence initial={false}>
+                      {addReviewOpen && (
+                        <motion.div
+                          key="review-fields"
+                          id="playthrough-review-content"
+                          className="review-editor__content"
+                          initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0 }}
+                          transition={{ duration: .3, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                          <textarea
+                            aria-label="Текст отзыва"
+                            value={addReview}
+                            onChange={(event) => setAddReview(event.target.value)}
+                            maxLength={5000}
+                            placeholder="Что запомнилось, что понравилось или не понравилось?"
+                            rows={5}
+                          />
+                          <small className="review-editor__counter">{addReview.length}/5000</small>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <button className="primary-button" onClick={saveGame}>
               {editingEntry ? 'Сохранить изменения' : 'Сохранить в библиотеку'}
