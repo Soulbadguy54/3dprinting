@@ -11,6 +11,7 @@ import {
   useTransform,
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
+import LoadingScreen from './LoadingScreen'
 import EmojiPicker, { Emoji as RenderEmoji, EmojiStyle, Theme } from 'emoji-picker-react'
 import russianEmojis from 'emoji-picker-react/dist/data/emojis-ru'
 import PushSettings, { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
@@ -624,6 +625,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [loadingProgress, setLoadingProgress] = useState(12)
   const [screenRevision, setScreenRevision] = useState(0)
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [collections, setCollections] = useState<GameCollection[]>([])
@@ -916,20 +918,34 @@ function App() {
   useEffect(() => {
     let cancelled = false
 
+    // Progress reflects completed startup phases rather than simulated download bytes.
+    // The bar holds below 100% while the API is still responding.
+    let finishTimer: number | undefined
     const restoreSession = async () => {
+      if (!cancelled) setLoadingProgress(22)
       try {
         const response = await fetch('/api/bootstrap')
+        if (cancelled) return
+        setLoadingProgress(58)
         if (!response.ok) {
-          if (!cancelled) setAuthUser(null)
+          setAuthUser(null)
           return
         }
 
         const payload = await response.json() as BootstrapPayload
-        if (!cancelled) applyBootstrap(payload)
+        if (cancelled) return
+        setLoadingProgress(86)
+        applyBootstrap(payload)
       } catch {
         if (!cancelled) setAuthUser(null)
       } finally {
-        if (!cancelled) setAuthReady(true)
+        if (!cancelled) {
+          setLoadingProgress(100)
+          // Let the final fill animation complete before showing the app.
+          finishTimer = window.setTimeout(() => {
+            if (!cancelled) setAuthReady(true)
+          }, 280)
+        }
       }
     }
 
@@ -937,6 +953,7 @@ function App() {
 
     return () => {
       cancelled = true
+      if (finishTimer !== undefined) window.clearTimeout(finishTimer)
     }
   }, [])
 
@@ -3099,12 +3116,7 @@ function App() {
   ]
 
   if (!authReady) {
-    return (
-      <div className="session-loading">
-        <span className="session-loading__mark">R</span>
-        <p>Загружаем RateApp…</p>
-      </div>
-    )
+    return <LoadingScreen progress={loadingProgress} />
   }
 
   if (!authUser) {
