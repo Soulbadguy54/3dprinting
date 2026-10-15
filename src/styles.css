@@ -1305,11 +1305,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   overflow: hidden;
   background:
     radial-gradient(circle at 18% 10%,
-      color-mix(in srgb, var(--collection-accent, #c4a2ff) 60%, transparent),
+      color-mix(in srgb, var(--collection-accent, #c4a2ff) 40%, transparent),
       transparent 80%),
     linear-gradient(145deg,
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 72%, #171b24),
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 35%, #10131a));
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 55%, #171b24),
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 24%, #10131a));
 }
 .collection-card__mosaic > .cover {
   min-width: 0;
@@ -1339,12 +1339,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   padding: 12px;
   background:
     radial-gradient(ellipse at 5% 0%,
-      color-mix(in srgb, var(--collection-accent, #c4a2ff) 43%, transparent),
+      color-mix(in srgb, var(--collection-accent, #c4a2ff) 27%, transparent),
       transparent 85%),
     linear-gradient(112deg,
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 66%, #171b24),
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 43%, #121620) 65%,
-      color-mix(in srgb, var(--collection-shade, #7b46c7) 28%, #10131a));
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 43%, #171b24),
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 27%, #121620) 65%,
+      color-mix(in srgb, var(--collection-shade, #7b46c7) 17%, #10131a));
 }
 .collection-card__footer strong,
 .collection-card__footer span { display: block; }
@@ -1354,15 +1354,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  -webkit-text-stroke: .25px rgba(0, 0, 0, .75);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, .8), 0 0 1px rgba(0, 0, 0, .95);
 }
 .collection-card__footer > div > span {
   margin-top: 4px;
-  color: #d1d6df;
+  color: #fff;
   font-size: 8px;
-  -webkit-text-stroke: .2px rgba(0, 0, 0, .75);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, .8), 0 0 1px rgba(0, 0, 0, .9);
 }
 .collection-card__mark {
   display: grid !important;
