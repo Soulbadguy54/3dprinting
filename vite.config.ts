@@ -20,7 +20,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['rateapp-icon-192.png', 'rateapp-icon.svg', 'rateapp-splash-art.webp', 'push-sw.js'],
+      includeAssets: ['rateapp-icon-192.png', 'rateapp-icon.svg', 'rateapp-loading-gamepad.avif', 'push-sw.js'],
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
         importScripts: ['/push-sw.js'],
