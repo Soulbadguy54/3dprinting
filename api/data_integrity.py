@@ -20,8 +20,9 @@ def migrate_missing_playthrough_details(
 ) -> int:
     """Repair only absent fields on eligible playthroughs; preserve supplied data.
 
-    Choose actual IGDB platforms from the game's cached list, prioritizing
-    Windows PC, then PS5, then PS4. Never assert an unsupported platform.
+    Prefer actual IGDB platforms in order Windows PC, PS5, PS4.
+    If IGDB does not list any of these, use PS4 as the user's explicit
+    last resort and mark it as unverified in the audit for later correction.
     Rows missing the four rated criteria are not altered: the existing rating
     CHECK would reject such legacy rows, and ratings must never be invented.
     """
@@ -36,6 +37,11 @@ def migrate_missing_playthrough_details(
             new_started_at DATE,
             migrated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
+    """)
+    connection.exec_driver_sql("""
+        ALTER TABLE playthrough_backfill_20261015
+        ADD COLUMN IF NOT EXISTS platform_choice_source VARCHAR(20)
+            NOT NULL DEFAULT 'igdb'
     """)
     result = connection.execute(text("""
         WITH candidates AS (
@@ -73,7 +79,7 @@ def migrate_missing_playthrough_details(
             UPDATE user_games AS ug
             SET platform = CASE
                     WHEN NULLIF(btrim(ug.platform), '') IS NULL
-                    THEN c.suggested_platform ELSE ug.platform
+                    THEN COALESCE(c.suggested_platform, 'PlayStation 4') ELSE ug.platform
                 END,
                 completed_at = CASE
                     WHEN ug.status IN ('completed','dropped') AND ug.completed_at IS NULL
@@ -83,7 +89,7 @@ def migrate_missing_playthrough_details(
             FROM candidates c
             WHERE ug.id = c.id
               AND (
-                  (NULLIF(btrim(ug.platform), '') IS NULL AND c.suggested_platform IS NOT NULL)
+                  (NULLIF(btrim(ug.platform), '') IS NULL)
                   OR (ug.status IN ('completed', 'dropped') AND ug.completed_at IS NULL)
               )
               AND (
@@ -102,16 +108,18 @@ def migrate_missing_playthrough_details(
         INSERT INTO playthrough_backfill_20261015 (
             user_game_id, previous_platform, selected_platform,
             previous_completed_at, new_completed_at,
-            previous_started_at, new_started_at
+            previous_started_at, new_started_at, platform_choice_source
         )
         SELECT r.id, c.previous_platform, r.platform,
                c.previous_completed_at, r.completed_at,
-               c.previous_started_at, r.started_at
+               c.previous_started_at, r.started_at,
+               CASE WHEN c.suggested_platform IS NULL THEN 'user_ps4_fallback' ELSE 'igdb' END
         FROM repaired r JOIN candidates c ON c.id = r.id
         ON CONFLICT (user_game_id) DO UPDATE SET
             selected_platform = EXCLUDED.selected_platform,
             new_completed_at = EXCLUDED.new_completed_at,
-            new_started_at = EXCLUDED.new_started_at
+            new_started_at = EXCLUDED.new_started_at,
+            platform_choice_source = EXCLUDED.platform_choice_source
         RETURNING user_game_id
     """), {
         "user_one": nicknames[0],
@@ -219,7 +227,10 @@ def playthrough_integrity_summary(connection) -> dict[str, object]:
                ) AS date_updates,
                count(*) FILTER (
                    WHERE previous_started_at IS NULL AND new_started_at IS NOT NULL
-               ) AS start_updates
+               ) AS start_updates,
+               count(*) FILTER (
+                   WHERE platform_choice_source = 'user_ps4_fallback'
+               ) AS fallback_platform_updates
         FROM playthrough_backfill_20261015
     """).one()
     unresolved = connection.exec_driver_sql("""
@@ -243,6 +254,7 @@ def playthrough_integrity_summary(connection) -> dict[str, object]:
         "platformsSet": result.platform_updates,
         "completionDatesSet": result.date_updates,
         "startDatesSet": result.start_updates,
+        "ps4FallbacksWithoutIGDBMatch": result.fallback_platform_updates,
         "unresolvedTargetRows": unresolved,
         "constraintValidated": bool(validity),
     }
