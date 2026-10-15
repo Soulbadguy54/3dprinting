@@ -104,24 +104,13 @@ def initialize_database() -> None:
         connection.exec_driver_sql(
             "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS gameplay_score NUMERIC(3, 1)"
         )
-        # Status changes were not recorded historically. Use the original
-        # insertion time, NOT a later collection membership timestamp, as the
-        # nearest recoverable approximation for existing playthroughs.
+        # Do not backfill by UPDATE: historical rows may violate newer
+        # NOT VALID rating constraints, which PostgreSQL *will enforce* on
+        # every touched row and crash API initialization (including login).
+        # Legacy rows keep NULL and serialize original added_at as fallback.
         connection.exec_driver_sql(
             "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ"
         )
-        connection.exec_driver_sql("""
-            UPDATE user_games
-            SET status_changed_at = added_at
-            WHERE status IN ('completed', 'playing', 'dropped')
-              AND status_changed_at IS NULL
-        """)
-        connection.exec_driver_sql("""
-            UPDATE user_games
-            SET status_changed_at = NULL
-            WHERE status NOT IN ('completed', 'playing', 'dropped')
-              AND status_changed_at IS NOT NULL
-        """)
         connection.exec_driver_sql(
             "ALTER TABLE collections ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE"
         )
@@ -218,9 +207,8 @@ def initialize_database() -> None:
             connection.exec_driver_sql("""
                 ALTER TABLE user_games ADD CONSTRAINT ck_user_games_status_changed_at
                 CHECK (
-                    (status IN ('completed', 'playing', 'dropped') AND status_changed_at IS NOT NULL)
-                    OR
-                    (status IN ('wishlist', 'untracked') AND status_changed_at IS NULL)
+                    status IN ('completed', 'playing', 'dropped')
+                    OR status_changed_at IS NULL
                 ) NOT VALID
             """)
         if "ck_user_games_date_coherence" not in constraints:

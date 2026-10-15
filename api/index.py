@@ -601,7 +601,10 @@ def _serialize_entry(
     return {
         "gameId": entry.game.igdb_id,
         "status": entry.status,
-        "statusChangedAt": entry.status_changed_at.isoformat() if entry.status_changed_at else None,
+        "statusChangedAt": (
+            (entry.status_changed_at or entry.added_at).isoformat()
+            if entry.status in {"completed", "playing", "dropped"} else None
+        ),
         "platform": entry.platform,
         "completedAt": entry.completed_at.isoformat() if entry.completed_at else None,
         "startedAt": entry.started_at.isoformat() if entry.started_at else None,
