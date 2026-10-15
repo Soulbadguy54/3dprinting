@@ -42,6 +42,8 @@ type IconName =
   | 'play'
   | 'bookmark'
   | 'close'
+  | 'x'
+  | 'checkmark'
   | 'sort'
   | 'edit'
   | 'trash'
@@ -281,6 +283,17 @@ const sortCollections = (items: GameCollection[]) =>
     a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' }),
   )
 
+// Wishlist first; then already-added collections alphabetically; then remaining.
+const sortCollectionsForGame = (items: GameCollection[], memberships: string[]) => {
+  const selected = new Set(memberships)
+  return [...items].sort((a, b) => {
+    if (a.id === WISHLIST_COLLECTION_ID) return -1
+    if (b.id === WISHLIST_COLLECTION_ID) return 1
+    if (selected.has(a.id) !== selected.has(b.id)) return selected.has(a.id) ? -1 : 1
+    return a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' })
+  })
+}
+
 
 // A collection-only entry tracks membership but is not a playthrough.
 const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
@@ -443,6 +456,8 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     play: <><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4V8Z"/></>,
     bookmark: <path d="M6 4.8A1.8 1.8 0 0 1 7.8 3h8.4A1.8 1.8 0 0 1 18 4.8V21l-6-3.8L6 21V4.8Z"/>,
     close: <><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></>,
+    x: <path d="M6 6l12 12M18 6 6 18"/>,
+    checkmark: <path d="m5 12 4 4L19 6"/>,
     sort: <><path d="M8 6h11M8 12h8M8 18h5"/><path d="M4 4v16M2 18l2 2 2-2"/></>,
     edit: <><path d="M12 20h9"/><path d="m16.5 4.5 3 3L8 19H5v-3L16.5 4.5Z"/><path d="m15 6 3 3"/></>,
     trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></>,
@@ -475,13 +490,11 @@ function formatCardDate(value?: string) {
 function Cover({
   game,
   compact = false,
-  markers = [],
   thumbnail = false,
   priority = false,
 }: {
   game: Game
   compact?: boolean
-  markers?: GameCollection[]
   thumbnail?: boolean
   priority?: boolean
 }) {
@@ -509,14 +522,6 @@ function Cover({
       {!game.coverUrl && <div className="cover__orb cover__orb--two" />}
       {!game.coverUrl && <span className="cover__noise" />}
       {!game.coverUrl && <span className="cover__glyph">{game.glyph}</span>}
-      {markers.some((collection) => collection.id !== WISHLIST_COLLECTION_ID) && (
-        <span className="cover__markers" aria-label="Коллекции">
-          {markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).slice(0, 2).map((collection) => (
-            <span className="collection-marker" style={collectionThemeStyle(collection)} key={collection.id}><CollectionIcon collection={collection} size={13} /></span>
-          ))}
-          {markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).length > 2 && <span className="collection-marker">+{markers.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID).length - 2}</span>}
-        </span>
-      )}
     </div>
   )
 }
@@ -524,7 +529,6 @@ function Cover({
 type GameCardProps = {
   game: Game
   entry: LibraryEntry
-  collections: GameCollection[]
   onOpen: () => void
   animationIndex?: number
   readOnly?: boolean
@@ -533,14 +537,12 @@ type GameCardProps = {
 const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
   game,
   entry,
-  collections,
   onOpen,
   animationIndex = 0,
   readOnly = false,
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
   void animationIndex
-  const markers = collections.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID && entry.collectionIds.includes(collection.id))
   const activityDate =
     entry.status === 'completed' && entry.completedAt
       ? entry.completedAt
@@ -567,7 +569,7 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
       }}
     >
       <div className="game-card__cover-wrap">
-        <Cover game={game} markers={markers} />
+        <Cover game={game} />
         {entry.score != null && (
           <span className="score-badge">{entry.score.toFixed(1)}</span>
         )}
@@ -669,6 +671,7 @@ function App() {
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false)
+  const viewportPageRef = useRef<HTMLElement | null>(null)
   const collectionUpdatesRef = useRef(new Map<number, CollectionUpdate>())
   useEffect(() => { setCollectionPickerOpen(false) }, [selectedGameId])
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
@@ -756,7 +759,11 @@ function App() {
       rateAppView: true,
       view,
       fromApp: existing?.fromApp ?? false,
-      scrollY: Math.max(0, window.scrollY),
+      scrollY: Math.max(0,
+        view.gameId == null && (view.tab === 'collections' || (view.tab === 'add' && view.formGameId == null))
+          ? (viewportPageRef.current?.scrollTop ?? 0)
+          : window.scrollY,
+      ),
     }
 
     if (view.tab === 'library' && view.gameId == null) {
@@ -858,10 +865,18 @@ function App() {
       if (saved.view.tab === 'library' && saved.view.gameId == null) {
         libraryCollapseProgress.set(saved.controls?.progress ?? 0)
       }
-      window.scrollTo(0, saved.scrollY)
+      const restoreScroll = () => {
+        if (viewportPageRef.current?.classList.contains('page--viewport')) {
+          viewportPageRef.current.scrollTop = saved.scrollY
+          window.scrollTo(0, 0)
+        } else {
+          window.scrollTo(0, saved.scrollY)
+        }
+      }
+      restoreScroll()
       window.requestAnimationFrame(() => {
         if (pendingScreenRestoreRef.current !== saved) return
-        window.scrollTo(0, saved.scrollY)
+        restoreScroll()
         libraryLastScrollYRef.current = Math.max(0, window.scrollY)
         pendingScreenRestoreRef.current = null
         libraryScrollSyncPausedRef.current = false
@@ -1494,7 +1509,7 @@ function App() {
     if (!update.persisted.has(collectionId)) update.persisted.set(collectionId, included)
     update.desired.set(collectionId, !included)
 
-    // Change the plus to a cross immediately, even on a slow connection.
+    // Change plus/check immediately while the membership request syncs.
     setEntries((current) => withCollectionMembership(current, game.id, collectionId, !included))
     void syncCollectionMemberships(game.id, update)
   }
@@ -1799,10 +1814,10 @@ function App() {
           <section className="detail-collection-picker" id="game-collection-picker" aria-label="Управление коллекциями">
             <div className="detail-collection-picker__heading">
               <h2>Коллекции</h2>
-              <span>Нажми +, чтобы добавить игру, или ×, чтобы убрать</span>
+              <span>+ — добавить, ✓ — убрать из коллекции</span>
             </div>
             <div className="detail-collection-picker__grid">
-              {sortCollections(collections).map((collection) => {
+              {sortCollectionsForGame(collections, selectedEntry?.collectionIds ?? []).map((collection) => {
                 const included = Boolean(selectedEntry?.collectionIds.includes(collection.id))
                 const collectionGames = entries
                   .filter((entry) => entry.collectionIds.includes(collection.id))
@@ -1824,7 +1839,7 @@ function App() {
                       aria-pressed={included}
                       onClick={() => toggleCollectionMembership(selectedGame, collection.id)}
                     >
-                      <Icon name={included ? 'close' : 'plus'} size={19} />
+                      <Icon name={included ? 'checkmark' : 'plus'} size={19} />
                     </button>
                     <div className="collection-card__footer">
                       <div>
@@ -1842,7 +1857,7 @@ function App() {
 
         <section className="detail-hero">
           <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
-            <Cover game={selectedGame} markers={gameCollections.filter((collection) => collection.id !== WISHLIST_COLLECTION_ID)} priority />
+            <Cover game={selectedGame} priority />
           </div>
           <div className="detail-hero__info">
             <h1>{selectedGame.title}</h1>
@@ -2080,7 +2095,7 @@ function App() {
                   aria-label="Очистить поиск"
                   whileTap={shouldReduceMotion ? undefined : { scale: .88 }}
                 >
-                  <Icon name="close" size={17} />
+                  <Icon name="x" size={15} />
                 </motion.button>
               )}
             </div>
@@ -2378,7 +2393,6 @@ function App() {
                     key={game.id}
                     game={game}
                     entry={entry}
-                    collections={collections}
                     onOpen={() => openGame(game.id)}
                     animationIndex={index}
                   />
@@ -2555,7 +2569,7 @@ function App() {
                 addSearchInputRef.current?.focus()
               }}
             >
-              <Icon name="close" size={18} />
+              <Icon name="x" size={15} />
             </button>
           )}
         </div>
@@ -2832,7 +2846,6 @@ function App() {
                     <GameCard
                       game={game}
                       entry={entry}
-                      collections={collections}
                       readOnly={editing}
                       onOpen={() => openGame(game.id)}
                     />
@@ -3014,12 +3027,17 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={selectedGameId == null && (activeTab === 'collections' || (activeTab === 'add' && addGameId == null))
+      ? 'app-shell app-shell--viewport'
+      : 'app-shell'}>
       <main
+        ref={viewportPageRef}
         className={
           activeTab === 'library' && selectedGameId == null
             ? 'page page--library'
-            : 'page'
+            : selectedGameId == null && (activeTab === 'collections' || (activeTab === 'add' && addGameId == null))
+              ? 'page page--viewport'
+              : 'page'
         }
       >
         <AnimatePresence mode="wait" initial={false}>
