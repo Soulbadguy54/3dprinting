@@ -331,6 +331,7 @@ function withCollectionMembership(
       gameId,
       status: 'untracked',
       collectionIds: [collectionId],
+      collectionAddedAt: { [collectionId]: new Date().toISOString() },
       addedAt: new Date().toISOString().slice(0, 10),
     }]
   }
@@ -339,9 +340,14 @@ function withCollectionMembership(
     ? Array.from(new Set([...entry.collectionIds, collectionId]))
     : entry.collectionIds.filter((id) => id !== collectionId)
   const others = entries.filter((item) => item.gameId !== gameId)
+  const collectionAddedAt = { ...entry.collectionAddedAt }
+  if (enabled && !entry.collectionIds.includes(collectionId)) {
+    collectionAddedAt[collectionId] = new Date().toISOString()
+  }
+  if (!enabled) delete collectionAddedAt[collectionId]
   return !isPlaythrough(entry) && collectionIds.length === 0
     ? others
-    : [...others, { ...entry, collectionIds }]
+    : [...others, { ...entry, collectionIds, collectionAddedAt }]
 }
 
 type CollectionUpdate = {
@@ -1834,7 +1840,7 @@ function App() {
       setEntries((current) => current.flatMap((entry) => {
         if (entry.gameId !== game.id) return [entry]
         return entry.collectionIds.length > 0
-          ? [{ gameId: entry.gameId, status: 'untracked' as const, collectionIds: entry.collectionIds, addedAt: entry.addedAt }]
+          ? [{ gameId: entry.gameId, status: 'untracked' as const, collectionIds: entry.collectionIds, collectionAddedAt: entry.collectionAddedAt, addedAt: entry.addedAt }]
           : []
       }))
       setDeleteGamePrompt(null)

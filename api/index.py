@@ -1013,11 +1013,6 @@ def _sync_genre_catalog() -> int:
     return len(valid)
 
 
-@app.post("/api/internal/seed-genres-20261015")
-def _one_shot_seed_genres_20261015() -> dict[str, int]:
-    return {"synced": _sync_genre_catalog()}
-
-
 @app.get("/api/genres")
 def list_genres(request: Request) -> list[dict[str, object]]:
     with _session() as session:
@@ -1657,6 +1652,10 @@ def upsert_library_game(
         entry.review = payload.review if payload.status in {"completed", "dropped"} else None
 
         session.flush()
+        existing_membership_dates = dict(session.execute(
+            select(CollectionGame.collection_id, CollectionGame.added_at)
+            .where(CollectionGame.user_game_id == entry.id)
+        ).all())
         session.execute(delete(CollectionGame).where(CollectionGame.user_game_id == entry.id))
 
         selected_slugs = set(payload.collectionIds)
@@ -1676,6 +1675,7 @@ def upsert_library_game(
                     CollectionGame(
                         collection_id=collection.id,
                         user_game_id=entry.id,
+                        added_at=existing_membership_dates.get(collection.id, _now()),
                     )
                     for collection in selected_collections
                 ]
