@@ -1433,7 +1433,7 @@ def upsert_library_game(
 
         entry.status = payload.status
         entry.platform = None if payload.status == "wishlist" else payload.platform
-        entry.completed_at = payload.completedAt if payload.status == "completed" else None
+        entry.completed_at = payload.completedAt if payload.status in {"completed", "dropped"} else None
         entry.started_at = payload.startedAt if payload.status == "playing" else None
         if payload.status in {"completed", "dropped"}:
             criteria = [
