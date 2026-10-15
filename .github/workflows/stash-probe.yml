@@ -6,24 +6,23 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect identifiers on Stash game pages
+      - name: Extract wishlist source cover references
         run: |
           python -m pip -q install beautifulsoup4
           python - <<'PY'
           from bs4 import BeautifulSoup
-          import urllib.request,re,json
-          for slug in ['bioshock-infinite','shadow-of-the-colossus--1','dispatch--3','halo-campaign-evolved','beast-of-reincarnation']:
-              u='https://stash.games/games/'+slug
-              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Accept-Language':'en-US,en;q=0.9'})
-              try:
-                  html=urllib.request.urlopen(req,timeout=20).read().decode('utf-8','replace')
-                  soup=BeautifulSoup(html,'html.parser')
-                  print('GAME',slug,'LEN',len(html),'TITLE',soup.title.get_text(' ',strip=True) if soup.title else '')
-                  for a in soup.find_all('a',href=True):
-                      if 'igdb' in a['href'] or 'rawg' in a['href'] or 'steam' in a['href']:
-                          print('LINK',a['href'],a.get_text(' ',strip=True)[:90])
-                  for m in re.finditer(r'(?i)igdb.?id|data-game-id|game_id|gameId|igdb.com',html):
-                      print('META',html[max(0,m.start()-100):m.end()+220].replace('\n',' ')[:450])
-                      if m.start()>130000:break
-              except Exception as e:print('ERROR',slug,repr(e))
+          import urllib.request,json,re
+          games=[]
+          for pg in ['','?page=2']:
+              url='https://stash.games/users/Soulbadguy/games/want/'+pg
+              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+              soup=BeautifulSoup(urllib.request.urlopen(req,timeout=25).read(),'html.parser')
+              for a in soup.select('a.games-list__item-link[href^="/games/"]'):
+                  h=a.get('href'); title=a.get_text(' ',strip=True)
+                  image=a.find('img')
+                  img=(image.get('data-src') or image.get('src') or '') if image else ''
+                  match=re.search(r'/(co[^/.]+)\.(?:webp|png|jpg)',img)
+                  print('ITEM',json.dumps({'text':title,'slug':h.split('/games/',1)[-1],'image':match.group(1) if match else None,'src':img[:120]},ensure_ascii=False))
+                  games.append(h)
+          print('TOTAL',len(games),'UNIQUE',len(set(games)))
           PY
