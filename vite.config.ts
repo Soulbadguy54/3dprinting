@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+// @ts-expect-error: Node's runtime modules are available to Vite but this frontend tsconfig omits @types/node.
 import { readFileSync, writeFileSync } from 'node:fs'
+// @ts-expect-error: Node's runtime modules are available to Vite but this frontend tsconfig omits @types/node.
 import { fileURLToPath } from 'node:url'
 import { VitePWA } from 'vite-plugin-pwa'
 
