@@ -6,35 +6,28 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract games from three Stash collections
+      - name: Dry-run exact IGDB collection game ID resolution
         run: |
-          python -m pip install -q beautifulsoup4 requests
           python - <<'PY'
-          import requests,re,json
-          from bs4 import BeautifulSoup
-          session=requests.Session()
-          session.headers.update({'User-Agent':'Mozilla/5.0'})
-          for cid in ('dfhpn','zdpqj','hgwtg'):
-              root=f'https://stash.games/users/Soulbadguy/collections/{cid}'
-              meta=BeautifulSoup(session.get(root,timeout=30).text,'html.parser')
-              name=meta.find('h1').get_text(' ',strip=True)
-              desc=meta.select_one('.collection__description')
-              count=meta.select_one('.collection__count span')
-              games=[]
-              for offset in (0,36):
-                  url=f'{root}/items?offset={offset}&limit=36'
-                  r=session.get(url,timeout=30)
-                  soup=BeautifulSoup(r.text,'html.parser')
-                  links=soup.select('a.games-list__item-link')
-                  print('ITEMS_PAGE',cid,offset,r.status_code,'HTML_LEN',len(r.text),'LINKS',len(links))
-                  if not links and offset==0:print('FIRST_HTML',json.dumps(r.text[:6000],ensure_ascii=False))
-                  for a in links:
-                      img=a.select_one('img')
-                      image=(img.get('data-src') or img.get('src') or '') if img else ''
-                      cover=re.search(r'/([a-z0-9]+)\.(?:jpg|png|webp)',image)
-                      obj={'title':a.get('aria-label') or a.get('title') or a.get_text(' ',strip=True),'href':a.get('href'),'cover':cover.group(1) if cover else None,'image':image}
-                      games.append(obj)
-                      if offset==0 and len(games)==1:print('SAMPLE_CARD',json.dumps(str(a)[:1800],ensure_ascii=False))
-                  if len(links)<36:break
-              print('COLLECTION_EXTRACT',json.dumps({'source':cid,'name':name,'description':desc.get_text(' ',strip=True) if desc else '', 'count':int(count.get_text(strip=True)) if count else None, 'games':games},ensure_ascii=False))
+          import urllib.request,json
+          url='https://rateapp-soulbadguy.vercel.app/api/internal/stash-collections-20261015?dryRun=true'
+          req=urllib.request.Request(url,data=b'',method='POST',headers={
+              'User-Agent':'RateApp-Migration-Probe/1.0',
+              'Content-Type':'application/json',
+          })
+          try:
+              with urllib.request.urlopen(req,timeout=115) as r:
+                  data=json.load(r)
+                  print('STATUS',r.status)
+                  print('SUMMARY',json.dumps({k:v for k,v in data.items() if k!='mappings'},ensure_ascii=False))
+                  print('MAPPINGS',json.dumps(data.get('mappings'),ensure_ascii=False))
+                  assert r.status==200
+                  assert data['ready']
+                  assert data['expectedMemberships']==44
+                  assert data['resolved']==44
+                  assert data['uniqueCovers']==41
+          except Exception as exc:
+              print('ERROR',repr(exc))
+              if hasattr(exc,'read'):print('BODY',exc.read().decode('utf-8','replace')[:7000])
+              raise
           PY
