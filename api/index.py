@@ -46,7 +46,7 @@ app = FastAPI(
 initialize_database()
 
 PIN_RE = re.compile(r"^\d{4,8}$")
-NICK_RE = re.compile(r"^[a-z0-9_]{3,24}$")
+NICK_RE = re.compile(r"^[a-z0-9_]{3,16}$")
 SESSION_COOKIE = "rateapp_session"
 SESSION_DAYS = 30
 MAX_LOGIN_FAILURES = 5
@@ -58,7 +58,7 @@ _igdb_token_expires_at = 0.0
 
 class RegisterPayload(BaseModel):
     email: EmailStr
-    nickname: str = Field(min_length=3, max_length=24)
+    nickname: str = Field(min_length=3, max_length=16)
     pin: str = Field(min_length=4, max_length=8)
 
 
@@ -74,7 +74,7 @@ COLLECTION_COLORS = frozenset({
 
 
 class CollectionPayload(BaseModel):
-    title: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=32)
     description: str | None = Field(default=None, max_length=500)
     colorScheme: Literal["violet", "rose", "blue", "cyan", "teal",
                          "emerald", "lime", "amber", "orange", "slate"] = "violet"
@@ -84,7 +84,7 @@ class CollectionPayload(BaseModel):
 
 class CollectionEditPayload(BaseModel):
     # PATCH is partial: system collections accept only removedGameIds.
-    title: str | None = Field(default=None, min_length=1, max_length=100)
+    title: str | None = Field(default=None, min_length=1, max_length=32)
     description: str | None = Field(default=None, max_length=500)
     colorScheme: Literal["violet", "rose", "blue", "cyan", "teal",
                          "emerald", "lime", "amber", "orange", "slate"] | None = None
@@ -127,7 +127,7 @@ def _validated_collection_icon(value: str | None) -> str | None:
 class LibraryPayload(BaseModel):
     gameId: int | None = None
     status: Literal["completed", "playing", "wishlist", "dropped"]
-    platform: str | None = None
+    platform: str | None = Field(default=None, max_length=80)
     completedAt: date | None = None
     startedAt: date | None = None
     score: float | None = Field(default=None, ge=1, le=10)
@@ -136,7 +136,7 @@ class LibraryPayload(BaseModel):
     technologyScore: float | None = Field(default=None, ge=1, le=10)
     gameplayScore: float | None = Field(default=None, ge=1, le=10)
     review: str | None = Field(default=None, max_length=5000)
-    collectionIds: list[str] = Field(default_factory=list)
+    collectionIds: list[str] = Field(default_factory=list, max_length=100)
     addedAt: date | None = None
 
 
@@ -736,7 +736,7 @@ def register(payload: RegisterPayload, response: Response) -> dict[str, object]:
     if not NICK_RE.fullmatch(nickname):
         raise HTTPException(
             status_code=422,
-            detail="Ник: 3–24 символа, только латиница, цифры и _.",
+            detail="Ник: 3–16 символов, только латиница, цифры и _.",
         )
     if not PIN_RE.fullmatch(pin):
         raise HTTPException(status_code=422, detail="PIN должен содержать 4–8 цифр.")
@@ -1109,8 +1109,8 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
 
 @app.get("/api/games/search")
 def search_games(
-    q: str,
     request: Request,
+    q: str = Query(max_length=100),
     source: Literal["local", "igdb"] = "local",
     offset: int = Query(default=0, ge=0, le=10000),
 ) -> dict[str, object]:

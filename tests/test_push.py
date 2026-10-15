@@ -27,7 +27,7 @@ class PushTests(unittest.TestCase):
         self.env.start()
         self.client = TestClient(index.app, base_url="https://testserver")
         self.game_id = secrets.randbelow(400_000_000) + 500_000_000
-        suffix = secrets.token_hex(6)
+        suffix = secrets.token_hex(5)
         signup = self.client.post("/api/auth/register", json={
             "email": f"push_{suffix}@example.com", "nickname": f"push_{suffix}", "pin": "12345678",
         })

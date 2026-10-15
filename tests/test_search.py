@@ -14,7 +14,7 @@ from api.models import Game, GameAlias
 
 class SearchApiTests(unittest.TestCase):
     def setUp(self):
-        suffix = secrets.token_hex(6)
+        suffix = secrets.token_hex(4)
         self.client = TestClient(index.app, base_url="https://testserver")
         response = self.client.post("/api/auth/register", json={
             "email": f"search_{suffix}@example.com",

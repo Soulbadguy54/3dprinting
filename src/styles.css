@@ -3714,3 +3714,148 @@ body:has(.auth-shell) .install-prompt {
   border-radius: 50%;
   background: #69d9cf;
 }
+
+/* /install — universal RateApp installation landing page, usable before login. */
+.install-page {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: max(26px, env(safe-area-inset-top, 0px))
+    max(16px, env(safe-area-inset-right, 0px))
+    max(30px, env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(ellipse at 28% 20%, rgba(16, 191, 120, .18), transparent 45%),
+    radial-gradient(ellipse at 81% 70%, rgba(91, 78, 230, .21), transparent 50%),
+    linear-gradient(148deg, #05131c, #0c1227 51%, #110d24);
+  overflow-x: hidden;
+}
+.install-page__content {
+  width: min(100%, 450px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px 12px;
+  text-align: center;
+}
+.install-page__image {
+  display: block;
+  width: min(58vw, 240px, 30dvh);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 0 20px rgba(34, 252, 157, .28));
+}
+.install-page__eyebrow {
+  color: #95eaa8;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+.install-page__content h1 {
+  margin: 11px 0 10px;
+  color: #f3fbf8;
+  font-size: clamp(26px, 7.5vw, 37px);
+  font-weight: 900;
+  line-height: 1.16;
+  letter-spacing: -.025em;
+}
+.install-page__description {
+  max-width: 380px;
+  margin: 0 0 22px;
+  color: #a7bac7;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.install-page__primary {
+  display: grid;
+  place-items: center;
+  width: min(100%, 372px);
+  min-height: 52px;
+  padding: 12px 16px;
+  border: 1px solid rgba(181, 255, 176, .75);
+  border-radius: 14px;
+  color: #07241a;
+  background: linear-gradient(100deg, #b2fa96, #48eab3 58%, #62cddf);
+  box-shadow: 0 6px 29px rgba(44, 234, 144, .21);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.install-page__primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 33px rgba(44, 234, 144, .32);
+}
+.install-page__primary:disabled {
+  opacity: .65;
+  cursor: progress;
+}
+.install-page__primary:focus-visible,
+.install-page__back:focus-visible {
+  outline: 2px solid #b9ffad;
+  outline-offset: 4px;
+}
+.install-page__steps {
+  width: min(100%, 372px);
+  margin: 16px 0 0;
+  padding: 17px 16px;
+  border: 1px solid rgba(154, 236, 193, .20);
+  border-radius: 15px;
+  background: rgba(21, 28, 40, .76);
+  text-align: left;
+}
+.install-page__steps h2 {
+  margin: 0 0 9px;
+  color: #d9fbe5;
+  font-size: 15px;
+  font-weight: 900;
+}
+.install-page__steps p {
+  margin: 0;
+  color: #b9c5d1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.install-page__steps .install-page__primary {
+  margin-top: 15px;
+  font-size: 13px;
+}
+.install-page__note {
+  max-width: 360px;
+  margin: 13px 0 0;
+  color: #90a1b4;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.install-page__back {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 7px 10px;
+  color: #b6ccdc;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.install-page__platforms {
+  display: block;
+  margin-top: 20px;
+  color: #79a5b6;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .13em;
+}
+@media (max-height: 680px) {
+  .install-page__image { width: min(42vw, 170px, 24dvh); }
+  .install-page__description { margin-bottom: 15px; }
+  .install-page__content h1 { margin: 8px 0; font-size: 25px; }
+  .install-page__back { margin-top: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-page__primary { transition: none; }
+}
