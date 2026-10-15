@@ -728,11 +728,14 @@ def _igdb_search_body(query: str, offset: int) -> str:
 def health() -> dict[str, object]:
     database_configured = engine is not None
     database_ok = False
+    integrity_report = None
 
     if engine is not None:
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
+                if os.getenv("VERCEL_ENV") == "production":
+                    integrity_report = playthrough_integrity_summary(connection)
             database_ok = True
         except SQLAlchemyError:
             database_ok = False
@@ -748,6 +751,7 @@ def health() -> dict[str, object]:
             )
         },
         "environment": os.getenv("VERCEL_ENV", "local"),
+        "playthroughIntegrity": integrity_report,
     }
 
 
