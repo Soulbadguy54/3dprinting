@@ -1,19 +1,17 @@
 import { motion, useReducedMotion } from 'motion/react'
 
-type Props = { progress: number }
+type Props = { progress: number; phase: 'loading' | 'preparing' | 'complete' }
 
-// The percentage follows actual startup milestones; it never reaches 100%
-// before the bootstrap request finishes.
-export default function LoadingScreen({ progress }: Props) {
+// The percentage is a smooth estimate while the request is pending.
+// The loading screen only completes when the bootstrap work really finishes.
+export default function LoadingScreen({ progress, phase }: Props) {
   const reduceMotion = useReducedMotion()
   const percent = Math.min(100, Math.max(0, progress))
-  const message = percent >= 100
-    ? 'Готово!'
-    : percent >= 86
+  const message = phase === 'complete'
+    ? (percent >= 100 ? 'Готово!' : 'Завершаем загрузку…')
+    : phase === 'preparing'
       ? 'Подготавливаем вашу библиотеку'
-      : percent >= 58
-        ? 'Загружаем вашу библиотеку'
-        : 'Подключаемся к RateApp'
+      : 'Загружаем вашу библиотеку'
 
   return (
     <main className="session-loading" aria-label="Загрузка RateApp">
@@ -60,7 +58,7 @@ export default function LoadingScreen({ progress }: Props) {
           <div
             className="session-loading__progress"
             role="progressbar"
-            aria-label="Загрузка приложения"
+            aria-label="Ориентировочный прогресс загрузки приложения"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
@@ -70,7 +68,7 @@ export default function LoadingScreen({ progress }: Props) {
               className="session-loading__progress-fill"
               initial={false}
               animate={{ width: `${percent}%` }}
-              transition={reduceMotion ? { duration: 0 } : { duration: .38, ease: 'easeOut' }}
+              transition={reduceMotion ? { duration: 0 } : { duration: .09, ease: 'linear' }}
             >
               <span className="session-loading__progress-sheen" />
             </motion.div>
