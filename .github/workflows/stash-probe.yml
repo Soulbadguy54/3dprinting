@@ -6,11 +6,11 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Dry-run Stash wishlist migration
+      - name: Apply Stash wishlist migration
         run: |
           python - <<'PY'
           import urllib.request, json
-          url='https://rateapp-delta.vercel.app/api/internal/stash-want-import-20261015?dry_run=true'
+          url='https://rateapp-delta.vercel.app/api/internal/stash-want-import-20261015?dry_run=false'
           req=urllib.request.Request(url, data=b'{}', method='POST',
               headers={'Accept':'application/json','Content-Type':'application/json','User-Agent':'RateApp-Audit/1.0'})
           try:
