@@ -3220,7 +3220,7 @@ function App() {
                   </span>
                 </div>
                 <label className="collection-detail-sort">
-                  <Icon name="sort" size={16} />
+                  <Icon name="sort" size={19} />
                   <select
                     value={collectionSortMode}
                     onChange={(event) => setCollectionSortMode(event.target.value as CollectionSortMode)}
@@ -3228,8 +3228,8 @@ function App() {
                   >
                     <option value="added-desc">Добавлены: новые → старые</option>
                     <option value="added-asc">Добавлены: старые → новые</option>
-                    <option value="release-desc">Выход: новые → старые</option>
-                    <option value="release-asc">Выход: старые → новые</option>
+                    <option value="release-desc">Релиз: новые → старые</option>
+                    <option value="release-asc">Релиз: старые → новые</option>
                     <option value="title-asc">Название: А → Я</option>
                     <option value="title-desc">Название: Я → А</option>
                     <option value="igdb-desc">IGDB: высокий → низкий</option>

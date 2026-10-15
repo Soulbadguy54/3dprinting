@@ -3932,8 +3932,8 @@ body:has(.auth-shell) .install-prompt {
   margin-top: -8px; color: #aeb9c8; line-height: 1.5;
 }
 
-/* Sort action aligned with collection description/count without stealing
-   horizontal space from the title or editor. */
+/* Icon-only native select: the entire 42px target opens the browser's
+   accessible sort picker without displaying the selected option text. */
 .collection-detail-overview {
   display: flex;
   align-items: flex-end;
@@ -3943,35 +3943,39 @@ body:has(.auth-shell) .install-prompt {
 }
 .collection-detail-overview__text { min-width: 0; flex: 1 1 auto; }
 .collection-detail-sort {
-  display: flex;
-  flex: 0 1 194px;
-  width: min(50%, 194px);
-  min-width: 140px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
   height: 42px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 7px 0 10px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(18, 21, 28, .88);
-  color: #929bad;
+  color: #c9d1df;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.collection-detail-sort > svg { flex: 0 0 auto; }
+.collection-detail-sort:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.collection-detail-sort > svg { pointer-events: none; }
 .collection-detail-sort select {
-  min-width: 0;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  padding: 0 10px 0 0;
+  margin: 0;
   border: 0;
-  outline: none;
-  background: transparent;
-  color: #e3e8f0;
-  font-size: 10px;
-  font-weight: 800;
-}
-.collection-detail-sort select option { color: #f4f4f7; background: #181c26; }
-@media (max-width: 359px) {
-  .collection-detail-sort { min-width: 128px; padding-left: 6px; }
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 /* Keep the expanded filter body static while the OUTER library dock clips.
