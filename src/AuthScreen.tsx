@@ -165,6 +165,7 @@ export default function AuthScreen({
                 <span>Email</span>
                 <input
                   type="email"
+                  maxLength={320}
                   autoComplete="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -178,12 +179,13 @@ export default function AuthScreen({
                   type="text"
                   autoComplete="username"
                   value={nickname}
-                  onChange={(event) => setNickname(event.target.value.toLowerCase())}
+                  maxLength={16}
+                  onChange={(event) => setNickname(event.target.value.toLowerCase().slice(0, 16))}
                   placeholder="nickname"
-                  pattern="[a-z0-9_]{3,24}"
+                  pattern="[a-z0-9_]{3,16}"
                   required
                 />
-                <small>3–24 символа: латиница, цифры и _</small>
+                <small>3–16 символов: латиница, цифры и _</small>
               </label>
             </>
           ) : (
@@ -193,6 +195,7 @@ export default function AuthScreen({
                 type="text"
                 autoComplete="username"
                 value={identifier}
+                maxLength={320}
                 onChange={(event) => setIdentifier(event.target.value)}
                 placeholder="you@example.com или nickname"
                 required

@@ -118,6 +118,24 @@ function keyForAppView(view: AppView): string {
   return view.tab
 }
 
+const COLLECTION_TITLE_LIMIT = 32
+
+function collectionValidationMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object' || !('detail' in data)) return fallback
+  const detail = (data as { detail?: unknown }).detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const first = detail.find((item) => item && typeof item === 'object' && 'loc' in item)
+    const loc = first && typeof first === 'object' && 'loc' in first
+      ? (first as { loc?: unknown }).loc : null
+    if (Array.isArray(loc) && loc.includes('title')) return 'Название коллекции: максимум 32 символа.'
+    if (Array.isArray(loc) && loc.includes('description')) return 'Описание коллекции: максимум 500 символов.'
+    const message = detail.find((item) => item && typeof item === 'object' && 'msg' in item)
+    if (message && typeof message === 'object' && 'msg' in message) return String(message.msg)
+  }
+  return fallback
+}
+
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
 
 type ApiLibraryEntry = Omit<
@@ -1728,11 +1746,7 @@ function App() {
       const payload = await response.json().catch(() => null) as GameCollection | { detail?: string } | null
 
       if (!response.ok || !payload || !('id' in payload)) {
-        setCollectionError(
-          payload && 'detail' in payload && payload.detail
-            ? payload.detail
-            : 'Не удалось создать коллекцию.',
-        )
+        setCollectionError(collectionValidationMessage(payload, 'Не удалось создать коллекцию.'))
         return
       }
 
@@ -1777,7 +1791,9 @@ function App() {
         body: JSON.stringify(collection.isSystem
           ? { removedGameIds: removedCollectionGameIds }
           : {
-              title: editCollectionTitle.trim(),
+              ...(editCollectionTitle.trim() !== collection.title
+                ? { title: editCollectionTitle.trim() }
+                : {}),
               description: editCollectionDescription.trim(),
               colorScheme: editCollectionColor,
               emoji: editCollectionEmoji,
@@ -1787,10 +1803,10 @@ function App() {
       const payload = await response.json().catch(() => null) as {
         collection?: GameCollection
         library?: ApiLibraryEntry[]
-        detail?: string
+        detail?: unknown
       } | null
       if (!response.ok || !payload?.collection || !payload.library) {
-        throw new Error(payload?.detail || 'Не удалось сохранить изменения.')
+        throw new Error(collectionValidationMessage(payload, 'Не удалось сохранить изменения.'))
       }
       setCollections((current) => sortCollections(current.map((item) =>
         item.id === collection.id ? payload.collection! : item,
@@ -1840,7 +1856,7 @@ function App() {
     setAddCollectionIds((current) =>
       current.includes(collectionId)
         ? current.filter((id) => id !== collectionId)
-        : [...current, collectionId],
+        : current.length >= 100 ? current : [...current, collectionId],
     )
   }
 
@@ -2231,6 +2247,7 @@ function App() {
                 ref={librarySearchInputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                maxLength={100}
                 placeholder="Название, жанр или разработчик..."
                 aria-label="Поиск в библиотеке"
               />
@@ -2702,6 +2719,7 @@ function App() {
             ref={addSearchInputRef}
             value={addQuery}
             onChange={(event) => setAddQuery(event.target.value)}
+            maxLength={100}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
@@ -2819,7 +2837,7 @@ function App() {
               <input
                 value={collectionTitle}
                 onChange={(event) => setCollectionTitle(event.target.value)}
-                maxLength={100}
+                maxLength={COLLECTION_TITLE_LIMIT}
                 placeholder="Например, Лучшие RPG"
                 autoFocus
               />
@@ -2888,7 +2906,7 @@ function App() {
                   aria-label="Название коллекции"
                   value={editCollectionTitle}
                   onChange={(event) => setEditCollectionTitle(event.target.value)}
-                  maxLength={100}
+                  maxLength={COLLECTION_TITLE_LIMIT}
                   placeholder="Название"
                 />
               ) : (

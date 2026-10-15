@@ -15,7 +15,7 @@ from api.models import Game
 class GameMetadataCacheTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(index.app, base_url="https://testserver")
-        suffix = secrets.token_hex(7)
+        suffix = secrets.token_hex(3)
         response = self.client.post("/api/auth/register", json={
             "email": f"metadata_{suffix}@example.com",
             "nickname": f"metadata_{suffix}",

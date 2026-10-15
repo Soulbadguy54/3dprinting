@@ -15,7 +15,7 @@ from api.models import Collection, CollectionGame, Game, User, UserGame, WISHLIS
 class WishlistApiTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(index.app, base_url="https://testserver")
-        suffix = secrets.token_hex(6)
+        suffix = secrets.token_hex(5)
         self.nickname = f"test_{suffix}"
         registered = self.client.post("/api/auth/register", json={
             "email": f"{suffix}@example.com", "nickname": self.nickname, "pin": "12348765",
@@ -300,7 +300,7 @@ class WishlistApiTests(unittest.TestCase):
     def test_collection_update_does_not_accept_unauthorized_user(self):
         slug = self.client.post("/api/collections", json={"title": "Приватная"}).json()["id"]
         second = TestClient(index.app, base_url="https://testserver")
-        suffix = secrets.token_hex(6)
+        suffix = secrets.token_hex(5)
         try:
             register = second.post("/api/auth/register", json={
                 "email": f"{suffix}@example.com", "nickname": f"other_{suffix}", "pin": "13572468",
@@ -317,7 +317,7 @@ class WishlistApiTests(unittest.TestCase):
     def test_different_user_cannot_see_wishlist(self):
         self.assertEqual(self.client.put(f"/api/library/{self.game_id}/wishlist").status_code, 200)
         second = TestClient(index.app, base_url="https://testserver")
-        suffix = secrets.token_hex(6)
+        suffix = secrets.token_hex(5)
         try:
             register = second.post("/api/auth/register", json={
                 "email": f"{suffix}@example.com", "nickname": f"other_{suffix}", "pin": "13572468",
