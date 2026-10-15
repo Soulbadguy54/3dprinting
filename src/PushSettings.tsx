@@ -47,6 +47,38 @@ async function readPushState(): Promise<PushState> {
   return { config, permission, subscribed: Boolean(subscription && config.devices > 0) }
 }
 
+const pushStateCache = new Map<string, PushState>()
+const pushStateRequests = new Map<string, Promise<PushState>>()
+
+export function cachedPushState(user: string): PushState | null {
+  return pushStateCache.get(user) ?? null
+}
+
+export function preloadPushState(user: string, refresh = false): Promise<PushState> {
+  if (refresh) {
+    pushStateCache.delete(user)
+    pushStateRequests.delete(user)
+  }
+  const cached = pushStateCache.get(user)
+  if (cached) return Promise.resolve(cached)
+  const active = pushStateRequests.get(user)
+  if (active) return active
+  const task = readPushState().then((state) => {
+    if (pushStateRequests.get(user) === task) pushStateCache.set(user, state)
+    return state
+  }).catch((error: unknown) => {
+    if (pushStateRequests.get(user) === task) pushStateRequests.delete(user)
+    throw error
+  })
+  pushStateRequests.set(user, task)
+  return task
+}
+
+export function clearPushStateCache(user: string): void {
+  pushStateCache.delete(user)
+  pushStateRequests.delete(user)
+}
+
 /** Must be called directly from a click handler before any other await. */
 async function enablePush(publicKey: string): Promise<void> {
   if (!supportsWebPush()) throw new Error('Браузер не поддерживает push-уведомления.')
@@ -90,9 +122,9 @@ export async function disconnectPushForLogout(): Promise<void> {
   window.dispatchEvent(new Event(PUSH_CHANGED_EVENT))
 }
 
-export default function PushSettings({ user }: { user: string }) {
+export default function PushSettings({ user, onOpenWishlist }: { user: string; onOpenWishlist: () => void }) {
   const supported = supportsWebPush()
-  const [state, setState] = useState<PushState | null>(null)
+  const [state, setState] = useState<PushState | null>(() => cachedPushState(user))
   const [busy, setBusy] = useState(false)
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
   const pendingRef = useRef(false)
@@ -102,13 +134,17 @@ export default function PushSettings({ user }: { user: string }) {
   useEffect(() => {
     let active = true
     const refresh = () => {
-      void readPushState().then(next => {
+      void preloadPushState(user, true).then(next => {
         if (active) setState(next)
       }).catch(() => {
         if (active) setMessage('Не удалось проверить уведомления.')
       })
     }
-    refresh()
+    void preloadPushState(user).then(next => {
+      if (active) setState(next)
+    }).catch(() => {
+      if (active) setMessage('Не удалось проверить уведомления.')
+    })
     window.addEventListener(PUSH_CHANGED_EVENT, refresh)
     window.addEventListener('focus', refresh)
     return () => {
@@ -144,11 +180,11 @@ export default function PushSettings({ user }: { user: string }) {
           subscribed: next,
           permission: supported ? Notification.permission : 'default',
         }))
-        const latest = await readPushState().catch(() => null)
+        const latest = await preloadPushState(user, true).catch(() => null)
         if (latest) setState(latest)
       } catch (error) {
         // Roll back the optimistic state on a failed request or denied permission.
-        const latest = await readPushState().catch(() => null)
+        const latest = await preloadPushState(user, true).catch(() => null)
         if (latest) setState(latest)
         setMessage(error instanceof Error ? error.message : 'Не удалось изменить настройки.')
       } finally {
@@ -169,9 +205,11 @@ export default function PushSettings({ user }: { user: string }) {
       <div className="push-settings__row">
         <div className="push-settings__text">
           <h2>Релизы игр</h2>
-          <p>Уведомим в день выхода игры из «Хочу пройти».</p>
+          <p>Уведомим о релизе игры из коллекции{' '}
+            <button type="button" className="push-settings__collection-link" onClick={onOpenWishlist}>Хочу пройти</button>
+          </p>
         </div>
-        <button
+        {state ? <button
           type="button"
           className="push-switch"
           role="switch"
@@ -201,7 +239,7 @@ export default function PushSettings({ user }: { user: string }) {
               transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 31 }}
             />
           </motion.span>
-        </button>
+        </button> : <span className="push-switch__loading" role="status" aria-label="Загружаем настройки уведомлений" />}
       </div>
       {!supported && <p className="push-settings__note">{iosHelp}</p>}
       {supported && state && !state.config.enabled && <p className="push-settings__note">Уведомления временно недоступны.</p>}
@@ -223,7 +261,7 @@ export function PushOnboarding({ user }: { user: string }) {
     let active = true
     setVisible(false)
     if (!supportsWebPush() || hasSeenInvite(user) || Notification.permission === 'denied') return
-    void readPushState().then(state => {
+    void preloadPushState(user).then(state => {
       if (!active) return
       if (state.config.enabled && !state.subscribed) {
         setConfig(state.config)
