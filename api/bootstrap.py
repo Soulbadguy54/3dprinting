@@ -138,6 +138,53 @@ def initialize_database() -> None:
             ON CONFLICT (collection_id, user_game_id) DO NOTHING
         """)
 
+        # New/updated rows are checked immediately. NOT VALID deliberately
+        # avoids fabricating ratings in historical incomplete playthroughs.
+        constraints = {
+            row[0] for row in connection.exec_driver_sql(
+                "SELECT conname FROM pg_constraint WHERE conrelid = 'user_games'::regclass"
+            )
+        }
+        if "ck_user_games_rating_completeness" not in constraints:
+            connection.exec_driver_sql("""
+                ALTER TABLE user_games ADD CONSTRAINT ck_user_games_rating_completeness
+                CHECK (
+                    (
+                        status IN ('completed', 'dropped')
+                        AND score IS NOT NULL
+                        AND atmosphere_score IS NOT NULL
+                        AND story_score IS NOT NULL
+                        AND technology_score IS NOT NULL
+                        AND gameplay_score IS NOT NULL
+                        AND atmosphere_score BETWEEN 1 AND 10
+                        AND story_score BETWEEN 1 AND 10
+                        AND technology_score BETWEEN 1 AND 10
+                        AND gameplay_score BETWEEN 1 AND 10
+                        AND score = round(
+                            (atmosphere_score + story_score + technology_score + gameplay_score) / 4,
+                            1
+                        )
+                    )
+                    OR (
+                        status IN ('playing', 'wishlist', 'untracked')
+                        AND score IS NULL
+                        AND atmosphere_score IS NULL
+                        AND story_score IS NULL
+                        AND technology_score IS NULL
+                        AND gameplay_score IS NULL
+                    )
+                ) NOT VALID
+            """)
+        if "ck_user_games_date_coherence" not in constraints:
+            connection.exec_driver_sql("""
+                ALTER TABLE user_games ADD CONSTRAINT ck_user_games_date_coherence
+                CHECK (
+                    (status IN ('completed', 'dropped') OR completed_at IS NULL)
+                    AND (status = 'playing' OR started_at IS NULL)
+                    AND (status IN ('completed', 'dropped') OR review IS NULL)
+                ) NOT VALID
+            """)
+
     with SessionLocal() as session:
         existing = session.scalar(select(User).where(User.email == "demo@rateapp.local"))
         if existing is not None:
@@ -203,6 +250,10 @@ def initialize_database() -> None:
                     completed_at=_as_date(completed_at),
                     started_at=_as_date(started_at),
                     score=score,
+                    atmosphere_score=score,
+                    story_score=score,
+                    technology_score=score,
+                    gameplay_score=score,
                     review=review,
                     added_at=_as_datetime(added_at),
                 )

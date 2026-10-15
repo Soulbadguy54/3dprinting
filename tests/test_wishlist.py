@@ -30,6 +30,44 @@ class WishlistApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
+    def test_complete_ratings_are_required_for_finished_or_dropped(self):
+        path = f"/api/library/{self.game_id}"
+        for status in ("completed", "dropped"):
+            missing = self.client.put(path, json={"status": status, "score": 8})
+            self.assertEqual(missing.status_code, 422, missing.text)
+        self.assertEqual(self.client.get("/api/library").json(), [])
+
+    def test_score_is_computed_and_unrated_statuses_reject_ratings(self):
+        path = f"/api/library/{self.game_id}"
+        rated = self.client.put(path, json={
+            "status": "completed", "score": 10,
+            "atmosphereScore": 8, "storyScore": 9,
+            "technologyScore": 7, "gameplayScore": 6,
+        })
+        self.assertEqual(rated.status_code, 200, rated.text)
+        self.assertEqual(rated.json()["score"], 7.5)
+        impossible = self.client.put(path, json={
+            "status": "playing", "atmosphereScore": 5,
+        })
+        self.assertEqual(impossible.status_code, 422, impossible.text)
+        bad_date = self.client.put(path, json={
+            "status": "playing", "completedAt": "2026-01-01",
+        })
+        self.assertEqual(bad_date.status_code, 422, bad_date.text)
+
+    def test_database_rejects_incomplete_ratings_even_without_api(self):
+        from sqlalchemy import text
+        from sqlalchemy.exc import IntegrityError
+        with SessionLocal() as session:
+            user_id = session.scalar(select(User.id).where(User.nickname == self.nickname))
+            game_id = session.scalar(select(Game.id).where(Game.igdb_id == self.game_id))
+            with self.assertRaises(IntegrityError):
+                session.execute(text("""
+                    INSERT INTO user_games (user_id, game_id, status, score)
+                    VALUES (:u, :g, 'completed', 9.0)
+                """), {"u": user_id, "g": game_id})
+            session.rollback()
+
     def test_default_collection_is_protected(self):
         data = self.client.get("/api/bootstrap").json()
         wishes = [item for item in data["collections"] if item["id"] == WISHLIST_SLUG]
@@ -90,6 +128,8 @@ class WishlistApiTests(unittest.TestCase):
         dropped = self.client.put(path, json={
             "status": "dropped", "platform": "PC",
             "completedAt": "2026-01-14", "score": 6.5,
+            "atmosphereScore": 6.5, "storyScore": 6.5,
+            "technologyScore": 6.5, "gameplayScore": 6.5,
             "collectionIds": [],
         })
         self.assertEqual(dropped.status_code, 200, dropped.text)
@@ -100,6 +140,8 @@ class WishlistApiTests(unittest.TestCase):
         changed = self.client.put(path, json={
             "status": "dropped", "platform": "PC",
             "completedAt": "2026-02-20", "collectionIds": [],
+            "atmosphereScore": 6.5, "storyScore": 6.5,
+            "technologyScore": 6.5, "gameplayScore": 6.5,
         })
         self.assertEqual(changed.status_code, 200, changed.text)
         self.assertEqual(changed.json()["completedAt"], "2026-02-20")
@@ -118,6 +160,8 @@ class WishlistApiTests(unittest.TestCase):
     def test_custom_membership_preserves_completed_playthrough(self):
         saved = self.client.put(f"/api/library/{self.game_id}", json={
             "status": "completed", "score": 8.5, "platform": "PC", "collectionIds": [],
+            "atmosphereScore": 8.5, "storyScore": 8.5,
+            "technologyScore": 8.5, "gameplayScore": 8.5,
         })
         self.assertEqual(saved.status_code, 200, saved.text)
         collection = self.client.post("/api/collections", json={"title": "Избранное"}).json()
@@ -156,6 +200,8 @@ class WishlistApiTests(unittest.TestCase):
         path = f"/api/library/{self.game_id}"
         completed = self.client.put(path, json={
             "status": "completed", "score": 9.0, "platform": "PC",
+            "atmosphereScore": 9.0, "storyScore": 9.0,
+            "technologyScore": 9.0, "gameplayScore": 9.0,
             "collectionIds": [],
         })
         self.assertEqual(completed.status_code, 200, completed.text)
@@ -277,6 +323,8 @@ class WishlistApiTests(unittest.TestCase):
         second = self.client.post("/api/collections", json={"title": "Вторая"}).json()["id"]
         saved = self.client.put(f"/api/library/{self.game_id}", json={
             "status": "completed", "platform": "PC", "score": 9.0,
+            "atmosphereScore": 9.0, "storyScore": 9.0,
+            "technologyScore": 9.0, "gameplayScore": 9.0,
             "collectionIds": [first, second],
         })
         self.assertEqual(saved.status_code, 200, saved.text)

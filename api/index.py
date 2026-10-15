@@ -15,10 +15,11 @@ import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from api.history_import import RatedHistoryBatch, match_igdb, save_rated_history_row
 from api.bootstrap import initialize_database
 from api.push import push_ready, send_push, valid_push_endpoint
 from api.database import SessionLocal, engine
@@ -139,6 +140,25 @@ class LibraryPayload(BaseModel):
     collectionIds: list[str] = Field(default_factory=list, max_length=100)
     addedAt: date | None = None
 
+    @model_validator(mode="after")
+    def validate_playthrough(self):
+        rated = self.status in {"completed", "dropped"}
+        criteria = (self.atmosphereScore, self.storyScore, self.technologyScore, self.gameplayScore)
+        if rated:
+            if any(value is None for value in criteria):
+                raise ValueError("Для статуса «Пройдено» или «Дропнуто» обязательны все четыре оценки.")
+            if self.startedAt is not None:
+                raise ValueError("Дата начала допустима только для статуса «Прохожу».")
+        else:
+            if any(value is not None for value in criteria) or self.score is not None:
+                raise ValueError("Оценки допустимы только для «Пройдено» и «Дропнуто».")
+            if self.completedAt is not None:
+                raise ValueError("Дата окончания допустима только для «Пройдено» и «Дропнуто».")
+            if self.status != "playing" and self.startedAt is not None:
+                raise ValueError("Дата начала допустима только для «Прохожу».")
+            if self.review:
+                raise ValueError("Отзыв допустим только для оценённых прохождений.")
+        return self
 
 
 class PushSubscriptionPayload(BaseModel):
@@ -1233,6 +1253,97 @@ def search_games(
     }
 
 
+@app.post("/api/admin/history-import")
+def import_rated_game_history(payload: RatedHistoryBatch, request: Request) -> dict[str, object]:
+    """Temporary, opt-in migration. Disabled unless HISTORY_IMPORT_TOKEN is configured.
+
+    The token is not the user's session token and is never passed to IGDB.
+    Both recipients are fixed server-side; a caller cannot redirect imports.
+    """
+    configured = os.getenv("HISTORY_IMPORT_TOKEN", "").strip()
+    if not configured:
+        raise HTTPException(status_code=404, detail="Import disabled.")
+    given = request.headers.get("x-rateapp-import-token", "")
+    if not secrets.compare_digest(configured, given):
+        raise HTTPException(status_code=403, detail="Forbidden.")
+
+    from api.history_import import rounded_scores
+    import_results: list[dict[str, object]] = []
+    with _session() as session:
+        users = {
+            user.nickname: user.id
+            for user in session.scalars(
+                select(User).where(User.nickname.in_(("soulbadguy", "nastya")))
+            ).all()
+        }
+        if set(users) != {"soulbadguy", "nastya"}:
+            raise HTTPException(status_code=409, detail="Target account missing.")
+
+        client_id, token = _igdb_access_token()
+        for row in payload.rows:
+            try:
+                response = httpx.post(
+                    "https://api.igdb.com/v4/games",
+                    headers={
+                        "Client-ID": client_id,
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                    },
+                    content=_igdb_search_body(row.query, 0),
+                    timeout=12.0,
+                )
+                response.raise_for_status()
+                candidates = response.json()
+                if not isinstance(candidates, list):
+                    raise ValueError("Unexpected IGDB response")
+                # Keep all IGDB results for future searches, even if a row
+                # cannot be matched safely and therefore isn't imported.
+                if candidates:
+                    _cache_igdb_games(candidates[:GAME_SEARCH_PAGE_SIZE])
+                matched = match_igdb(candidates, row.query, row.releaseYear)
+                if matched is None:
+                    import_results.append({
+                        "title": row.title,
+                        "status": "unmatched",
+                        "query": row.query,
+                        "year": row.releaseYear,
+                        "candidates": [
+                            {"id": item.get("id"), "name": item.get("name"),
+                             "year": datetime.fromtimestamp(
+                                 int(item["first_release_date"]), tz=timezone.utc
+                             ).year if item.get("first_release_date") else None}
+                            for item in candidates[:10] if isinstance(item, dict)
+                        ],
+                    })
+                    continue
+
+                game = session.scalar(select(Game).where(Game.igdb_id == int(matched["id"])))
+                if game is None:
+                    raise ValueError("Cached game not found")
+                result: dict[str, object] = {
+                    "title": row.title, "status": "matched",
+                    "gameId": game.igdb_id, "igdbTitle": game.title,
+                    "scoreSoulbadguy": float(rounded_scores(row.soulbadguy)[-1]),
+                    "scoreNastya": float(rounded_scores(row.nastya)[-1]),
+                }
+                if not payload.dryRun:
+                    result["soulbadguy"] = save_rated_history_row(
+                        session, game, row.status, users["soulbadguy"], row.soulbadguy,
+                    )
+                    result["nastya"] = save_rated_history_row(
+                        session, game, row.status, users["nastya"], row.nastya,
+                    )
+                    session.commit()
+                import_results.append(result)
+            except (httpx.HTTPError, ValueError, SQLAlchemyError) as exc:
+                session.rollback()
+                import_results.append({
+                    "title": row.title, "status": "error",
+                    "reason": type(exc).__name__,
+                })
+    return {"dryRun": payload.dryRun, "results": import_results}
+
+
 @app.get("/api/collections")
 def collections(request: Request) -> list[dict[str, object]]:
     with _session() as session:
@@ -1453,13 +1564,11 @@ def upsert_library_game(
                 entry.gameplay_score,
             ) = rounded_criteria
 
-            if all(value is not None for value in rounded_criteria):
-                entry.score = round(
-                    sum(value for value in rounded_criteria if value is not None) / 4,
-                    1,
-                )
-            else:
-                entry.score = round(payload.score, 1) if payload.score is not None else None
+            # PostgreSQL ROUND(numeric, 1) uses half-up; keep the API identical.
+            from decimal import Decimal, ROUND_HALF_UP
+            entry.score = sum(
+                Decimal(str(value)) for value in rounded_criteria if value is not None
+            ).__truediv__(Decimal("4")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         else:
             entry.score = None
             entry.atmosphere_score = None
@@ -1467,7 +1576,7 @@ def upsert_library_game(
             entry.technology_score = None
             entry.gameplay_score = None
 
-        entry.review = payload.review
+        entry.review = payload.review if payload.status in {"completed", "dropped"} else None
 
         session.flush()
         session.execute(delete(CollectionGame).where(CollectionGame.user_game_id == entry.id))
