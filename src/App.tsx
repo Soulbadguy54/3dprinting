@@ -626,6 +626,7 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [loadingProgress, setLoadingProgress] = useState(12)
+  const [loadingPhase, setLoadingPhase] = useState<'loading' | 'preparing' | 'complete'>('loading')
   const [screenRevision, setScreenRevision] = useState(0)
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [collections, setCollections] = useState<GameCollection[]>([])
@@ -917,16 +918,48 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
+    let bootstrapFinished = false
+    let progressFrame: number | undefined
+    let progressTimer: number | undefined
+    let displayedProgress = 12
+    const startedAt = performance.now()
 
-    // Progress reflects completed startup phases rather than simulated download bytes.
-    // The bar holds below 100% while the API is still responding.
-    let finishTimer: number | undefined
+    // The backend doesn't provide download byte counts. Instead of freezing
+    // at 22%, show smoothly estimated progress that never claims completion
+    // while /api/bootstrap is pending. The true completion gate remains the
+    // successful (or failed) bootstrap response.
+    progressTimer = window.setInterval(() => {
+      if (cancelled || bootstrapFinished) return
+      const elapsed = performance.now() - startedAt
+      const estimate = 12 + 80 * (1 - Math.exp(-elapsed / 5700))
+      displayedProgress = Math.max(displayedProgress, Math.min(92, estimate))
+      setLoadingProgress(Math.round(displayedProgress))
+    }, 90)
+
+    const finishProgress = () => {
+      bootstrapFinished = true
+      if (progressTimer !== undefined) window.clearInterval(progressTimer)
+      if (cancelled) return
+
+      setLoadingPhase('complete')
+      const from = displayedProgress
+      const finishStart = performance.now()
+      const finishDuration = 680
+      const advance = (now: number) => {
+        if (cancelled) return
+        const t = Math.min(1, (now - finishStart) / finishDuration)
+        const eased = t * t * (3 - 2 * t)
+        setLoadingProgress(Math.round(from + (100 - from) * eased))
+        if (t < 1) progressFrame = window.requestAnimationFrame(advance)
+        else setAuthReady(true)
+      }
+      progressFrame = window.requestAnimationFrame(advance)
+    }
+
     const restoreSession = async () => {
-      if (!cancelled) setLoadingProgress(22)
       try {
         const response = await fetch('/api/bootstrap')
         if (cancelled) return
-        setLoadingProgress(58)
         if (!response.ok) {
           setAuthUser(null)
           return
@@ -934,18 +967,12 @@ function App() {
 
         const payload = await response.json() as BootstrapPayload
         if (cancelled) return
-        setLoadingProgress(86)
+        setLoadingPhase('preparing')
         applyBootstrap(payload)
       } catch {
         if (!cancelled) setAuthUser(null)
       } finally {
-        if (!cancelled) {
-          setLoadingProgress(100)
-          // Let the final fill animation complete before showing the app.
-          finishTimer = window.setTimeout(() => {
-            if (!cancelled) setAuthReady(true)
-          }, 280)
-        }
+        finishProgress()
       }
     }
 
@@ -953,7 +980,8 @@ function App() {
 
     return () => {
       cancelled = true
-      if (finishTimer !== undefined) window.clearTimeout(finishTimer)
+      if (progressTimer !== undefined) window.clearInterval(progressTimer)
+      if (progressFrame !== undefined) window.cancelAnimationFrame(progressFrame)
     }
   }, [])
 
@@ -3116,7 +3144,7 @@ function App() {
   ]
 
   if (!authReady) {
-    return <LoadingScreen progress={loadingProgress} />
+    return <LoadingScreen progress={loadingProgress} phase={loadingPhase} />
   }
 
   if (!authUser) {
