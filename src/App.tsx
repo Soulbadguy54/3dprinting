@@ -2697,6 +2697,9 @@ function App() {
               {addGame.platforms.length > 0 ? (
                 <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
                   <option value="" disabled>Выберите платформу</option>
+                  {addPlatform && !addGame.platforms.includes(addPlatform) && (
+                    <option value={addPlatform}>{addPlatform} (из сохранённого прохождения)</option>
+                  )}
                   {addGame.platforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
                 </select>
               ) : (
