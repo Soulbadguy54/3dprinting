@@ -6,27 +6,35 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Read public collection JSON-LD and page endpoints
+      - name: Find Stash collection game request
         run: |
           python -m pip install -q beautifulsoup4 requests
           python - <<'PY'
           import requests,re,json
           from bs4 import BeautifulSoup
-          root='https://stash.games/users/Soulbadguy/collections/'
-          for cid in ('dfhpn','zdpqj','hgwtg'):
-              html=requests.get(root+cid,timeout=30,headers={'User-Agent':'Mozilla/5.0'}).text
-              soup=BeautifulSoup(html,'html.parser')
-              print('COLLECTION',cid)
-              for script in soup.select('script[type="application/ld+json"]'):
-                  src=script.get_text()
-                  try:
-                      payload=json.loads(src[src.index('{'):src.rindex('}')+1])
-                      print('JSONLD',json.dumps(payload,ensure_ascii=False)[:35000])
-                  except Exception as e:print('JSONLD_ERR',repr(e),src[:5000])
-              for tag in soup.find_all(True):
-                  if tag.name=='script':continue
-                  htmlattrs={k:str(v)[:150] for k,v in tag.attrs.items() if 'url' in k or 'ajax' in k or 'load' in k or 'game' in k or 'collection' in k or 'page' in k or 'hx-' in k}
-                  if htmlattrs and ('game' in str(htmlattrs) or 'collection' in str(htmlattrs)):
-                      print('DYNAMIC_TAG',str(tag.name),json.dumps(htmlattrs,ensure_ascii=False),tag.get_text(' ',strip=True)[:100])
-              print('ANCHORS',json.dumps([{'href':a.get('href'),'text':a.get_text(' ',strip=True)[:75]} for a in soup.select('a[href]') if 'games/' in a.get('href','')][:30],ensure_ascii=False))
+          root='https://stash.games'
+          sess=requests.Session();sess.headers.update({'User-Agent':'Mozilla/5.0'})
+          html=sess.get(root+'/users/Soulbadguy/collections/dfhpn',timeout=30).text
+          soup=BeautifulSoup(html,'html.parser')
+          h=soup.find('h1')
+          if h:
+              for depth in range(1,6):
+                  p=h
+                  for k in range(depth):p=p.parent
+                  print('ANCESTOR',depth,json.dumps(str(p)[:11000],ensure_ascii=False))
+          for k in ('loading-items','collection-games','collections','cursor','page','ajax','load-more','game-list','/api/'):
+              matches=list(re.finditer(re.escape(k),html,re.I))
+              print('PATTERN',k,len(matches))
+              for m in matches[:6]:print('NEAR',k,json.dumps(html[max(0,m.start()-150):m.end()+230],ensure_ascii=False))
+          for tag in soup.select('[data-src], [data-url], [data-action], [x-data], [id], [hx-get], [data-page]'):
+              attrs={k:v for k,v in tag.attrs.items() if k not in ('class','style')}
+              if any(w in str(tag.attrs).lower() for w in ('item','game','list','paginate','collection','load','ajax')):
+                  print('TARGET_TAG',tag.name,json.dumps(attrs,ensure_ascii=False)[:800])
+          for path in ('/js/loading-items-90f0ffece32f15d69e93dfc1fc53c736.js','/js/app-63cc08164faf2fc926af60976e25cf80.js?v=20261013-dialog-2'):
+              js=sess.get(root+path,timeout=30).text
+              print('JS_FILE',path,len(js))
+              for key in ('collection','/api/', 'fetch(', 'loading-items','loadItems','userGame','games-list','items-loader'):
+                  inds=[m.start() for m in re.finditer(re.escape(key),js,re.I)]
+                  print('JS_MATCH',key,len(inds))
+                  for pos in inds[:8]:print('JS_NEAR',key,json.dumps(js[max(0,pos-240):pos+400],ensure_ascii=False))
           PY
