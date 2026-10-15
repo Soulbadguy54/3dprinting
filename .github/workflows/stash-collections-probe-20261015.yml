@@ -6,11 +6,11 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Dry-run exact IGDB collection game ID resolution
+      - name: Import three public Stash collections into soulbadguy
         run: |
           python - <<'PY'
           import urllib.request,json
-          url='https://rateapp-delta.vercel.app/api/internal/stash-collections-20261015?dryRun=true'
+          url='https://rateapp-delta.vercel.app/api/internal/stash-collections-20261015?dryRun=false'
           req=urllib.request.Request(url,data=b'',method='POST',headers={
               'User-Agent':'RateApp-Migration-Probe/1.0',
               'Content-Type':'application/json',
@@ -26,6 +26,9 @@ jobs:
                   assert data['expectedMemberships']==44
                   assert data['resolved']==44
                   assert data['uniqueCovers']==41
+                  assert data['createdCollections']==3
+                  assert [x['dbMembershipCount'] for x in data['collections']]==[16,23,5]
+                  assert data['addedMemberships']==44
           except Exception as exc:
               print('ERROR',repr(exc))
               if hasattr(exc,'read'):print('BODY',exc.read().decode('utf-8','replace')[:7000])
