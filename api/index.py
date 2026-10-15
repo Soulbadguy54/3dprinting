@@ -2088,3 +2088,260 @@ def release_alert_cron(request: Request) -> dict[str, object]:
             session.commit()
 
     return {"date": today.isoformat(), "accepted": accepted, "failed": failed}
+
+
+# One-time, fixed-source import. Restricted to the three user-requested
+# public Stash collections and the existing soulbadguy account. This route is
+# removed immediately after the import and database verification.
+_STASH_COLLECTIONS_20261015 = (
+    {
+        "source": "dfhpn", "title": "На двоих с мадамой",
+        "description": "Поиграть вместе", "color": "violet", "emoji": "👫",
+        "games": (
+            ("The Quarry", "co4kl4"),
+            ("Heavy Rain", "coaajv"),
+            ("Steep", "cod3sc"),
+            ("Overcooked! All You Can Eat", "co2t83"),
+            ("Until Dawn (2024)", "co9qxt"),
+            ("Brothers: A Tale of Two Sons", "co1rro"),
+            ("Unravel Two", "co95jr"),
+            ("Rayman Origins", "co1v7k"),
+            ("Rayman Legends", "co3ma8"),
+            ("It Takes Two", "cob22v"),
+            ("The Dark Pictures Anthology: House of Ashes", "coamyk"),
+            ("The Dark Pictures Anthology: The Devil in Me", "coamte"),
+            ("The Dark Pictures Anthology: Little Hope", "co20xn"),
+            ("A Way Out", "co1vca"),
+            ("Beyond: Two Souls", "co8r4w"),
+            ("Detroit: Become Human", "cocot9"),
+        ),
+    },
+    {
+        "source": "zdpqj", "title": "не играл - сосал",
+        "description": "Супер качественный контент", "color": "emerald", "emoji": "💎",
+        "games": (
+            ("Resident Evil Requiem", "cobmj0"),
+            ("Split Fiction", "co95gf"),
+            ("Control: Ultimate Edition", "co2ewb"),
+            ("Alan Wake Remastered", "co65aa"),
+            ("Alan Wake II", "co6jar"),
+            ("Ghost of Tsushima: Director's Cut", "co3p5f"),
+            ("Marvel's Guardians of the Galaxy", "co39pu"),
+            ("Days Gone", "co94bn"),
+            ("Hellblade II: Senua's Saga", "co81i4"),
+            ("Hellblade: Senua's Sacrifice", "co2l7l"),
+            ("The Last of Us Part II Remastered", "coa1gr"),
+            ("The Last of Us Part I", "coa1gq"),
+            ("Marvel's Spider-Man 2", "cobg1k"),
+            ("Marvel's Spider-Man Remastered", "cobg1l"),
+            ("Marvel's Spider-Man: Miles Morales", "cobg1j"),
+            ("The Wolf Among Us", "co1rcy"),
+            ("The Witcher 3: Wild Hunt - Game of the Year Edition", "co1wz4"),
+            ("It Takes Two", "cob22v"),
+            ("God of War (2018)", "cobkt6"),
+            ("God of War Ragnarök", "coba3d"),
+            ("A Way Out", "co1vca"),
+            ("Red Dead Redemption 2", "co1q1f"),
+            ("Detroit: Become Human", "cocot9"),
+        ),
+    },
+    {
+        "source": "hgwtg", "title": "Говно",
+        "description": "в эту хуйню играть - быть дауном",
+        "color": "rose", "emoji": "💩",
+        "games": (
+            ("Indiana Jones and the Great Circle", "co7nbc"),
+            ("The Callisto Protocol", "co4ymo"),
+            ("Battlefield 4", "co1nmf"),
+            ("Tell Me Why", "co2ej1"),
+            ("Suicide Squad: Kill the Justice League", "co40fu"),
+        ),
+    },
+)
+
+
+@app.post("/api/internal/stash-collections-20261015")
+def _stash_collections_import_20261015(dryRun: bool = True) -> dict[str, object]:
+    """Resolve cover IDs before writing; never change an existing playthrough."""
+    if os.getenv("VERCEL_ENV") != "production":
+        raise HTTPException(status_code=403, detail="Production migration only.")
+
+    covers = list(dict.fromkeys(
+        cover
+        for collection in _STASH_COLLECTIONS_20261015
+        for _, cover in collection["games"]
+    ))
+    expected = sum(len(collection["games"]) for collection in _STASH_COLLECTIONS_20261015)
+    client_id, token = _igdb_access_token()
+    cover_rows = _igdb_details_request(
+        "covers",
+        "fields game,image_id; where image_id = (" +
+        ",".join(json.dumps(cover) for cover in covers) +
+        "); limit 500;",
+        client_id, token,
+    )
+    covered_games: dict[str, set[int]] = {cover: set() for cover in covers}
+    for cover_row in cover_rows:
+        cover = cover_row.get("image_id")
+        game_id = cover_row.get("game")
+        if cover in covered_games and isinstance(game_id, int):
+            covered_games[cover].add(game_id)
+
+    game_ids = sorted({gid for ids in covered_games.values() for gid in ids})
+    game_rows = _igdb_details_request(
+        "games",
+        "fields id,name,first_release_date,rating,rating_count,"
+        "total_rating_count,hypes,cover.image_id,alternative_names.name,"
+        "genres.id,genres.name,platforms.name,involved_companies.developer,"
+        "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
+        "where id = (" + ",".join(map(str, game_ids)) + "); limit 500;",
+        client_id, token,
+    ) if game_ids else []
+    details = {row["id"]: row for row in game_rows if isinstance(row.get("id"), int)}
+    unresolved = [
+        {"source": collection["source"], "title": title, "cover": cover,
+         "candidateIds": sorted(covered_games[cover])}
+        for collection in _STASH_COLLECTIONS_20261015
+        for title, cover in collection["games"]
+        if len(covered_games[cover]) != 1
+        or next(iter(covered_games[cover]), -1) not in details
+    ]
+    resolution = [
+        {"collection": collection["source"], "sourceTitle": title, "cover": cover,
+         "igdbId": next(iter(covered_games[cover])),
+         "igdbTitle": details[next(iter(covered_games[cover]))]["name"]}
+        for collection in _STASH_COLLECTIONS_20261015
+        for title, cover in collection["games"]
+        if len(covered_games[cover]) == 1
+        and next(iter(covered_games[cover])) in details
+    ]
+    seen_ids: dict[str, set[int]] = {}
+    for row in resolution:
+        group = seen_ids.setdefault(row["collection"], set())
+        if row["igdbId"] in group:
+            unresolved.append({"source": row["collection"], "title": row["sourceTitle"],
+                               "reason": "Duplicate IGDB ID in source collection"})
+        group.add(row["igdbId"])
+
+    with _session() as session:
+        user = session.scalar(select(User).where(func.lower(User.nickname) == "soulbadguy"))
+        if user is None:
+            raise HTTPException(status_code=404, detail="Аккаунт soulbadguy не найден.")
+        previous = {
+            row.game.igdb_id: row.status
+            for row in session.scalars(select(UserGame).where(UserGame.user_id == user.id)).all()
+        }
+        existing_collections = [
+            {"title": collection.title, "slug": collection.slug}
+            for collection in session.scalars(
+                select(Collection).where(Collection.user_id == user.id)
+            ).all()
+        ]
+
+    summary: dict[str, object] = {
+        "dryRun": dryRun,
+        "sourceCollections": len(_STASH_COLLECTIONS_20261015),
+        "expectedMemberships": expected,
+        "uniqueCovers": len(covers),
+        "resolved": len(resolution),
+        "unresolved": unresolved,
+        "existingLibraryMatches": sum(r["igdbId"] in previous for r in resolution),
+        "existingCollections": existing_collections,
+        "mappings": resolution if dryRun else [],
+    }
+    if unresolved or len(resolution) != expected:
+        return {**summary, "ready": False}
+    if dryRun:
+        return {**summary, "ready": True}
+
+    _cache_igdb_games(game_rows)
+
+    created_collections = 0
+    created_entries = 0
+    added_memberships = 0
+    results: list[dict[str, object]] = []
+    with _session() as session:
+        user = session.scalar(select(User).where(func.lower(User.nickname) == "soulbadguy"))
+        db_games = {
+            game.igdb_id: game
+            for game in session.scalars(
+                select(Game).where(Game.igdb_id.in_(game_ids))
+            ).all()
+        }
+        all_user_games = {
+            item.game_id: item
+            for item in session.scalars(
+                select(UserGame).where(UserGame.user_id == user.id)
+            ).all()
+        }
+
+        for col in _STASH_COLLECTIONS_20261015:
+            slug = "stash-" + col["source"]
+            collection = session.scalar(
+                select(Collection).where(Collection.user_id == user.id, Collection.slug == slug)
+            )
+            if collection is None:
+                collection = session.scalar(
+                    select(Collection).where(
+                        Collection.user_id == user.id, Collection.title == col["title"]
+                    )
+                )
+            if collection is None:
+                collection = Collection(
+                    user_id=user.id,
+                    slug=slug,
+                    title=col["title"],
+                    description=col["description"],
+                    color_scheme=col["color"],
+                    emoji=col["emoji"],
+                    is_system=False,
+                )
+                session.add(collection)
+                session.flush()
+                created_collections += 1
+            if collection.is_system:
+                raise HTTPException(status_code=409, detail="Нельзя изменять системную коллекцию.")
+
+            count = 0
+            for _, cover in col["games"]:
+                igdb_id = next(iter(covered_games[cover]))
+                game = db_games[igdb_id]
+                entry = all_user_games.get(game.id)
+                if entry is None:
+                    entry = UserGame(user_id=user.id, game_id=game.id, status="untracked")
+                    session.add(entry)
+                    session.flush()
+                    all_user_games[game.id] = entry
+                    created_entries += 1
+                existing_link = session.scalar(
+                    select(CollectionGame.id).where(
+                        CollectionGame.collection_id == collection.id,
+                        CollectionGame.user_game_id == entry.id,
+                    )
+                )
+                if existing_link is None:
+                    session.add(CollectionGame(
+                        collection_id=collection.id, user_game_id=entry.id
+                    ))
+                    added_memberships += 1
+                count += 1
+            session.flush()
+            total = session.scalar(
+                select(func.count(CollectionGame.id)).where(
+                    CollectionGame.collection_id == collection.id
+                )
+            )
+            results.append({
+                "source": col["source"], "slug": collection.slug,
+                "name": collection.title, "sourceCount": count,
+                "dbMembershipCount": total,
+            })
+
+        session.commit()
+    return {
+        **summary, "ready": True,
+        "createdCollections": created_collections,
+        "createdLibraryEntries": created_entries,
+        "addedMemberships": added_memberships,
+        "collections": results,
+    }
