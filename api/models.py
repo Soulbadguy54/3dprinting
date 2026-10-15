@@ -99,7 +99,7 @@ class Collection(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     slug: Mapped[str] = mapped_column(String(60), index=True)
-    title: Mapped[str] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500))
     mark: Mapped[str | None] = mapped_column(String(8))
     color_scheme: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'violet'"))
