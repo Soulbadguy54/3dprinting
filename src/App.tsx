@@ -137,6 +137,7 @@ function collectionValidationMessage(data: unknown, fallback: string): string {
 }
 
 type SortMode = 'activity' | 'score-desc' | 'score-asc' | 'title'
+type CollectionSortMode = 'added-desc' | 'added-asc' | 'release-desc' | 'release-asc' | 'title-asc' | 'title-desc' | 'igdb-desc' | 'igdb-asc'
 
 type ApiLibraryEntry = Omit<
   LibraryEntry,
@@ -730,6 +731,8 @@ function App() {
   const [query, setQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<LibraryStatus[]>([])
   const [genreFilter, setGenreFilter] = useState('all')
+  const [genreCatalog, setGenreCatalog] = useState<string[]>([])
+  const [collectionSortMode, setCollectionSortMode] = useState<CollectionSortMode>('added-desc')
   const [platformFilter, setPlatformFilter] = useState('all')
   const [sortMode, setSortMode] = useState<SortMode>('activity')
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -806,6 +809,7 @@ function App() {
   useEffect(() => {
     setSelectedCollectionIds([])
     cancelCollectionHold()
+    setCollectionSortMode('added-desc')
   }, [activeTab, selectedCollectionId])
   useEffect(() => () => {
     if (collectionHoldRef.current) window.clearTimeout(collectionHoldRef.current.timer)
@@ -1163,6 +1167,12 @@ function App() {
       const scrollingDown = currentY > previousY + .5
       libraryLastScrollYRef.current = currentY
 
+      // Manual chevron collapse must win over scroll anchoring even at y=0.
+      if (libraryForceCollapsedRef.current) {
+        libraryCollapseProgress.set(1)
+        return
+      }
+
       // Keep the library open through the native top-of-page rubber band.
       if (currentY <= topStart) {
         libraryTopLatchRef.current = true
@@ -1179,11 +1189,6 @@ function App() {
           return
         }
         libraryTopLatchRef.current = false
-      }
-
-      if (libraryForceCollapsedRef.current) {
-        libraryCollapseProgress.set(1)
-        return
       }
 
       // When returning from details, the browser may restore a nonzero
@@ -1278,16 +1283,29 @@ function App() {
     [entries],
   )
 
-  const availableGenres = useMemo(() => {
-    const libraryGameIds = new Set(personalLibraryEntries.map((entry) => entry.gameId))
-    return Array.from(
-      new Set(
-        catalogGames
-          .filter((game) => libraryGameIds.has(game.id))
-          .flatMap((game) => game.genres),
-      ),
-    ).sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [personalLibraryEntries, catalogGames])
+  useEffect(() => {
+    if (!authUser) return
+    const controller = new AbortController()
+    void fetch('/api/genres', { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error('Genres unavailable')
+        return response.json() as Promise<{ id: number; name: string }[]>
+      })
+      .then((rows) => {
+        if (!controller.signal.aborted && Array.isArray(rows)) {
+          setGenreCatalog(rows.map((row) => row.name).filter(Boolean))
+        }
+      })
+      .catch(() => { /* Cached game metadata provides an offline fallback. */ })
+    return () => controller.abort()
+  }, [authUser?.id])
+
+  const availableGenres = useMemo(() => Array.from(new Set([
+    ...genreCatalog,
+    ...personalLibraryEntries.flatMap((entry) =>
+      catalogGames.find((game) => game.id === entry.gameId)?.genres ?? [],
+    ),
+  ])).sort((a, b) => a.localeCompare(b, 'ru')), [genreCatalog, personalLibraryEntries, catalogGames])
 
   const availablePlatforms = useMemo(() => {
     return Array.from(
@@ -2509,7 +2527,6 @@ function App() {
 
       <motion.div
         className="library-controls"
-        layout
         initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: .22, delay: .12 }}
@@ -2536,29 +2553,9 @@ function App() {
         </button>
       </motion.div>
 
-      <AnimatePresence initial={false}>
-        {filtersOpen && (
-          <motion.div
-            className="library-filter-panel-clip"
-            initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0 }}
-            transition={
-              shouldReduceMotion
-                ? { duration: 0 }
-                : {
-                    height: { duration: .24, ease: [0.22, 1, 0.36, 1] },
-                    opacity: { duration: .16 },
-                  }
-            }
-          >
-            <motion.section
-              className="filter-panel library-filter-panel"
-              initial={shouldReduceMotion ? false : { y: -6 }}
-              animate={{ y: 0 }}
-              exit={shouldReduceMotion ? undefined : { y: -4 }}
-              transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}
-            >
+      {filtersOpen && (
+          <div className="library-filter-panel-clip">
+            <section className="filter-panel library-filter-panel">
           <div className="filter-panel__header">
             <strong>Фильтры библиотеки</strong>
             <div className="filter-panel__actions">
@@ -2610,10 +2607,9 @@ function App() {
               ))}
             </div>
           </div>
-            </motion.section>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </section>
+          </div>
+        }
 
           </div>
         </motion.div>
@@ -2673,15 +2669,13 @@ function App() {
             initial={false}
             animate={
               libraryControlsCollapsed
-                ? { rotate: 45, y: [-2, 2, -2], opacity: 1 }
-                : { rotate: -135, y: [2, -2, 2], opacity: 1 }
+                ? { rotate: 45, y: 0, opacity: 1 }
+                : { rotate: -135, y: 0, opacity: 1 }
             }
             transition={{
               rotate: { type: 'spring', stiffness: 320, damping: 28, mass: .65 },
               opacity: { duration: .12 },
-              y: shouldReduceMotion
-                ? { duration: 0 }
-                : { duration: 1.45, repeat: Infinity, ease: 'easeInOut' },
+              y: { duration: 0 },
             }}
             aria-hidden="true"
           />
@@ -3078,6 +3072,26 @@ function App() {
       const collectionEntries = entries.filter((entry) =>
         entry.collectionIds.includes(collection.id) && (!editing || !removedCollectionGameIds.includes(entry.gameId)),
       )
+      const sortedCollectionEntries = collectionEntries.flatMap((entry) => {
+        const game = catalogGames.find((item) => item.id === entry.gameId)
+        return game ? [{ entry, game }] : []
+      }).sort((a, b) => {
+        const addedA = a.entry.collectionAddedAt?.[collection.id] ?? a.entry.addedAt
+        const addedB = b.entry.collectionAddedAt?.[collection.id] ?? b.entry.addedAt
+        const compareNames = () => a.game.title.localeCompare(b.game.title, 'ru', { sensitivity: 'base' })
+        let result: number
+        switch (collectionSortMode) {
+          case 'added-asc': result = addedA.localeCompare(addedB); break
+          case 'release-desc': result = (b.game.releaseDate || '').localeCompare(a.game.releaseDate || ''); break
+          case 'release-asc': result = (a.game.releaseDate || '9999').localeCompare(b.game.releaseDate || '9999'); break
+          case 'title-asc': result = compareNames(); break
+          case 'title-desc': result = -compareNames(); break
+          case 'igdb-desc': result = (b.game.igdbRating || -1) - (a.game.igdbRating || -1); break
+          case 'igdb-asc': result = (a.game.igdbRating || 999) - (b.game.igdbRating || 999); break
+          default: result = addedB.localeCompare(addedA)
+        }
+        return result || compareNames() || a.game.id - b.game.id
+      })
 
       return (
         <div className="collection-detail-page">
@@ -3182,18 +3196,37 @@ function App() {
                 />
               </>
             ) : (
-              <>
-                {collection.description && (
-                  <p className="collection-detail-description">
-                    {collection.id === WISHLIST_COLLECTION_ID
-                      ? collection.description.trim().replace(/\.\s*$/, '')
-                      : collection.description}
-                  </p>
-                )}
-                <span className="collection-detail-count">
-                  {collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}
-                </span>
-              </>
+              <div className="collection-detail-overview">
+                <div className="collection-detail-overview__text">
+                  {collection.description && (
+                    <p className="collection-detail-description">
+                      {collection.id === WISHLIST_COLLECTION_ID
+                        ? collection.description.trim().replace(/\.\s*$/, '')
+                        : collection.description}
+                    </p>
+                  )}
+                  <span className="collection-detail-count">
+                    {collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}
+                  </span>
+                </div>
+                <label className="collection-detail-sort">
+                  <Icon name="sort" size={16} />
+                  <select
+                    value={collectionSortMode}
+                    onChange={(event) => setCollectionSortMode(event.target.value as CollectionSortMode)}
+                    aria-label="Сортировка игр в коллекции"
+                  >
+                    <option value="added-desc">Добавлены: новые → старые</option>
+                    <option value="added-asc">Добавлены: старые → новые</option>
+                    <option value="release-desc">Выход: новые → старые</option>
+                    <option value="release-asc">Выход: старые → новые</option>
+                    <option value="title-asc">Название: А → Я</option>
+                    <option value="title-desc">Название: Я → А</option>
+                    <option value="igdb-desc">IGDB: высокий → низкий</option>
+                    <option value="igdb-asc">IGDB: низкий → высокий</option>
+                  </select>
+                </label>
+              </div>
             )}
           </section>
 
@@ -3210,10 +3243,7 @@ function App() {
           {collectionEditError && <p className="collection-create-error" role="alert">{collectionEditError}</p>}
           {collectionEntries.length ? (
             <div className="game-grid collection-edit-grid">
-              {collectionEntries.flatMap((entry) => {
-                const game = catalogGames.find((item) => item.id === entry.gameId)
-                if (!game) return []
-                return [
+              {sortedCollectionEntries.map(({ entry, game }) => (
                   <div className={editing ? 'collection-edit-game collection-edit-game--active' : 'collection-edit-game'} key={game.id}>
                     <GameCard
                       game={game}
@@ -3232,9 +3262,8 @@ function App() {
                         disabled={collectionEditBusy}
                       ><Icon name="close" size={18} /></motion.button>
                     )}
-                  </div>,
-                ]
-              })}
+                  </div>
+              ))}
             </div>
           ) : (
             <div className="empty-state collection-empty-state">
