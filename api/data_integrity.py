@@ -63,17 +63,12 @@ def migrate_missing_playthrough_details(
             JOIN users u ON u.id = ug.user_id
             JOIN games g ON g.id = ug.game_id
             WHERE u.nickname IN (:user_one, :user_two)
-              AND ug.status IN ('completed', 'dropped', 'playing')
-              AND (
-                  ug.status = 'playing'
-                  OR (
-                    ug.score IS NOT NULL
-                    AND ug.atmosphere_score IS NOT NULL
-                    AND ug.story_score IS NOT NULL
-                    AND ug.technology_score IS NOT NULL
-                    AND ug.gameplay_score IS NOT NULL
-                  )
-              )
+              AND ug.status IN ('completed', 'dropped')
+              AND ug.score IS NOT NULL
+              AND ug.atmosphere_score IS NOT NULL
+              AND ug.story_score IS NOT NULL
+              AND ug.technology_score IS NOT NULL
+              AND ug.gameplay_score IS NOT NULL
         ), repaired AS (
             UPDATE user_games AS ug
             SET platform = CASE
@@ -84,21 +79,16 @@ def migrate_missing_playthrough_details(
                     WHEN ug.status IN ('completed','dropped') AND ug.completed_at IS NULL
                     THEN :migration_date ELSE ug.completed_at
                 END,
-                started_at = CASE
-                    WHEN ug.status = 'playing' AND ug.started_at IS NULL
-                    THEN :migration_date ELSE ug.started_at
-                END
+                started_at = ug.started_at
             FROM candidates c
             WHERE ug.id = c.id
               AND (
                   (NULLIF(btrim(ug.platform), '') IS NULL AND c.suggested_platform IS NOT NULL)
                   OR (ug.status IN ('completed', 'dropped') AND ug.completed_at IS NULL)
-                  OR (ug.status = 'playing' AND ug.started_at IS NULL)
               )
               AND (
                   -- An existing NOT VALID CHECK still applies to updates.
-                  ug.status = 'playing'
-                  OR (
+                  (
                     ug.score = round((ug.atmosphere_score + ug.story_score
                                    + ug.technology_score + ug.gameplay_score) / 4, 1)
                     AND ug.atmosphere_score BETWEEN 1 AND 10
@@ -148,11 +138,7 @@ def install_required_field_constraints(connection) -> None:
                     AND platform IS NOT NULL AND btrim(platform) <> ''
                     AND completed_at IS NOT NULL AND started_at IS NULL
                 )
-                OR (
-                    status = 'playing'
-                    AND platform IS NOT NULL AND btrim(platform) <> ''
-                    AND started_at IS NOT NULL AND completed_at IS NULL
-                )
+                OR (status = 'playing' AND completed_at IS NULL)
                 OR (
                     status IN ('wishlist', 'untracked')
                     AND platform IS NULL AND completed_at IS NULL AND started_at IS NULL
@@ -209,8 +195,7 @@ def install_required_field_constraints(connection) -> None:
              AND platform IS NOT NULL AND btrim(platform) <> ''
              AND completed_at IS NOT NULL AND started_at IS NULL)
             OR
-            (status = 'playing' AND platform IS NOT NULL AND btrim(platform) <> ''
-             AND started_at IS NOT NULL AND completed_at IS NULL)
+            (status = 'playing' AND completed_at IS NULL)
             OR
             (status IN ('wishlist','untracked') AND platform IS NULL
              AND completed_at IS NULL AND started_at IS NULL)
@@ -241,11 +226,10 @@ def playthrough_integrity_summary(connection) -> dict[str, object]:
         SELECT count(*)
         FROM user_games ug JOIN users u ON ug.user_id=u.id
         WHERE u.nickname IN ('soulbadguy','nastya')
-          AND ug.status IN ('completed','dropped','playing')
+          AND ug.status IN ('completed','dropped')
           AND (
               ug.platform IS NULL OR btrim(ug.platform) = ''
               OR (ug.status IN ('completed','dropped') AND ug.completed_at IS NULL)
-              OR (ug.status = 'playing' AND ug.started_at IS NULL)
           )
     """).scalar_one()
     validity = connection.exec_driver_sql("""
