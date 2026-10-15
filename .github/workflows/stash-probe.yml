@@ -6,30 +6,24 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect Stash pagination and exact titles
+      - name: Inspect identifiers on Stash game pages
         run: |
           python -m pip -q install beautifulsoup4
           python - <<'PY'
-          import urllib.request, re, json
           from bs4 import BeautifulSoup
-          for cat in ['archived','want']:
-              url=f'https://stash.games/users/Soulbadguy/games/{cat}/'
-              for suffix in (['','?page=2','?page=3'] if cat=='want' else ['']):
-                  req=urllib.request.Request(url+suffix, headers={'User-Agent':'Mozilla/5.0','Accept-Language':'en-US,en;q=0.9'})
-                  try:
-                      data=urllib.request.urlopen(req,timeout=30).read().decode('utf-8','replace')
-                      soup=BeautifulSoup(data,'html.parser')
-                      for t in soup(['script','style','svg','noscript']):t.decompose()
-                      print('PAGE',cat,suffix or '1','LEN',len(data))
-                      print('PAGINATION',json.dumps([(a.get_text(' ',strip=True),a.get('href')) for a in soup.find_all('a') if ('page=' in (a.get('href') or '') or a.get_text(' ',strip=True) in ('1','2','3','Next'))],ensure_ascii=False)[:5000])
-                      cards=[]
-                      for a in soup.find_all('a',href=True):
-                          href=a['href'];txt=a.get_text(' ',strip=True)
-                          if '/games/' in href and txt and len(txt)<120:
-                              cards.append([txt,href,a.get('class')])
-                      print('GAME_LINKS',json.dumps(cards,ensure_ascii=False)[:20000])
-                      print('HAS BIOSHOCK', 'BioShock Infinite' in data)
-                      x=data.find('BioShock Infinite')
-                      if x>=0:print('BIO_HTML',data[x-1100:x+1400])
-                  except Exception as e:print('ERROR',repr(e))
+          import urllib.request,re,json
+          for slug in ['bioshock-infinite','shadow-of-the-colossus--1','dispatch--3','halo-campaign-evolved','beast-of-reincarnation']:
+              u='https://stash.games/games/'+slug
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Accept-Language':'en-US,en;q=0.9'})
+              try:
+                  html=urllib.request.urlopen(req,timeout=20).read().decode('utf-8','replace')
+                  soup=BeautifulSoup(html,'html.parser')
+                  print('GAME',slug,'LEN',len(html),'TITLE',soup.title.get_text(' ',strip=True) if soup.title else '')
+                  for a in soup.find_all('a',href=True):
+                      if 'igdb' in a['href'] or 'rawg' in a['href'] or 'steam' in a['href']:
+                          print('LINK',a['href'],a.get_text(' ',strip=True)[:90])
+                  for m in re.finditer(r'(?i)igdb.?id|data-game-id|game_id|gameId|igdb.com',html):
+                      print('META',html[max(0,m.start()-100):m.end()+220].replace('\n',' ')[:450])
+                      if m.start()>130000:break
+              except Exception as e:print('ERROR',slug,repr(e))
           PY
