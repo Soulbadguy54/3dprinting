@@ -99,6 +99,7 @@ class UserGame(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(20), index=True)
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     platform: Mapped[str | None] = mapped_column(String(80))
     completed_at: Mapped[date | None] = mapped_column(Date, index=True)
     started_at: Mapped[date | None] = mapped_column(Date)

@@ -1405,9 +1405,15 @@ function App() {
         return a.game.title.localeCompare(b.game.title, 'ru')
       }
 
-      const dateA = a.entry.completedAt ?? a.entry.startedAt ?? a.entry.addedAt
-      const dateB = b.entry.completedAt ?? b.entry.startedAt ?? b.entry.addedAt
-      return dateB.localeCompare(dateA)
+      // True user activity is a status assignment/transition, not a
+      // completion date, collection addition, or reordering of entries.
+      // Tie-break independently of array order so optimistic collection
+      // updates cannot unexpectedly move games with the same timestamp.
+      const activityA = Date.parse(a.entry.statusChangedAt ?? '') || 0
+      const activityB = Date.parse(b.entry.statusChangedAt ?? '') || 0
+      return activityB - activityA
+        || a.game.title.localeCompare(b.game.title, 'ru', { sensitivity: 'base' })
+        || a.game.id - b.game.id
     })
   }, [personalLibraryEntries, query, statusFilters, genreFilter, platformFilter, sortMode, catalogGames])
 

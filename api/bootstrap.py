@@ -104,6 +104,24 @@ def initialize_database() -> None:
         connection.exec_driver_sql(
             "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS gameplay_score NUMERIC(3, 1)"
         )
+        # Status changes were not recorded historically. Use the original
+        # insertion time, NOT a later collection membership timestamp, as the
+        # nearest recoverable approximation for existing playthroughs.
+        connection.exec_driver_sql(
+            "ALTER TABLE user_games ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ"
+        )
+        connection.exec_driver_sql("""
+            UPDATE user_games
+            SET status_changed_at = added_at
+            WHERE status IN ('completed', 'playing', 'dropped')
+              AND status_changed_at IS NULL
+        """)
+        connection.exec_driver_sql("""
+            UPDATE user_games
+            SET status_changed_at = NULL
+            WHERE status NOT IN ('completed', 'playing', 'dropped')
+              AND status_changed_at IS NOT NULL
+        """)
         connection.exec_driver_sql(
             "ALTER TABLE collections ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE"
         )
@@ -196,6 +214,15 @@ def initialize_database() -> None:
                     )
                 ) NOT VALID
             """)
+        if "ck_user_games_status_changed_at" not in constraints:
+            connection.exec_driver_sql("""
+                ALTER TABLE user_games ADD CONSTRAINT ck_user_games_status_changed_at
+                CHECK (
+                    (status IN ('completed', 'playing', 'dropped') AND status_changed_at IS NOT NULL)
+                    OR
+                    (status IN ('wishlist', 'untracked') AND status_changed_at IS NULL)
+                ) NOT VALID
+            """)
         if "ck_user_games_date_coherence" not in constraints:
             connection.exec_driver_sql("""
                 ALTER TABLE user_games ADD CONSTRAINT ck_user_games_date_coherence
@@ -286,6 +313,8 @@ def initialize_database() -> None:
                     gameplay_score=score,
                     review=review,
                     added_at=_as_datetime(added_at),
+                    status_changed_at=_as_datetime(added_at)
+                    if status in {"completed", "playing", "dropped"} else None,
                 )
                 session.add(entry)
                 session.flush()

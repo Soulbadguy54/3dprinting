@@ -601,6 +601,7 @@ def _serialize_entry(
     return {
         "gameId": entry.game.igdb_id,
         "status": entry.status,
+        "statusChangedAt": entry.status_changed_at.isoformat() if entry.status_changed_at else None,
         "platform": entry.platform,
         "completedAt": entry.completed_at.isoformat() if entry.completed_at else None,
         "startedAt": entry.started_at.isoformat() if entry.started_at else None,
@@ -1611,9 +1612,19 @@ def upsert_library_game(
             )
         )
 
+        # Only assigning a playthrough status, or switching it to another
+        # playthrough status, counts as activity. Rating edits, dates, and
+        # collection updates must never bump this timestamp.
+        previous_status = entry.status if entry is not None else None
         if entry is None:
             entry = UserGame(user_id=user.id, game_id=game.id, status=payload.status)
             session.add(entry)
+
+        if payload.status in {"completed", "playing", "dropped"}:
+            if previous_status != payload.status:
+                entry.status_changed_at = _now()
+        else:
+            entry.status_changed_at = None
 
         entry.status = payload.status
         entry.platform = None if payload.status == "wishlist" else payload.platform
@@ -1886,6 +1897,7 @@ def delete_library_game(game_id: int, request: Request) -> Response:
             if has_collections:
                 # Delete the playthrough only, never its collection memberships.
                 entry.status = "untracked"
+                entry.status_changed_at = None
                 entry.platform = None
                 entry.completed_at = None
                 entry.started_at = None

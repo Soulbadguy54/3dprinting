@@ -35,6 +35,8 @@ export type LibraryEntry = {
   review?: string
   collectionIds: string[]
   collectionAddedAt?: Record<string, string>
+  /** Timestamp of the most recent transition into completed, dropped, or playing. */
+  statusChangedAt?: string | null
   addedAt: string
 }
 

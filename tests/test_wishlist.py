@@ -161,6 +161,100 @@ class WishlistApiTests(unittest.TestCase):
             WISHLIST_SLUG in entry["collectionIds"] for entry in allowed.json()["library"]
         ))
 
+
+    def test_last_activity_changes_only_when_playthrough_status_changes(self):
+        """Collection actions, same-status edits, and dates cannot bump activity."""
+        from datetime import datetime, timezone, timedelta
+        from unittest.mock import patch
+
+        path = f"/api/library/{self.game_id}"
+        collection = self.client.post("/api/collections", json={"title": "Activity check"}).json()["id"]
+        first = datetime(2026, 10, 14, 9, 0, tzinfo=timezone.utc)
+        second = first + timedelta(days=1)
+        third = second + timedelta(hours=2)
+        fourth = third + timedelta(hours=3)
+
+        # Collection-only games have no activity until given a playthrough status.
+        with patch.object(index, "_now", return_value=first):
+            added = self.client.put(f"/api/library/{self.game_id}/collections/{collection}")
+        self.assertEqual(added.status_code, 200, added.text)
+        self.assertIsNone(added.json()["entry"]["statusChangedAt"])
+
+        with patch.object(index, "_now", return_value=first):
+            playing = self.client.put(path, json={
+                "status": "playing", "collectionIds": [collection],
+            })
+        self.assertEqual(playing.status_code, 200, playing.text)
+        self.assertEqual(playing.json()["statusChangedAt"], first.isoformat())
+
+        # Collection membership changes leave the status timestamp unchanged.
+        wish = self.client.put(f"/api/library/{self.game_id}/wishlist")
+        self.assertEqual(wish.status_code, 200, wish.text)
+        self.assertEqual(wish.json()["entry"]["statusChangedAt"], first.isoformat())
+        un_wish = self.client.delete(f"/api/library/{self.game_id}/wishlist")
+        self.assertEqual(un_wish.status_code, 200, un_wish.text)
+        self.assertEqual(un_wish.json()["entry"]["statusChangedAt"], first.isoformat())
+        same = self.client.patch(f"/api/collections/{collection}", json={
+            "description": "Edited collection only",
+        })
+        self.assertEqual(same.status_code, 200, same.text)
+        self.assertEqual(same.json()["library"][0]["statusChangedAt"], first.isoformat())
+
+        with patch.object(index, "_now", return_value=second):
+            edited_playing = self.client.put(path, json={
+                "status": "playing", "platform": "PC", "collectionIds": [collection],
+                "startedAt": "2025-06-01",
+            })
+        self.assertEqual(edited_playing.status_code, 200, edited_playing.text)
+        self.assertEqual(edited_playing.json()["statusChangedAt"], first.isoformat())
+
+        ratings = {
+            "atmosphereScore": 8, "storyScore": 8,
+            "technologyScore": 8, "gameplayScore": 8,
+        }
+        with patch.object(index, "_now", return_value=third):
+            completed = self.client.put(path, json={
+                "status": "completed", "platform": "PC", "completedAt": "2020-03-12",
+                "collectionIds": [collection], **ratings,
+            })
+        self.assertEqual(completed.status_code, 200, completed.text)
+        self.assertEqual(completed.json()["statusChangedAt"], third.isoformat())
+        self.assertEqual(completed.json()["completedAt"], "2020-03-12")
+
+        # Adjusting the completion date or ratings does not become new activity.
+        with patch.object(index, "_now", return_value=fourth):
+            edited_rating = self.client.put(path, json={
+                "status": "completed", "platform": "PS5", "completedAt": "2026-10-15",
+                "collectionIds": [collection], **ratings,
+            })
+        self.assertEqual(edited_rating.status_code, 200, edited_rating.text)
+        self.assertEqual(edited_rating.json()["statusChangedAt"], third.isoformat())
+
+        with patch.object(index, "_now", return_value=fourth):
+            dropped = self.client.put(path, json={
+                "status": "dropped", "platform": "PC", "completedAt": "2021-01-01",
+                "collectionIds": [collection], **ratings,
+            })
+        self.assertEqual(dropped.status_code, 200, dropped.text)
+        self.assertEqual(dropped.json()["statusChangedAt"], fourth.isoformat())
+
+        # All serialization paths use the same timestamp.
+        library = self.client.get("/api/library")
+        self.assertEqual(library.status_code, 200)
+        self.assertEqual(library.json()[0]["statusChangedAt"], fourth.isoformat())
+        bootstrap = self.client.get("/api/bootstrap")
+        self.assertEqual(bootstrap.status_code, 200)
+        match = next(e for e in bootstrap.json()["library"] if e["gameId"] == self.game_id)
+        self.assertEqual(match["statusChangedAt"], fourth.isoformat())
+
+        # Deleting a playthrough with memberships retains only its collection
+        # placeholder and clears the activity date.
+        deleted = self.client.delete(path)
+        self.assertEqual(deleted.status_code, 204)
+        placeholder = self.client.get("/api/library").json()[0]
+        self.assertEqual(placeholder["status"], "untracked")
+        self.assertIsNone(placeholder["statusChangedAt"])
+
     def test_custom_collection_membership_toggle_is_idempotent(self):
         first = self.client.post("/api/collections", json={
             "title": "Моя коллекция", "emoji": "🎮", "colorScheme": "teal",
