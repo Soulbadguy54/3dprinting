@@ -34,6 +34,7 @@ export type LibraryEntry = {
   gameplayScore?: number
   review?: string
   collectionIds: string[]
+  collectionAddedAt?: Record<string, string>
   addedAt: string
 }
 

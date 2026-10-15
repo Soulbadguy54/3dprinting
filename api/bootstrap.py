@@ -142,6 +142,23 @@ def initialize_database() -> None:
             ON CONFLICT (collection_id, user_game_id) DO NOTHING
         """)
 
+        # Legacy membership dates were not tracked. Use original library
+        # insertion timestamps as the historical approximation, never today.
+        connection.exec_driver_sql(
+            "ALTER TABLE collection_games ADD COLUMN IF NOT EXISTS added_at TIMESTAMPTZ"
+        )
+        connection.exec_driver_sql("""
+            UPDATE collection_games AS cg SET added_at = ug.added_at
+            FROM user_games AS ug
+            WHERE cg.user_game_id = ug.id AND cg.added_at IS NULL
+        """)
+        connection.exec_driver_sql(
+            "ALTER TABLE collection_games ALTER COLUMN added_at SET DEFAULT now()"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE collection_games ALTER COLUMN added_at SET NOT NULL"
+        )
+
         # New/updated rows are checked immediately. NOT VALID deliberately
         # avoids fabricating ratings in historical incomplete playthroughs.
         constraints = {

@@ -29,6 +29,9 @@ from api.models import (
     CollectionGame,
     Game,
     GameAlias,
+    Genre,
+    GameGenre,
+    GenreCatalogSync,
     LoginThrottle,
     PushSubscription,
     ReleasePushDelivery,
@@ -409,6 +412,8 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             for game in session.scalars(select(Game).where(Game.igdb_id.in_(ids))).all()
         }
         cached_games: list[Game] = []
+        incoming_genres: dict[int, str] = {}
+        incoming_game_genres: dict[int, list[int]] = {}
 
         for row in rows:
             igdb_id = int(row["id"])
@@ -456,6 +461,16 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             game.cover_url = _igdb_cover(str(image_id)) if image_id else None
             game.developer = developers[0] if developers else None
             game.genres_json = json.dumps(genres, ensure_ascii=False)
+            if "genres" in row:
+                genre_ids: list[int] = []
+                for genre_row in row.get("genres") or []:
+                    if not isinstance(genre_row, dict):
+                        continue
+                    gid, name = genre_row.get("id"), genre_row.get("name")
+                    if isinstance(gid, int) and isinstance(name, str) and name.strip():
+                        incoming_genres[gid] = name.strip()
+                        genre_ids.append(gid)
+                incoming_game_genres[igdb_id] = list(dict.fromkeys(genre_ids))
             game.platforms_json = json.dumps(platforms, ensure_ascii=False)
 
             # IGDB search provides store/trailer metadata in the same query.
@@ -484,6 +499,21 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             cached_games.append(game)
 
         session.flush()
+        if incoming_genres:
+            session.execute(text("""
+                INSERT INTO genres (id, name) VALUES (:id, :name)
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+            """), [{"id":gid, "name":name} for gid, name in incoming_genres.items()])
+        if incoming_game_genres:
+            affected = [existing[igdb_id].id for igdb_id in incoming_game_genres]
+            session.execute(delete(GameGenre).where(GameGenre.game_id.in_(affected)))
+            session.add_all(
+                GameGenre(game_id=existing[igdb_id].id, genre_id=gid)
+                for igdb_id, ids in incoming_game_genres.items()
+                for gid in ids
+            )
+            session.flush()
+
         for row in rows:
             # Persist publisher/IGDB-provided alternative names, not handcrafted
             # abbreviations or special cases for individual games.
@@ -559,7 +589,15 @@ def _serialize_entry(
     entry: UserGame,
     collection_ids: list[str] | None = None,
     community_rating: tuple[float, int] | None = None,
+    collection_added_at: dict[str, str] | None = None,
 ) -> dict[str, object]:
+    if collection_added_at is None:
+        joined = session.execute(
+            select(Collection.slug, CollectionGame.added_at)
+            .join(Collection, Collection.id == CollectionGame.collection_id)
+            .where(CollectionGame.user_game_id == entry.id)
+        ).all()
+        collection_added_at = {slug: timestamp.isoformat() for slug, timestamp in joined}
     return {
         "gameId": entry.game.igdb_id,
         "status": entry.status,
@@ -573,6 +611,7 @@ def _serialize_entry(
         "gameplayScore": float(entry.gameplay_score) if entry.gameplay_score is not None else None,
         "review": entry.review,
         "collectionIds": collection_ids if collection_ids is not None else _collection_slugs(session, entry.id),
+        "collectionAddedAt": collection_added_at,
         "addedAt": entry.added_at.date().isoformat(),
         "game": _game_payload(entry.game, community_rating),
     }
@@ -611,19 +650,24 @@ def _library_payload(session, user: User) -> list[dict[str, object]]:
     ).all()
 
     memberships: dict[int, list[str]] = {row.id: [] for row in rows}
+    membership_times: dict[int, dict[str, str]] = {row.id: {} for row in rows}
     if rows:
         pairs = session.execute(
-            select(CollectionGame.user_game_id, Collection.slug)
+            select(CollectionGame.user_game_id, Collection.slug, CollectionGame.added_at)
             .join(Collection, Collection.id == CollectionGame.collection_id)
             .where(CollectionGame.user_game_id.in_([row.id for row in rows]))
             .order_by(CollectionGame.user_game_id, Collection.id)
         ).all()
-        for user_game_id, slug in pairs:
+        for user_game_id, slug, timestamp in pairs:
             memberships.setdefault(user_game_id, []).append(slug)
+            membership_times.setdefault(user_game_id, {})[slug] = timestamp.isoformat()
 
     ratings = _community_rating_map(session, [row.game_id for row in rows])
     return [
-        _serialize_entry(session, row, memberships.get(row.id, []), ratings.get(row.game_id))
+        _serialize_entry(
+            session, row, memberships.get(row.id, []),
+            ratings.get(row.game_id), membership_times.get(row.id, {}),
+        )
         for row in rows
     ]
 
@@ -717,7 +761,7 @@ def _igdb_search_body(query: str, offset: int) -> str:
     return (
         "fields id,name,first_release_date,rating,rating_count,"
         "total_rating_count,hypes,cover.image_id,alternative_names.name,"
-        "genres.name,platforms.name,involved_companies.developer,"
+        "genres.id,genres.name,platforms.name,involved_companies.developer,"
         "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
         f'search "{safe_query}"; '
         "where version_parent = null; "
@@ -929,6 +973,71 @@ def public_profile(nickname: str) -> dict[str, object]:
                 "dropped": dropped,
             },
         }
+
+
+def _sync_genre_catalog() -> int:
+    client_id, token = _igdb_access_token()
+    rows = _igdb_details_request(
+        "genres", "fields id,name; sort id asc; limit 500;", client_id, token,
+    )
+    valid = [
+        {"id": item["id"], "name": item["name"].strip()}
+        for item in rows
+        if isinstance(item.get("id"), int)
+        and isinstance(item.get("name"), str)
+        and item["name"].strip()
+    ]
+    if not valid:
+        raise HTTPException(status_code=502, detail="IGDB не вернул список жанров.")
+    with _session() as session:
+        session.execute(text("""
+            INSERT INTO genres (id, name) VALUES (:id, :name)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+        """), valid)
+        session.execute(text("""
+            INSERT INTO game_genres (game_id, genre_id)
+            SELECT g.id, t.id
+            FROM games AS g
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+                COALESCE(NULLIF(g.genres_json, ''), '[]')::jsonb
+            ) AS legacy(name)
+            JOIN genres AS t ON lower(t.name) = lower(legacy.name)
+            ON CONFLICT (game_id, genre_id) DO NOTHING
+        """))
+        session.execute(text("""
+            INSERT INTO genre_catalog_sync (id, refreshed_at)
+            VALUES (1, now())
+            ON CONFLICT (id) DO UPDATE SET refreshed_at = EXCLUDED.refreshed_at
+        """))
+        session.commit()
+    return len(valid)
+
+
+@app.post("/api/internal/seed-genres-20261015")
+def _one_shot_seed_genres_20261015() -> dict[str, int]:
+    return {"synced": _sync_genre_catalog()}
+
+
+@app.get("/api/genres")
+def list_genres(request: Request) -> list[dict[str, object]]:
+    with _session() as session:
+        _current_user(request, session)
+        stamp = session.get(GenreCatalogSync, 1)
+        outdated = stamp is None or (
+            _now() - stamp.refreshed_at.replace(
+                tzinfo=stamp.refreshed_at.tzinfo or timezone.utc
+            ) > timedelta(days=30)
+        )
+    if outdated:
+        try:
+            _sync_genre_catalog()
+        except (HTTPException, SQLAlchemyError):
+            # Offline fallback: existing genres remain filterable.
+            pass
+    with _session() as session:
+        _current_user(request, session)
+        rows = session.scalars(select(Genre).order_by(Genre.name, Genre.id)).all()
+        return [{"id": row.id, "name": row.name} for row in rows]
 
 
 @app.get("/api/games/igdb-status")
@@ -1222,7 +1331,7 @@ def search_games(
                     content=(
                         "fields id,name,first_release_date,rating,rating_count,"
                         "total_rating_count,hypes,cover.image_id,alternative_names.name,"
-                        "genres.name,platforms.name,involved_companies.developer,"
+                        "genres.id,genres.name,platforms.name,involved_companies.developer,"
                         "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
                         f"where id = ({','.join(map(str, ids))}) & version_parent = null; limit 20;"
                     ),

@@ -61,6 +61,27 @@ class Game(Base):
     cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Genre(Base):
+    """Canonical IGDB taxonomy: IDs are stable, unlike free-form names."""
+    __tablename__ = "genres"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
+class GameGenre(Base):
+    __tablename__ = "game_genres"
+    __table_args__ = (UniqueConstraint("game_id", "genre_id", name="uq_game_genre"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), index=True)
+    genre_id: Mapped[int] = mapped_column(ForeignKey("genres.id", ondelete="CASCADE"), index=True)
+
+
+class GenreCatalogSync(Base):
+    __tablename__ = "genre_catalog_sync"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class GameAlias(Base):
     __tablename__ = "game_aliases"
     __table_args__ = (UniqueConstraint("game_id", "name", name="uq_game_alias"),)
@@ -124,6 +145,7 @@ class CollectionGame(Base):
         ForeignKey("user_games.id", ondelete="CASCADE"),
         index=True,
     )
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class PushSubscription(Base):
