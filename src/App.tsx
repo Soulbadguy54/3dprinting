@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   AnimatePresence,
@@ -607,7 +607,10 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   )
 })
 
-function RatingSlider({
+const RATING_WHEEL_ROW_HEIGHT = 44
+const RATING_WHEEL_VALUES = Array.from({ length: 91 }, (_, index) => (index + 10) / 10)
+
+function RatingWheel({
   label,
   value,
   onChange,
@@ -616,21 +619,85 @@ function RatingSlider({
   value: number
   onChange: (value: number) => void
 }) {
+  const shouldReduceMotion = useReducedMotion()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const initializedRef = useRef(false)
+  const lastReportedTenthsRef = useRef(Math.round(value * 10))
+
+  // Keep controlled values in sync without fighting touch and momentum scrolling.
+  useLayoutEffect(() => {
+    const tenths = Math.round(value * 10)
+    if (!initializedRef.current || tenths !== lastReportedTenthsRef.current) {
+      if (viewportRef.current) viewportRef.current.scrollTop = (tenths - 10) * RATING_WHEEL_ROW_HEIGHT
+      lastReportedTenthsRef.current = tenths
+      initializedRef.current = true
+    }
+  }, [value])
+
+  const setWheelValue = (tenths: number, smooth = false) => {
+    const nextTenths = Math.min(100, Math.max(10, tenths))
+    lastReportedTenthsRef.current = nextTenths
+    onChange(nextTenths / 10)
+    viewportRef.current?.scrollTo({
+      top: (nextTenths - 10) * RATING_WHEEL_ROW_HEIGHT,
+      behavior: smooth && !shouldReduceMotion ? 'smooth' : 'instant',
+    })
+  }
+
   return (
-    <label className="rating-slider">
-      <span className="rating-slider__header">
+    <div className="rating-wheel">
+      <div className="rating-wheel__heading">
         <strong>{label}</strong>
         <b>{value.toFixed(1)}</b>
-      </span>
-      <input
-        type="range"
-        min="1"
-        max="10"
-        step="0.1"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
+      </div>
+      <div className="rating-wheel__frame">
+        <div
+          ref={viewportRef}
+          className="rating-wheel__viewport"
+          role="spinbutton"
+          tabIndex={0}
+          aria-label={label}
+          aria-valuemin={1}
+          aria-valuemax={10}
+          aria-valuenow={value}
+          aria-valuetext={value.toFixed(1)}
+          onScroll={(event) => {
+            const index = Math.max(0, Math.min(90, Math.round(event.currentTarget.scrollTop / RATING_WHEEL_ROW_HEIGHT)))
+            const tenths = index + 10
+            if (tenths !== lastReportedTenthsRef.current) {
+              lastReportedTenthsRef.current = tenths
+              onChange(tenths / 10)
+            }
+          }}
+          onKeyDown={(event) => {
+            const current = Math.round(value * 10)
+            const next = event.key === 'ArrowDown' ? current + 1
+              : event.key === 'ArrowUp' ? current - 1
+                : event.key === 'PageDown' ? current + 10
+                  : event.key === 'PageUp' ? current - 10
+                    : event.key === 'Home' ? 10
+                      : event.key === 'End' ? 100 : null
+            if (next === null) return
+            event.preventDefault()
+            setWheelValue(next)
+          }}
+        >
+          {RATING_WHEEL_VALUES.map((option, index) => (
+            <div
+              key={index}
+              aria-hidden="true"
+              className={Math.round(value * 10) === index + 10
+                ? 'rating-wheel__item rating-wheel__item--selected'
+                : 'rating-wheel__item'}
+              onClick={() => setWheelValue(index + 10, true)}
+            >
+              {option.toFixed(1)}
+            </div>
+          ))}
+        </div>
+        <div className="rating-wheel__selection" aria-hidden="true" />
+      </div>
+    </div>
   )
 }
 
@@ -1852,14 +1919,6 @@ function App() {
     navigateTo({ tab: 'collections', gameId: null, collectionId: 'new', formGameId: null })
   }
 
-  const toggleAddCollection = (collectionId: string) => {
-    setAddCollectionIds((current) =>
-      current.includes(collectionId)
-        ? current.filter((id) => id !== collectionId)
-        : current.length >= 100 ? current : [...current, collectionId],
-    )
-  }
-
   // IGDB metadata is fetched only when the detail screen opens; search
   // results remain fast. The API caches enriched data for future opens.
   useEffect(() => {
@@ -2595,7 +2654,7 @@ function App() {
           <header className="subpage-header">
             <button className="icon-button" onClick={() => goBackOr({ tab: 'add', gameId: null, collectionId: null, formGameId: null })}><Icon name="back" size={20} /></button>
             <div>
-              <h1>{editingEntry ? 'Изменить игру' : statusMeta[addStatus].label}</h1>
+              <h1>Прохождение</h1>
             </div>
           </header>
 
@@ -2609,15 +2668,20 @@ function App() {
 
           <section className="form-card">
             <label className="field-label">Статус</label>
-            <div className="choice-grid">
+            <div className="choice-grid" role="group" aria-label="Статус прохождения">
               {(['completed', 'playing', 'dropped'] as LibraryStatus[]).map((status) => (
-                <button
+                <motion.button
+                  type="button"
                   key={status}
-                  className={addStatus === status ? 'choice-button choice-button--active' : 'choice-button'}
+                  className={`choice-button choice-button--${status}${addStatus === status ? ' choice-button--active' : ''}`}
+                  aria-pressed={addStatus === status}
+                  whileTap={shouldReduceMotion ? undefined : { scale: .95 }}
+                  transition={{ type: 'spring', stiffness: 440, damping: 28 }}
                   onClick={() => setAddStatus(status)}
                 >
-                  {statusMeta[status].label}
-                </button>
+                  <Icon name={statusIcons[status]} size={17} />
+                  <span>{statusMeta[status].label}</span>
+                </motion.button>
               ))}
             </div>
 
@@ -2636,59 +2700,76 @@ function App() {
               </label>
             )}
 
-            {ratedStatuses.has(addStatus) && (
-              <div className="rating-builder">
-                  <div className="rating-builder__summary">
-                    <span>Итоговая оценка</span>
-                    <strong>{calculatedAddScore.toFixed(1)}</strong>
-                    <small>среднее четырёх критериев</small>
+            <AnimatePresence initial={false}>
+              {ratedStatuses.has(addStatus) && (
+                <motion.div
+                  key="playthrough-rating"
+                  initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, height: 0 }}
+                  transition={{ duration: .26, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div className="rating-builder">
+                    <div className="rating-builder__summary">
+                      <span>Итоговая оценка</span>
+                      <strong>{calculatedAddScore.toFixed(1)}</strong>
+                      <small>среднее четырёх критериев</small>
+                    </div>
+                    <div className="rating-builder__wheels">
+                      <RatingWheel label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
+                      <RatingWheel label="Сюжет" value={addStoryScore} onChange={setAddStoryScore} />
+                      <RatingWheel label="Технологичность" value={addTechnologyScore} onChange={setAddTechnologyScore} />
+                      <RatingWheel label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
+                    </div>
                   </div>
-                  <RatingSlider label="Атмосфера" value={addAtmosphereScore} onChange={setAddAtmosphereScore} />
-                  <RatingSlider label="Сюжет" value={addStoryScore} onChange={setAddStoryScore} />
-                  <RatingSlider label="Технологичность" value={addTechnologyScore} onChange={setAddTechnologyScore} />
-                <RatingSlider label="Геймплей" value={addGameplayScore} onChange={setAddGameplayScore} />
-              </div>
-            )}
 
-            {ratedStatuses.has(addStatus) && (
-              <details
-                className="review-editor"
-                open={addReviewOpen}
-                onToggle={(event) => setAddReviewOpen(event.currentTarget.open)}
-              >
-                <summary>
-                  <span>
-                    <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
-                    <small>необязательно</small>
-                  </span>
-                  <b>{addReviewOpen ? '−' : '+'}</b>
-                </summary>
-                <textarea
-                  value={addReview}
-                  onChange={(event) => setAddReview(event.target.value)}
-                  maxLength={5000}
-                  placeholder="Что запомнилось, что понравилось или не понравилось?"
-                  rows={5}
-                />
-                <small className="review-editor__counter">{addReview.length}/5000</small>
-              </details>
-            )}
-
-            <div className="form-field">
-              <span>Коллекции <small>необязательно</small></span>
-              <div className="collection-choices">
-                {sortCollections(collections).map((collection) => (
-                  <button
-                    key={collection.id}
-                    className={addCollectionIds.includes(collection.id) ? 'collection-choice collection-choice--active' : 'collection-choice'}
-                    onClick={() => toggleAddCollection(collection.id)}
-                  >
-                    <b style={collectionThemeStyle(collection)}><CollectionIcon collection={collection} size={17} /></b>
-                    <span>{collection.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                  <div className="review-editor">
+                    <motion.button
+                      type="button"
+                      className="review-editor__trigger"
+                      aria-expanded={addReviewOpen}
+                      aria-controls="playthrough-review-content"
+                      whileTap={shouldReduceMotion ? undefined : { scale: .99 }}
+                      onClick={() => setAddReviewOpen((open) => !open)}
+                    >
+                      <span>
+                        <strong>{addReview ? 'Мой отзыв' : 'Добавить отзыв'}</strong>
+                        <small>необязательно</small>
+                      </span>
+                      <motion.b
+                        animate={{ rotate: addReviewOpen ? 45 : 0 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                        aria-hidden="true"
+                      >+</motion.b>
+                    </motion.button>
+                    <AnimatePresence initial={false}>
+                      {addReviewOpen && (
+                        <motion.div
+                          key="review-fields"
+                          id="playthrough-review-content"
+                          className="review-editor__content"
+                          initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0 }}
+                          transition={{ duration: .3, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                          <textarea
+                            aria-label="Текст отзыва"
+                            value={addReview}
+                            onChange={(event) => setAddReview(event.target.value)}
+                            maxLength={5000}
+                            placeholder="Что запомнилось, что понравилось или не понравилось?"
+                            rows={5}
+                          />
+                          <small className="review-editor__counter">{addReview.length}/5000</small>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <button className="primary-button" onClick={saveGame}>
               {editingEntry ? 'Сохранить изменения' : 'Сохранить в библиотеку'}
