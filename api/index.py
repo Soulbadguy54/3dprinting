@@ -146,7 +146,7 @@ class LibraryPayload(BaseModel):
         self.platform = (self.platform or "").strip() or None
         criteria = (self.atmosphereScore, self.storyScore, self.technologyScore, self.gameplayScore)
 
-        if self.status in {"completed", "dropped", "playing"} and self.platform is None:
+        if rated and self.platform is None:
             raise ValueError("Выберите платформу для прохождения.")
         if rated:
             if self.completedAt is None:
@@ -160,10 +160,7 @@ class LibraryPayload(BaseModel):
                 raise ValueError("Оценки допустимы только для «Пройдено» и «Дропнуто».")
             if self.completedAt is not None:
                 raise ValueError("Дата окончания допустима только для «Пройдено» и «Дропнуто».")
-            if self.status == "playing":
-                if self.startedAt is None:
-                    raise ValueError("Для статуса «Прохожу» обязательна дата начала.")
-            elif self.startedAt is not None or self.platform is not None:
+            if self.status != "playing" and (self.startedAt is not None or self.platform is not None):
                 raise ValueError("У списка желаемого не может быть даты или платформы прохождения.")
             if self.review:
                 raise ValueError("Отзыв допустим только для оценённых прохождений.")
