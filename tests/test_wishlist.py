@@ -281,18 +281,20 @@ class WishlistApiTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.text)
         self.assertFalse(any(row["gameId"] == self.game_id for row in result.json()["library"]))
 
-    def test_wishlist_theme_is_editable_and_survives_bootstrap(self):
+    def test_wishlist_theme_is_immutable_and_survives_bootstrap(self):
+        original = self.client.get("/api/collections").json()[0]
         changed = self.client.patch(f"/api/collections/{WISHLIST_SLUG}", json={
             "title": "Хочу поиграть", "description": "Мои планы",
             "emoji": "🎁", "colorScheme": "violet", "removedGameIds": [],
         })
-        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertEqual(changed.status_code, 403, changed.text)
         initialize_database()
         first = self.client.get("/api/collections").json()[0]
         self.assertEqual(first["id"], WISHLIST_SLUG)
-        self.assertEqual(first["title"], "Хочу поиграть")
-        self.assertEqual(first["colorScheme"], "violet")
-        self.assertEqual(first["emoji"], "🎁")
+        self.assertEqual(first["title"], original["title"])
+        self.assertEqual(first["description"], original["description"])
+        self.assertEqual(first["colorScheme"], original["colorScheme"])
+        self.assertEqual(first["emoji"], original["emoji"])
         self.assertEqual(self.client.delete(f"/api/collections/{WISHLIST_SLUG}").status_code, 403)
 
     def test_collection_update_does_not_accept_unauthorized_user(self):
