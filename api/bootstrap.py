@@ -1,9 +1,13 @@
+import os
 from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from api.database import Base, SessionLocal, engine
+from api.data_integrity import (
+    install_required_field_constraints, migrate_missing_playthrough_details,
+)
 from api.models import (
     Collection, CollectionGame, Game, User, UserGame,
     WISHLIST_SLUG, WISHLIST_TITLE, WISHLIST_DESCRIPTION, WISHLIST_MARK,
@@ -184,6 +188,15 @@ def initialize_database() -> None:
                     AND (status IN ('completed', 'dropped') OR review IS NULL)
                 ) NOT VALID
             """)
+
+        # The imported history predates required platforms/dates.
+        # Only the two user-requested accounts are repaired. No scores,
+        # statuses or original dates are overwritten.
+        if os.getenv("VERCEL_ENV") == "production":
+            migrate_missing_playthrough_details(
+                connection, migration_date=date(2026, 10, 15),
+            )
+        install_required_field_constraints(connection)
 
     with SessionLocal() as session:
         existing = session.scalar(select(User).where(User.email == "demo@rateapp.local"))

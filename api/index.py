@@ -19,6 +19,7 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from api.data_integrity import playthrough_integrity_summary
 from api.bootstrap import initialize_database
 from api.push import push_ready, send_push, valid_push_endpoint
 from api.database import SessionLocal, engine
@@ -142,8 +143,14 @@ class LibraryPayload(BaseModel):
     @model_validator(mode="after")
     def validate_playthrough(self):
         rated = self.status in {"completed", "dropped"}
+        self.platform = (self.platform or "").strip() or None
         criteria = (self.atmosphereScore, self.storyScore, self.technologyScore, self.gameplayScore)
+
+        if rated and self.platform is None:
+            raise ValueError("Выберите платформу для прохождения.")
         if rated:
+            if self.completedAt is None:
+                raise ValueError("Для пройденной или дропнутой игры обязательна дата.")
             if any(value is None for value in criteria):
                 raise ValueError("Для статуса «Пройдено» или «Дропнуто» обязательны все четыре оценки.")
             if self.startedAt is not None:
@@ -153,8 +160,8 @@ class LibraryPayload(BaseModel):
                 raise ValueError("Оценки допустимы только для «Пройдено» и «Дропнуто».")
             if self.completedAt is not None:
                 raise ValueError("Дата окончания допустима только для «Пройдено» и «Дропнуто».")
-            if self.status != "playing" and self.startedAt is not None:
-                raise ValueError("Дата начала допустима только для «Прохожу».")
+            if self.status != "playing" and (self.startedAt is not None or self.platform is not None):
+                raise ValueError("У списка желаемого не может быть даты или платформы прохождения.")
             if self.review:
                 raise ValueError("Отзыв допустим только для оценённых прохождений.")
         return self
@@ -718,11 +725,14 @@ def _igdb_search_body(query: str, offset: int) -> str:
 def health() -> dict[str, object]:
     database_configured = engine is not None
     database_ok = False
+    integrity_report = None
 
     if engine is not None:
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
+                if os.getenv("VERCEL_ENV") == "production":
+                    integrity_report = playthrough_integrity_summary(connection)
             database_ok = True
         except SQLAlchemyError:
             database_ok = False
@@ -738,6 +748,7 @@ def health() -> dict[str, object]:
             )
         },
         "environment": os.getenv("VERCEL_ENV", "local"),
+        "playthroughIntegrity": integrity_report,
     }
 
 

@@ -1670,6 +1670,10 @@ function App() {
     if (!game) return
 
     const today = new Date().toISOString().slice(0, 10)
+    if (ratedStatuses.has(addStatus) && (!addPlatform.trim() || !addDate)) {
+      window.alert('Для прохождения обязательно укажите платформу и дату.')
+      return
+    }
     const nextEntry: LibraryEntry = {
       gameId: game.id,
       status: addStatus,
@@ -2690,9 +2694,20 @@ function App() {
 
             <label className="form-field">
               <span>Платформа</span>
-              <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
-                {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
-              </select>
+              {addGame.platforms.length > 0 ? (
+                <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
+                  <option value="" disabled>Выберите платформу</option>
+                  {addGame.platforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  maxLength={80}
+                  value={addPlatform}
+                  placeholder="Укажите платформу"
+                  onChange={(event) => setAddPlatform(event.target.value)}
+                />
+              )}
             </label>
 
             {ratedStatuses.has(addStatus) && (

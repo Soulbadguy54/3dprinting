@@ -40,7 +40,8 @@ class WishlistApiTests(unittest.TestCase):
     def test_score_is_computed_and_unrated_statuses_reject_ratings(self):
         path = f"/api/library/{self.game_id}"
         rated = self.client.put(path, json={
-            "status": "completed", "score": 10,
+            "status": "completed", "score": 10, "platform": "PC",
+            "completedAt": "2026-10-15",
             "atmosphereScore": 8, "storyScore": 9,
             "technologyScore": 7, "gameplayScore": 6,
         })
@@ -67,6 +68,74 @@ class WishlistApiTests(unittest.TestCase):
                     VALUES (:u, :g, 'completed', 9.0)
                 """), {"u": user_id, "g": game_id})
             session.rollback()
+
+    def test_missing_playthrough_platform_and_dates_are_rejected(self):
+        game_url = f"/api/library/{self.game_id}"
+        ratings = {
+            "atmosphereScore": 8, "storyScore": 8,
+            "technologyScore": 8, "gameplayScore": 8,
+        }
+        for status in ("completed", "dropped"):
+            for bad in (
+                {"platform": "", "completedAt": "2026-10-15"},
+                {"platform": "PC"},
+                {"platform": "   ", "completedAt": "2026-10-15"},
+            ):
+                response = self.client.put(game_url, json={
+                    "status": status, **ratings, **bad,
+                })
+                self.assertEqual(response.status_code, 422, response.text)
+
+        for bad in (
+            {"status": "wishlist", "platform": "PC"},
+        ):
+            response = self.client.put(game_url, json=bad)
+            self.assertEqual(response.status_code, 422, response.text)
+        # The existing "Прохожу" UI has no date input, so the API accepts
+        # both fields as optional instead of requiring a nonexistent input.
+        response = self.client.put(game_url, json={"status": "playing"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()["platform"])
+        self.assertIsNone(response.json()["startedAt"])
+
+    def test_database_enforces_platform_dates_and_collection_display_fields(self):
+        from sqlalchemy import text
+        from sqlalchemy.exc import IntegrityError
+
+        with SessionLocal() as session:
+            user_id = session.scalar(select(User.id).where(User.nickname == self.nickname))
+            game_id = session.scalar(select(Game.id).where(Game.igdb_id == self.game_id))
+            with self.assertRaises(IntegrityError):
+                session.execute(text("""
+                    INSERT INTO user_games (
+                        user_id, game_id, status,
+                        atmosphere_score, story_score,
+                        technology_score, gameplay_score, score
+                    )
+                    VALUES (:u, :g, 'completed', 8, 8, 8, 8, 8)
+                """), {"u": user_id, "g": game_id})
+            session.rollback()
+
+            for field, value in (
+                ("title", ""),
+                ("title", None),
+                ("color_scheme", "unknown"),
+                ("color_scheme", None),
+            ):
+                values = {
+                    "uid": user_id, "slug": f"test_integrity_{field}_{value}",
+                    "title": "Valid", "color": "violet",
+                }
+                if field == "title":
+                    values["title"] = value
+                else:
+                    values["color"] = value
+                with self.assertRaises(IntegrityError):
+                    session.execute(text("""
+                        INSERT INTO collections (user_id, slug, title, color_scheme)
+                        VALUES (:uid, :slug, :title, :color)
+                    """), values)
+                session.rollback()
 
     def test_default_collection_is_protected(self):
         data = self.client.get("/api/bootstrap").json()
@@ -150,8 +219,8 @@ class WishlistApiTests(unittest.TestCase):
         self.assertEqual(saved["completedAt"], "2026-02-20")
 
         playing = self.client.put(path, json={
-            "status": "playing", "startedAt": "2026-02-21",
-            "collectionIds": [],
+            "status": "playing", "platform": "PC",
+            "startedAt": "2026-02-21", "collectionIds": [],
         })
         self.assertEqual(playing.status_code, 200, playing.text)
         self.assertIsNone(playing.json()["completedAt"])
@@ -160,6 +229,7 @@ class WishlistApiTests(unittest.TestCase):
     def test_custom_membership_preserves_completed_playthrough(self):
         saved = self.client.put(f"/api/library/{self.game_id}", json={
             "status": "completed", "score": 8.5, "platform": "PC", "collectionIds": [],
+            "completedAt": "2026-10-15",
             "atmosphereScore": 8.5, "storyScore": 8.5,
             "technologyScore": 8.5, "gameplayScore": 8.5,
         })
@@ -200,6 +270,7 @@ class WishlistApiTests(unittest.TestCase):
         path = f"/api/library/{self.game_id}"
         completed = self.client.put(path, json={
             "status": "completed", "score": 9.0, "platform": "PC",
+            "completedAt": "2026-10-15",
             "atmosphereScore": 9.0, "storyScore": 9.0,
             "technologyScore": 9.0, "gameplayScore": 9.0,
             "collectionIds": [],
@@ -323,6 +394,7 @@ class WishlistApiTests(unittest.TestCase):
         second = self.client.post("/api/collections", json={"title": "Вторая"}).json()["id"]
         saved = self.client.put(f"/api/library/{self.game_id}", json={
             "status": "completed", "platform": "PC", "score": 9.0,
+            "completedAt": "2026-10-15",
             "atmosphereScore": 9.0, "storyScore": 9.0,
             "technologyScore": 9.0, "gameplayScore": 9.0,
             "collectionIds": [first, second],
