@@ -20,14 +20,20 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['rateapp-icon-192.png', 'rateapp-icon.svg', 'rateapp-loading-gamepad.avif', 'push-sw.js'],
+      includeAssets: ['rateapp-icon-192.png', 'rateapp-icon-512.png', 'rateapp-icon.svg', 'rateapp-loading-gamepad.avif', 'push-sw.js'],
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
         importScripts: ['/push-sw.js'],
       },
       manifest: {
+        id: '/',
         name: 'RateApp',
         short_name: 'RateApp',
+        scope: '/',
+        prefer_related_applications: false,
+        related_applications: [
+          { platform: 'webapp', url: 'https://rateapp-delta.vercel.app/manifest.webmanifest' },
+        ],
         description: 'Личная коллекция, оценки и игровой дневник',
         theme_color: '#0b0d12',
         background_color: '#0b0d12',
@@ -38,6 +44,12 @@ export default defineConfig({
           {
             src: '/rateapp-icon-192.png',
             sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/rateapp-icon-512.png',
+            sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
           },
