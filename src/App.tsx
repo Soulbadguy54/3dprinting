@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from 'react'
 import {
   AnimatePresence,
   LayoutGroup,
@@ -556,10 +556,18 @@ function Cover({
 type GameCardProps = {
   game: Game
   entry: LibraryEntry
-  onOpen: () => void
+  onOpen: (event: ReactMouseEvent<HTMLButtonElement>) => void
   animationIndex?: number
   readOnly?: boolean
   quietPress?: boolean
+  selectionMode?: boolean
+  selected?: boolean
+  onPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerCancel?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerLeave?: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onContextMenu?: (event: ReactMouseEvent<HTMLButtonElement>) => void
 }
 
 const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
@@ -569,6 +577,14 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   animationIndex = 0,
   readOnly = false,
   quietPress = false,
+  selectionMode = false,
+  selected = false,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onPointerLeave,
+  onContextMenu,
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
   const activityDate =
@@ -582,9 +598,22 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
     <motion.button
       ref={ref}
       layout="position"
-      className={quietPress ? 'game-card game-card--quiet-touch' : 'game-card'}
+      className={[
+        'game-card',
+        quietPress && 'game-card--quiet-touch',
+        selectionMode && 'game-card--selection-mode',
+        selected && 'game-card--selected',
+      ].filter(Boolean).join(' ')}
       disabled={readOnly}
+      aria-pressed={selectionMode ? selected : undefined}
+      aria-label={selectionMode ? `${game.title}, ${selected ? 'выбрано' : 'выбрать'}` : undefined}
       onClick={onOpen}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
+      onContextMenu={onContextMenu}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 28, scale: .96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
@@ -598,6 +627,13 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
     >
       <div className="game-card__cover-wrap">
         <Cover game={game} />
+        {selectionMode && (
+          <span className={selected
+            ? 'game-card__selection game-card__selection--checked'
+            : 'game-card__selection'} aria-hidden="true">
+            {selected && <Icon name="check" size={16} />}
+          </span>
+        )}
         {entry.score != null && (
           <span className="score-badge">{entry.score.toFixed(1)}</span>
         )}
@@ -776,7 +812,15 @@ function App() {
   const [deleteCollectionPrompt, setDeleteCollectionPrompt] = useState<GameCollection | null>(null)
   const [deleteGamePrompt, setDeleteGamePrompt] = useState<Game | null>(null)
   const [bulkDeleteCollectionPrompt, setBulkDeleteCollectionPrompt] = useState<string[] | null>(null)
+  const [bulkRemoveGamesPrompt, setBulkRemoveGamesPrompt] = useState<{ collectionId: string; gameIds: number[] } | null>(null)
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>([])
+  const [selectedCollectionGameIds, setSelectedCollectionGameIds] = useState<number[]>([])
+  const collectionGameHoldRef = useRef<{ pointerId: number; gameId: number; x: number; y: number; timer: number } | null>(null)
+  const suppressCollectionGameClickRef = useRef<{ gameId: number; time: number } | null>(null)
+  const cancelCollectionGameHold = () => {
+    if (collectionGameHoldRef.current) window.clearTimeout(collectionGameHoldRef.current.timer)
+    collectionGameHoldRef.current = null
+  }
   const collectionHoldRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null)
   const suppressCollectionClickRef = useRef<{ id: string; time: number } | null>(null)
   const cancelCollectionHold = () => {
@@ -796,10 +840,11 @@ function App() {
     setDeleteCollectionPrompt(null)
     setDeleteGamePrompt(null)
     setBulkDeleteCollectionPrompt(null)
+    setBulkRemoveGamesPrompt(null)
     setDeleteCollectionError('')
   }
   useEffect(() => {
-    if (!deleteCollectionPrompt && !deleteGamePrompt && !bulkDeleteCollectionPrompt) return
+    if (!deleteCollectionPrompt && !deleteGamePrompt && !bulkDeleteCollectionPrompt && !bulkRemoveGamesPrompt) return
     deleteCollectionCancelRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !deleteCollectionBusy) {
@@ -807,20 +852,26 @@ function App() {
         setDeleteCollectionPrompt(null)
         setDeleteGamePrompt(null)
         setBulkDeleteCollectionPrompt(null)
+        setBulkRemoveGamesPrompt(null)
         setDeleteCollectionError('')
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [deleteCollectionPrompt, deleteGamePrompt, bulkDeleteCollectionPrompt, deleteCollectionBusy])
+  }, [deleteCollectionPrompt, deleteGamePrompt, bulkDeleteCollectionPrompt, bulkRemoveGamesPrompt, deleteCollectionBusy])
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(firstViewRef.current.collectionId)
   useEffect(() => {
     setSelectedCollectionIds([])
+    setSelectedCollectionGameIds([])
+    setBulkRemoveGamesPrompt(null)
     cancelCollectionHold()
+    cancelCollectionGameHold()
+    suppressCollectionGameClickRef.current = null
     setCollectionSortMode('added-desc')
   }, [activeTab, selectedCollectionId])
   useEffect(() => () => {
     if (collectionHoldRef.current) window.clearTimeout(collectionHoldRef.current.timer)
+    if (collectionGameHoldRef.current) window.clearTimeout(collectionGameHoldRef.current.timer)
   }, [])
   useEffect(() => {
     const onKeyboardEnter = (event: KeyboardEvent) => {
@@ -1900,6 +1951,8 @@ function App() {
 
 
   const startCollectionEdit = (collection: GameCollection) => {
+    setSelectedCollectionGameIds([])
+    cancelCollectionGameHold()
     setEditingCollectionId(collection.id)
     setEditCollectionTitle(collection.title)
     setEditCollectionDescription(collection.description)
@@ -2003,6 +2056,60 @@ function App() {
     } finally {
       setDeleteCollectionBusy(false)
     }
+  }
+
+  const removeSelectedCollectionGames = async (prompt: { collectionId: string; gameIds: number[] }) => {
+    if (deleteCollectionBusy || !prompt.gameIds.length) return
+    setDeleteCollectionBusy(true)
+    setDeleteCollectionError('')
+    try {
+      const response = await fetch(`/api/collections/${encodeURIComponent(prompt.collectionId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removedGameIds: prompt.gameIds }),
+      })
+      const payload = await response.json().catch(() => null) as {
+        collection?: GameCollection; library?: ApiLibraryEntry[]; detail?: unknown
+      } | null
+      if (!response.ok || !payload?.collection || !Array.isArray(payload.library)) {
+        throw new Error(collectionValidationMessage(payload, 'Не удалось убрать выбранные игры.'))
+      }
+      // The API returns the full library after one atomic change. Completed and
+      // dropped playthroughs, as well as memberships in other collections, survive.
+      setEntries(payload.library.map(normalizeEntry))
+      setBulkRemoveGamesPrompt(null)
+      setSelectedCollectionGameIds([])
+      suppressCollectionGameClickRef.current = null
+    } catch (error) {
+      setDeleteCollectionError(error instanceof Error ? error.message : 'Не удалось убрать выбранные игры.')
+    } finally {
+      setDeleteCollectionBusy(false)
+    }
+  }
+
+  const toggleCollectionGameSelection = (gameId: number) => {
+    setSelectedCollectionGameIds((ids) => ids.includes(gameId)
+      ? ids.filter((id) => id !== gameId)
+      : [...ids, gameId])
+  }
+
+  const holdCollectionGame = (gameId: number, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (selectedCollectionGameIds.length || editingCollectionId || event.button !== 0) return
+    cancelCollectionGameHold()
+    const pointerId = event.pointerId
+    const timer = window.setTimeout(() => {
+      if (collectionGameHoldRef.current?.pointerId !== pointerId) return
+      collectionGameHoldRef.current = null
+      suppressCollectionGameClickRef.current = { gameId, time: Date.now() }
+      setSelectedCollectionGameIds((ids) => ids.includes(gameId) ? ids : [...ids, gameId])
+    }, 480)
+    collectionGameHoldRef.current = { pointerId, gameId, x: event.clientX, y: event.clientY, timer }
+  }
+
+  const moveCollectionGameHold = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const held = collectionGameHoldRef.current
+    if (held?.pointerId === event.pointerId &&
+      Math.hypot(event.clientX - held.x, event.clientY - held.y) > 10) cancelCollectionGameHold()
   }
 
   const toggleCollectionSelection = (collection: GameCollection) => {
@@ -3135,7 +3242,25 @@ function App() {
               )}
             </div>
             <div className="detail-toolbar__actions">
-              {editing ? (
+              {!editing && selectedCollectionGameIds.length > 0 ? (
+                <>
+                  <button type="button" className="icon-button"
+                    aria-label="Отменить выбор игр"
+                    onClick={() => {
+                      setSelectedCollectionGameIds([])
+                      cancelCollectionGameHold()
+                    }}><Icon name="close" size={20} /></button>
+                  <button type="button" className="icon-button detail-delete"
+                    aria-label={`Убрать выбранные игры из коллекции: ${selectedCollectionGameIds.length}`}
+                    onClick={() => {
+                      setDeleteCollectionError('')
+                      setBulkRemoveGamesPrompt({
+                        collectionId: collection.id,
+                        gameIds: [...selectedCollectionGameIds],
+                      })
+                    }}><Icon name="trash" size={20} /></button>
+                </>
+              ) : editing ? (
                 <>
                   <button
                     type="button"
@@ -3218,6 +3343,11 @@ function App() {
                   <span className="collection-detail-count">
                     {collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}
                   </span>
+                  {selectedCollectionGameIds.length > 0 && (
+                    <span className="collection-detail-selected-count" role="status">
+                      Выбрано: {selectedCollectionGameIds.length}
+                    </span>
+                  )}
                 </div>
                 <label className="collection-detail-sort">
                   <Icon name="sort" size={19} />
@@ -3260,7 +3390,31 @@ function App() {
                       entry={entry}
                       readOnly={editing}
                       quietPress
-                      onOpen={() => openGame(game.id)}
+                      selectionMode={!editing && selectedCollectionGameIds.length > 0}
+                      selected={selectedCollectionGameIds.includes(game.id)}
+                      onPointerDown={(event) => holdCollectionGame(game.id, event)}
+                      onPointerMove={moveCollectionGameHold}
+                      onPointerUp={cancelCollectionGameHold}
+                      onPointerCancel={cancelCollectionGameHold}
+                      onPointerLeave={cancelCollectionGameHold}
+                      onContextMenu={(event) => {
+                        if (editing) return
+                        event.preventDefault()
+                        cancelCollectionGameHold()
+                        if (!selectedCollectionGameIds.length) setSelectedCollectionGameIds([game.id])
+                      }}
+                      onOpen={(event) => {
+                        if (editing) return
+                        const blocked = suppressCollectionGameClickRef.current
+                        if (blocked?.gameId === game.id && Date.now() - blocked.time < 800) {
+                          suppressCollectionGameClickRef.current = null
+                          return
+                        }
+                        suppressCollectionGameClickRef.current = null
+                        if (selectedCollectionGameIds.length) toggleCollectionGameSelection(game.id)
+                        else if (event.shiftKey) setSelectedCollectionGameIds([game.id])
+                        else openGame(game.id)
+                      }}
                     />
                     {editing && (
                       <motion.button
@@ -3491,7 +3645,7 @@ function App() {
 
       <PushOnboarding user={authUser.nickname} />
 
-      {(deleteCollectionPrompt || deleteGamePrompt || bulkDeleteCollectionPrompt) && (
+      {(deleteCollectionPrompt || deleteGamePrompt || bulkDeleteCollectionPrompt || bulkRemoveGamesPrompt) && (
         <div className="rateapp-confirm-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) dismissDeletePrompt()
         }}>
@@ -3507,11 +3661,15 @@ function App() {
                 ? <>Удалить прохождение «{deleteGamePrompt.title}» из моих игр?</>
                 : bulkDeleteCollectionPrompt
                   ? <>Удалить выбранные коллекции ({bulkDeleteCollectionPrompt.length})?</>
-                  : <>Удалить коллекцию «{deleteCollectionPrompt?.title}»?</>}
+                  : bulkRemoveGamesPrompt
+                    ? <>Убрать выбранные игры ({bulkRemoveGamesPrompt.gameIds.length}) из коллекции?</>
+                    : <>Удалить коллекцию «{deleteCollectionPrompt?.title}»?</>}
             </h2>
-            {bulkDeleteCollectionPrompt && (
+            {(bulkDeleteCollectionPrompt || bulkRemoveGamesPrompt) && (
               <p className="rateapp-confirm__description">
-                Игры останутся в других коллекциях и в истории прохождений.
+                {bulkRemoveGamesPrompt
+                  ? 'Игры будут убраны только из этой коллекции. Другие коллекции, прохождения и оценки сохранятся.'
+                  : 'Игры останутся в других коллекциях и в истории прохождений.'}
               </p>
             )}
             {deleteCollectionError && <p role="alert">{deleteCollectionError}</p>}
@@ -3529,6 +3687,7 @@ function App() {
                 onClick={() => {
                   if (deleteGamePrompt) void deleteGame(deleteGamePrompt)
                   else if (bulkDeleteCollectionPrompt) void deleteSelectedCollections(bulkDeleteCollectionPrompt)
+                  else if (bulkRemoveGamesPrompt) void removeSelectedCollectionGames(bulkRemoveGamesPrompt)
                   else if (deleteCollectionPrompt) void deleteCollection(deleteCollectionPrompt)
                 }}
               >{deleteCollectionBusy ? 'Удаляем…' : 'Удалить'}</button>
