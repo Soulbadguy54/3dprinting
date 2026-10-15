@@ -26,6 +26,7 @@ class RatedHistoryRow(BaseModel):
     query: str = Field(min_length=1, max_length=100)
     status: Literal["completed", "dropped"]
     releaseYear: int | None = Field(default=None, ge=1980, le=2035)
+    igdbId: int | None = Field(default=None, ge=1)
     soulbadguy: ScoreFour
     nastya: ScoreFour
 
@@ -40,7 +41,9 @@ def normalized_title(value: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", value.casefold()) if c.isalnum())
 
 
-def match_igdb(rows: list[dict], query: str, year: int | None) -> dict | None:
+def match_igdb(
+    rows: list[dict], query: str, year: int | None, selected_id: int | None = None,
+) -> dict | None:
     expected = normalized_title(query)
     candidates = [
         row for row in rows if isinstance(row, dict)
@@ -59,6 +62,8 @@ def match_igdb(rows: list[dict], query: str, year: int | None) -> dict | None:
             if row.get("first_release_date")
             and datetime.fromtimestamp(int(row["first_release_date"]), timezone.utc).year == year
         ]
+    if selected_id is not None:
+        candidates = [row for row in candidates if int(row.get("id") or 0) == selected_id]
     ids = {int(row["id"]) for row in candidates if row.get("id")}
     return candidates[0] if len(ids) == 1 else None
 
