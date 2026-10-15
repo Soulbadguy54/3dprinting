@@ -1653,7 +1653,7 @@ function App() {
     editingFromDetailRef.current = currentViewRef.current.gameId === game.id
     setAddStatus(entry.status)
     setAddPlatform(entry.platform ?? preferredPlatform(game.platforms))
-    setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
+    setAddDate((entry.status === 'playing' ? entry.startedAt : entry.completedAt) ?? new Date().toISOString().slice(0, 10))
     const fallbackScore = entry.score ?? 8
     setAddAtmosphereScore(entry.atmosphereScore ?? fallbackScore)
     setAddStoryScore(entry.storyScore ?? fallbackScore)
@@ -1670,12 +1670,16 @@ function App() {
     if (!game) return
 
     const today = new Date().toISOString().slice(0, 10)
+    if (!addPlatform.trim() || !addDate) {
+      window.alert('Для прохождения обязательно укажите платформу и дату.')
+      return
+    }
     const nextEntry: LibraryEntry = {
       gameId: game.id,
       status: addStatus,
       platform: addStatus === 'wishlist' ? undefined : addPlatform,
       completedAt: ratedStatuses.has(addStatus) ? addDate : undefined,
-      startedAt: addStatus === 'playing' ? today : undefined,
+      startedAt: addStatus === 'playing' ? addDate : undefined,
       score: ratedStatuses.has(addStatus) ? calculatedAddScore : undefined,
       atmosphereScore: ratedStatuses.has(addStatus) ? addAtmosphereScore : undefined,
       storyScore: ratedStatuses.has(addStatus) ? addStoryScore : undefined,
@@ -2690,14 +2694,25 @@ function App() {
 
             <label className="form-field">
               <span>Платформа</span>
-              <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
-                {addGame.platforms.map((platform) => <option key={platform}>{platform}</option>)}
-              </select>
+              {addGame.platforms.length > 0 ? (
+                <select value={addPlatform} onChange={(event) => setAddPlatform(event.target.value)}>
+                  <option value="" disabled>Выберите платформу</option>
+                  {addGame.platforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  maxLength={80}
+                  value={addPlatform}
+                  placeholder="Укажите платформу"
+                  onChange={(event) => setAddPlatform(event.target.value)}
+                />
+              )}
             </label>
 
-            {ratedStatuses.has(addStatus) && (
+            {(ratedStatuses.has(addStatus) || addStatus === 'playing') && (
               <label className="form-field">
-                <span>{addStatus === 'dropped' ? 'Дата дропа' : 'Дата прохождения'}</span>
+                <span>{addStatus === 'playing' ? 'Дата начала' : addStatus === 'dropped' ? 'Дата дропа' : 'Дата прохождения'}</span>
                 <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
                 <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
               </label>
