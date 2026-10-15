@@ -2772,7 +2772,7 @@ function App() {
           </header>
 
           <section
-            className={editing ? 'collection-detail-hero collection-detail-hero--editing' : 'collection-detail-hero'}
+            className={editing && !collection.isSystem ? 'collection-detail-hero collection-detail-hero--editing' : 'collection-detail-hero'}
             style={collectionThemeStyle(draftCollection)}
           >
             {editing && !collection.isSystem ? (
