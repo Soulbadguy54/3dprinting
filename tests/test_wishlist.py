@@ -418,6 +418,54 @@ class WishlistApiTests(unittest.TestCase):
         self.assertEqual(after["status"], "completed")
         self.assertEqual(after["collectionIds"], [])
 
+
+    def test_bulk_remove_collection_games_preserves_existing_progress(self):
+        """One atomic PATCH removes three cards, but not other membership/rating data."""
+        first = self.client.post("/api/collections", json={"title": "Bulk source"}).json()["id"]
+        second = self.client.post("/api/collections", json={"title": "Still there"}).json()["id"]
+        orphan_id, shared_id = self.game_id + 1, self.game_id + 2
+        with SessionLocal() as session:
+            session.add_all([
+                Game(igdb_id=orphan_id, title="Bulk orphan"),
+                Game(igdb_id=shared_id, title="Bulk shared"),
+            ])
+            session.commit()
+
+        completed = self.client.put(f"/api/library/{self.game_id}", json={
+            "status": "completed", "platform": "PC", "completedAt": "2026-10-15",
+            "atmosphereScore": 9, "storyScore": 9,
+            "technologyScore": 9, "gameplayScore": 9,
+            "collectionIds": [first, second],
+        })
+        self.assertEqual(completed.status_code, 200, completed.text)
+        for game_id, slugs in ((orphan_id, [first]), (shared_id, [first, second])):
+            for slug in slugs:
+                added = self.client.put(f"/api/library/{game_id}/collections/{slug}")
+                self.assertEqual(added.status_code, 200, added.text)
+
+        removed = self.client.patch(f"/api/collections/{first}", json={
+            "removedGameIds": [self.game_id, orphan_id, shared_id],
+        })
+        self.assertEqual(removed.status_code, 200, removed.text)
+        library = {entry["gameId"]: entry for entry in removed.json()["library"]}
+        self.assertNotIn(orphan_id, library)  # Orphan placeholder can be safely dropped.
+        self.assertEqual(library[self.game_id]["status"], "completed")
+        self.assertEqual(library[self.game_id]["score"], 9)
+        self.assertEqual(library[self.game_id]["platform"], "PC")
+        self.assertEqual(library[self.game_id]["collectionIds"], [second])
+        self.assertEqual(library[shared_id]["status"], "untracked")
+        self.assertEqual(library[shared_id]["collectionIds"], [second])
+        self.assertFalse(any(
+            first in entry["collectionIds"] for entry in self.client.get("/api/library").json()
+        ))
+
+        # Same batch is idempotent; it must never create or delete other memberships.
+        again = self.client.patch(f"/api/collections/{first}", json={
+            "removedGameIds": [self.game_id, orphan_id, shared_id],
+        })
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()["library"], removed.json()["library"])
+
     def test_remove_collection_only_game_prunes_orphan_record(self):
         slug = self.client.post("/api/collections", json={"title": "Ожидаю"}).json()["id"]
         self.assertEqual(self.client.put(f"/api/library/{self.game_id}", json={
