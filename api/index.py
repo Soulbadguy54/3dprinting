@@ -1302,7 +1302,7 @@ def import_rated_game_history(payload: RatedHistoryBatch, request: Request) -> d
                 # cannot be matched safely and therefore isn't imported.
                 if candidates:
                     _cache_igdb_games(candidates[:GAME_SEARCH_PAGE_SIZE])
-                matched = match_igdb(candidates, row.query, row.releaseYear, row.igdbId)
+                matched = match_igdb(candidates, row.query, row.releaseYear, row.igdbId, row.igdbCover)
                 if matched is None:
                     import_results.append({
                         "title": row.title,
@@ -2050,9 +2050,13 @@ def _advance_fixed_history_migration() -> dict[str, object] | None:
             )
         """))
         session.commit()
-        completed = set(session.scalars(text(
-            "SELECT position FROM app_history_migration_20261015"
-        )).all())
+        # Retry unresolved names without repeating successful writes.
+        completed = {
+            int(position) for position, report in session.execute(text(
+                "SELECT position, report FROM app_history_migration_20261015"
+            )).all()
+            if json.loads(report).get("status") == "matched"
+        }
 
     # At most four IGDB lookups per request, not a long-running background job.
     last_batch: list[dict[str, object]] = []
@@ -2078,7 +2082,7 @@ def _advance_fixed_history_migration() -> dict[str, object] | None:
             session.execute(text("""
                 INSERT INTO app_history_migration_20261015(position, report)
                 VALUES (:position, :report)
-                ON CONFLICT(position) DO NOTHING
+                ON CONFLICT(position) DO UPDATE SET report = EXCLUDED.report
             """), {"position": position, "report": json.dumps(result, ensure_ascii=False)})
             session.commit()
         completed.add(position)
@@ -2089,6 +2093,7 @@ def _advance_fixed_history_migration() -> dict[str, object] | None:
             "soulbadguy": result.get("soulbadguy"),
             "nastya": result.get("nastya"),
             "reason": result.get("reason"),
+            "candidates": result.get("candidates") if result.get("status") == "unmatched" else None,
         })
 
     return {"total": len(queue), "processed": len(completed), "lastBatch": last_batch}
