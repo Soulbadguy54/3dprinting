@@ -19,6 +19,7 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from api.history_import import RatedHistoryBatch, match_igdb, save_rated_history_row
 from api.bootstrap import initialize_database
 from api.push import push_ready, send_push, valid_push_endpoint
 from api.database import SessionLocal, engine
@@ -1250,6 +1251,97 @@ def search_games(
         "hasMore": has_more,
         "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
     }
+
+
+@app.post("/api/admin/history-import")
+def import_rated_game_history(payload: RatedHistoryBatch, request: Request) -> dict[str, object]:
+    """Temporary, opt-in migration. Disabled unless HISTORY_IMPORT_TOKEN is configured.
+
+    The token is not the user's session token and is never passed to IGDB.
+    Both recipients are fixed server-side; a caller cannot redirect imports.
+    """
+    configured = os.getenv("HISTORY_IMPORT_TOKEN", "").strip()
+    if not configured:
+        raise HTTPException(status_code=404, detail="Import disabled.")
+    given = request.headers.get("x-rateapp-import-token", "")
+    if not secrets.compare_digest(configured, given):
+        raise HTTPException(status_code=403, detail="Forbidden.")
+
+    from api.history_import import rounded_scores
+    import_results: list[dict[str, object]] = []
+    with _session() as session:
+        users = {
+            user.nickname: user.id
+            for user in session.scalars(
+                select(User).where(User.nickname.in_(("soulbadguy", "nastya")))
+            ).all()
+        }
+        if set(users) != {"soulbadguy", "nastya"}:
+            raise HTTPException(status_code=409, detail="Target account missing.")
+
+        client_id, token = _igdb_access_token()
+        for row in payload.rows:
+            try:
+                response = httpx.post(
+                    "https://api.igdb.com/v4/games",
+                    headers={
+                        "Client-ID": client_id,
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                    },
+                    content=_igdb_search_body(row.query, 0),
+                    timeout=12.0,
+                )
+                response.raise_for_status()
+                candidates = response.json()
+                if not isinstance(candidates, list):
+                    raise ValueError("Unexpected IGDB response")
+                # Keep all IGDB results for future searches, even if a row
+                # cannot be matched safely and therefore isn't imported.
+                if candidates:
+                    _cache_igdb_games(candidates[:GAME_SEARCH_PAGE_SIZE])
+                matched = match_igdb(candidates, row.query, row.releaseYear)
+                if matched is None:
+                    import_results.append({
+                        "title": row.title,
+                        "status": "unmatched",
+                        "query": row.query,
+                        "year": row.releaseYear,
+                        "candidates": [
+                            {"id": item.get("id"), "name": item.get("name"),
+                             "year": datetime.fromtimestamp(
+                                 int(item["first_release_date"]), tz=timezone.utc
+                             ).year if item.get("first_release_date") else None}
+                            for item in candidates[:10] if isinstance(item, dict)
+                        ],
+                    })
+                    continue
+
+                game = session.scalar(select(Game).where(Game.igdb_id == int(matched["id"])))
+                if game is None:
+                    raise ValueError("Cached game not found")
+                result: dict[str, object] = {
+                    "title": row.title, "status": "matched",
+                    "gameId": game.igdb_id, "igdbTitle": game.title,
+                    "scoreSoulbadguy": float(rounded_scores(row.soulbadguy)[-1]),
+                    "scoreNastya": float(rounded_scores(row.nastya)[-1]),
+                }
+                if not payload.dryRun:
+                    result["soulbadguy"] = save_rated_history_row(
+                        session, game, row.status, users["soulbadguy"], row.soulbadguy,
+                    )
+                    result["nastya"] = save_rated_history_row(
+                        session, game, row.status, users["nastya"], row.nastya,
+                    )
+                    session.commit()
+                import_results.append(result)
+            except (httpx.HTTPError, ValueError, SQLAlchemyError) as exc:
+                session.rollback()
+                import_results.append({
+                    "title": row.title, "status": "error",
+                    "reason": type(exc).__name__,
+                })
+    return {"dryRun": payload.dryRun, "results": import_results}
 
 
 @app.get("/api/collections")
