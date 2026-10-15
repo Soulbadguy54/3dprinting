@@ -3486,3 +3486,148 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .session-loading__star,
   .session-loading__progress-sheen { animation: none; }
 }
+
+/* Optional install invitation — mounted outside App so it also appears on login. */
+.install-prompt {
+  position: fixed;
+  z-index: 3100;
+  inset-inline: 13px;
+  bottom: calc(var(--bottom-nav-height, 62px) + var(--safe-bottom, 0px) + 13px);
+  width: min(420px, calc(100vw - 26px));
+  max-height: min(420px, calc(100dvh - 110px));
+  margin: 0 auto;
+  padding: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgba(120, 238, 160, .23);
+  border-radius: 19px;
+  color: #eef6f3;
+  background: linear-gradient(125deg, #1a292c 0%, #181e2e 55%, #1e1b30 100%);
+  box-shadow: 0 13px 43px rgba(0, 0, 0, .52), 0 0 28px rgba(39, 209, 134, .10);
+  -webkit-overflow-scrolling: touch;
+}
+body:has(.auth-shell) .install-prompt {
+  bottom: calc(max(12px, var(--safe-bottom, 0px)));
+}
+.install-prompt__header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.install-prompt__icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  object-fit: cover;
+  border-radius: 11px;
+}
+.install-prompt__heading {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.install-prompt__heading strong {
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+.install-prompt__heading span {
+  color: #adbfc2;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.install-prompt__close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  place-items: center;
+  align-self: flex-start;
+  border: 0;
+  border-radius: 9px;
+  color: #d4dbe1;
+  background: rgba(255,255,255,.055);
+}
+.install-prompt__close:hover {
+  background: rgba(255,255,255,.13);
+}
+.install-prompt__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 9px;
+  margin-top: 14px;
+}
+.install-prompt__actions button {
+  min-height: 40px;
+  padding: 8px 11px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.install-prompt__primary {
+  border: 1px solid #98ed8e;
+  color: #0b1c16;
+  background: linear-gradient(125deg, #b4f9a0, #7fe8b4);
+}
+.install-prompt__primary:hover {
+  background: #c5ffb4;
+}
+.install-prompt__primary:disabled {
+  opacity: .68;
+  cursor: progress;
+}
+.install-prompt__secondary {
+  border: 1px solid rgba(255,255,255,.13);
+  color: #d6dce6;
+  background: rgba(255,255,255,.06);
+}
+.install-prompt__secondary:hover {
+  background: rgba(255,255,255,.12);
+}
+.install-prompt__already {
+  display: block;
+  margin: 10px auto 0;
+  padding: 2px 9px;
+  border: 0;
+  color: #a7b5c2;
+  background: transparent;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.install-prompt__instructions {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(114, 219, 172, .16);
+  border-radius: 11px;
+  background: rgba(8, 20, 24, .48);
+}
+.install-prompt__instructions p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #e5f1ee;
+}
+.install-prompt__instructions span {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9db2ba;
+}
+.install-prompt button:focus-visible {
+  outline: 2px solid #a7ffb5;
+  outline-offset: 2px;
+}
+@media (max-width: 380px) {
+  .install-prompt { padding: 12px; }
+  .install-prompt__heading strong { font-size: 13px; }
+  .install-prompt__heading span { font-size: 10px; }
+  .install-prompt__actions button { font-size: 11px; }
+}
