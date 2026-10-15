@@ -87,12 +87,16 @@ class WishlistApiTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 422, response.text)
 
         for bad in (
-            {"status": "playing", "startedAt": "2026-10-15"},
-            {"status": "playing", "platform": "PC"},
             {"status": "wishlist", "platform": "PC"},
         ):
             response = self.client.put(game_url, json=bad)
             self.assertEqual(response.status_code, 422, response.text)
+        # The existing "Прохожу" UI has no date input, so the API accepts
+        # both fields as optional instead of requiring a nonexistent input.
+        response = self.client.put(game_url, json={"status": "playing"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()["platform"])
+        self.assertIsNone(response.json()["startedAt"])
 
     def test_database_enforces_platform_dates_and_collection_display_fields(self):
         from sqlalchemy import text
