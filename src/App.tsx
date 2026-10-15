@@ -671,12 +671,34 @@ function App() {
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false)
+  const [deleteCollectionPrompt, setDeleteCollectionPrompt] = useState<GameCollection | null>(null)
+  const [deleteCollectionBusy, setDeleteCollectionBusy] = useState(false)
+  const [deleteCollectionError, setDeleteCollectionError] = useState('')
+  const deleteCollectionCancelRef = useRef<HTMLButtonElement>(null)
   const viewportPageRef = useRef<HTMLElement | null>(null)
   const collectionUpdatesRef = useRef(new Map<number, CollectionUpdate>())
   useEffect(() => { setCollectionPickerOpen(false) }, [selectedGameId])
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
+  const dismissDeletePrompt = () => {
+    if (deleteCollectionBusy) return
+    setDeleteCollectionPrompt(null)
+    setDeleteCollectionError('')
+  }
+  useEffect(() => {
+    if (!deleteCollectionPrompt) return
+    deleteCollectionCancelRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleteCollectionBusy) {
+        event.preventDefault()
+        setDeleteCollectionPrompt(null)
+        setDeleteCollectionError('')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [deleteCollectionPrompt, deleteCollectionBusy])
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(firstViewRef.current.collectionId)
   const currentViewRef = useRef<AppView>(firstViewRef.current)
   const pendingScreenRestoreRef = useRef<AppHistoryEntry | null>(null)
@@ -1638,20 +1660,24 @@ function App() {
   }
 
   const deleteCollection = async (collection: GameCollection) => {
-    if (collection.isSystem) return
-    if (!window.confirm(`Удалить коллекцию «${collection.title}»? Игры и прохождения сохранятся.`)) return
+    if (collection.isSystem || deleteCollectionBusy) return
+    setDeleteCollectionBusy(true)
+    setDeleteCollectionError('')
     try {
       const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Не удалось удалить коллекцию.')
+      if (!response.ok) throw new Error('Не удалось удалить коллекцию. Попробуйте ещё раз.')
       setCollections((current) => current.filter((item) => item.id !== collection.id))
       setEntries((current) => current.flatMap((entry) => {
         const ids = entry.collectionIds.filter((id) => id !== collection.id)
         return !isPlaythrough(entry) && ids.length === 0 ? [] : [{ ...entry, collectionIds: ids }]
       }))
+      setDeleteCollectionPrompt(null)
       cancelCollectionEdit()
       navigateTo({ tab: 'collections', gameId: null, collectionId: null, formGameId: null }, { replace: true })
-    } catch {
-      window.alert('Не удалось удалить коллекцию. Попробуйте ещё раз.')
+    } catch (error) {
+      setDeleteCollectionError(error instanceof Error ? error.message : 'Не удалось удалить коллекцию.')
+    } finally {
+      setDeleteCollectionBusy(false)
     }
   }
 
@@ -1737,9 +1763,6 @@ function App() {
         </div>
       )
     }
-    const gameCollections = selectedEntry
-      ? collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
-      : []
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
       : '—'
@@ -1747,6 +1770,10 @@ function App() {
       ? String(selectedGame.igdbRating)
       : '—'
     const gameDetails = gameDetailsById[selectedGame.id]
+    // Saved PostgreSQL metadata accompanies the game record in bootstrap
+    // and search results; show links immediately while playtime enriches.
+    const storeLinks = gameDetails?.storeLinks ?? selectedGame.storeLinks ?? []
+    const trailerUrl = gameDetails?.trailerUrl ?? selectedGame.trailerUrl ?? null
     const loadingDetails = loadingGameDetailsId === selectedGame.id
 
     return (
@@ -1817,6 +1844,7 @@ function App() {
               <span>+ — добавить, ✓ — убрать из коллекции</span>
             </div>
             <div className="detail-collection-picker__grid">
+              <LayoutGroup id={`collection-picker-${selectedGame.id}`}>
               {sortCollectionsForGame(collections, selectedEntry?.collectionIds ?? []).map((collection) => {
                 const included = Boolean(selectedEntry?.collectionIds.includes(collection.id))
                 const collectionGames = entries
@@ -1826,11 +1854,33 @@ function App() {
                     return game ? [game] : []
                   })
                 return (
-                  <div className="collection-card detail-collection-option" style={collectionThemeStyle(collection)} key={collection.id}>
-                    <div className="collection-card__mosaic">
-                      {collectionGames.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
-                      {collectionGames.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
-                    </div>
+                  <motion.div
+                    layout={shouldReduceMotion ? false : 'position'}
+                    transition={{ layout: { type: 'spring', stiffness: 390, damping: 33, mass: .85 } }}
+                    className="collection-card detail-collection-option"
+                    style={collectionThemeStyle(collection)}
+                    key={collection.id}
+                  >
+                    <button
+                      type="button"
+                      className="detail-collection-option__open"
+                      onClick={() => navigateTo({
+                        tab: 'collections', gameId: null, collectionId: collection.id, formGameId: null,
+                      })}
+                      aria-label={`Открыть коллекцию «${collection.title}»`}
+                    >
+                      <div className="collection-card__mosaic">
+                        {collectionGames.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
+                        {collectionGames.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
+                      </div>
+                      <div className="collection-card__footer">
+                        <div>
+                          <strong>{collection.title}</strong>
+                          <span>{collectionGames.length} {collectionGames.length === 1 ? 'игра' : 'игр'}</span>
+                        </div>
+                        <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
+                      </div>
+                    </button>
                     <button
                       type="button"
                       className={included ? 'detail-collection-option__toggle detail-collection-option__toggle--added' : 'detail-collection-option__toggle'}
@@ -1841,16 +1891,10 @@ function App() {
                     >
                       <Icon name={included ? 'checkmark' : 'plus'} size={19} />
                     </button>
-                    <div className="collection-card__footer">
-                      <div>
-                        <strong>{collection.title}</strong>
-                        <span>{collectionGames.length} {collectionGames.length === 1 ? 'игра' : 'игр'}</span>
-                      </div>
-                      <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
-                    </div>
-                  </div>
+                  </motion.div>
                 )
               })}
+              </LayoutGroup>
             </div>
           </section>
         )}
@@ -1865,7 +1909,7 @@ function App() {
               <p className="detail-hero__genres">{selectedGame.genres.join(' · ') || 'Жанр не указан'}</p>
             </div>
             <div className="detail-external-links" aria-label="Ссылки на магазины и трейлер">
-              {gameDetails?.storeLinks.map((store) => (
+              {storeLinks.map((store) => (
                 <a
                   key={store.provider}
                   className={`detail-external-link detail-external-link--${store.provider}`}
@@ -1878,10 +1922,10 @@ function App() {
                   <BrandIcon provider={store.provider} />
                 </a>
               ))}
-              {gameDetails?.trailerUrl && (
+              {trailerUrl && (
                 <a
                   className="detail-external-link detail-external-link--trailer"
-                  href={gameDetails.trailerUrl}
+                  href={trailerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Смотреть трейлер"
@@ -1890,10 +1934,10 @@ function App() {
                   <BrandIcon provider="youtube" />
                 </a>
               )}
-              {loadingDetails && !gameDetails && (
+              {loadingDetails && !gameDetails && storeLinks.length === 0 && !trailerUrl && (
                 <span className="detail-external-links__loading" aria-label="Загружаем ссылки" />
               )}
-              {!loadingDetails && !gameDetails?.storeLinks.length && !gameDetails?.trailerUrl && (
+              {!loadingDetails && storeLinks.length === 0 && !trailerUrl && (
                 <span className="detail-external-links__empty">Ссылок пока нет</span>
               )}
             </div>
@@ -1958,54 +2002,7 @@ function App() {
           </div>
         </section>
 
-        {gameCollections.length > 0 && (
-          <section className="detail-collections" aria-labelledby="detail-collections-title">
-            <div className="detail-collections__heading">
-              <h2 id="detail-collections-title">Коллекции</h2>
-              <span>{gameCollections.length}</span>
-            </div>
-            <div className="detail-collections__track">
-              {gameCollections.map((collection) => {
-                const collectionGames = entries
-                  .filter((entry) => entry.collectionIds.includes(collection.id))
-                  .flatMap((entry) => {
-                    const game = catalogGames.find((item) => item.id === entry.gameId)
-                    return game ? [game] : []
-                  })
 
-                return (
-                  <button
-                    type="button"
-                    className="collection-card detail-collection-card"
-                    style={collectionThemeStyle(collection)}
-                    key={collection.id}
-                    onClick={() => navigateTo({
-                      tab: 'collections',
-                      gameId: null,
-                      collectionId: collection.id,
-                      formGameId: null,
-                    })}
-                    aria-label={`Открыть коллекцию «${collection.title}»`}
-                  >
-                    <div className="collection-card__mosaic">
-                      {collectionGames.slice(0, 4).map((game) => (
-                        <Cover game={game} compact key={game.id} />
-                      ))}
-                      {collectionGames.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
-                    </div>
-                    <div className="collection-card__footer">
-                      <div className="detail-collection-card__label">
-                        <strong>{collection.title}</strong>
-                        <span>{collectionGames.length} {collectionGames.length === 1 ? 'игра' : 'игр'}</span>
-                      </div>
-                      <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        )}
       </div>
     )
   }
@@ -2546,9 +2543,7 @@ function App() {
           </div>
         </header>
 
-        {addQuery.trim().length < 3 && (
-          <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска.</p>
-        )}
+        <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска</p>
         <div className="search-wrap game-database-search">
           <Icon name="search" size={20} />
           <input
@@ -2777,7 +2772,10 @@ function App() {
                       className="icon-button detail-delete"
                       title="Удалить коллекцию"
                       aria-label="Удалить коллекцию"
-                      onClick={() => { void deleteCollection(collection) }}
+                      onClick={() => {
+                        setDeleteCollectionError('')
+                        setDeleteCollectionPrompt(collection)
+                      }}
                     ><Icon name="trash" size={19} /></button>
                   )}
                 </>
@@ -3063,6 +3061,39 @@ function App() {
       </main>
 
       <PushOnboarding user={authUser.nickname} />
+
+      {deleteCollectionPrompt && (
+        <div className="rateapp-confirm-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) dismissDeletePrompt()
+        }}>
+          <section
+            className="rateapp-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-collection-dialog-title"
+          >
+            <span className="rateapp-confirm__brand">RateApp</span>
+            <h2 id="delete-collection-dialog-title">
+              Удалить коллекцию «{deleteCollectionPrompt.title}»?
+            </h2>
+            {deleteCollectionError && <p role="alert">{deleteCollectionError}</p>}
+            <div className="rateapp-confirm__actions">
+              <button
+                ref={deleteCollectionCancelRef}
+                type="button"
+                disabled={deleteCollectionBusy}
+                onClick={dismissDeletePrompt}
+              >Отмена</button>
+              <button
+                type="button"
+                className="rateapp-confirm__delete"
+                disabled={deleteCollectionBusy}
+                onClick={() => { void deleteCollection(deleteCollectionPrompt) }}
+              >{deleteCollectionBusy ? 'Удаляем…' : 'Удалить'}</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {!selectedGameId && (
         <nav className="bottom-nav" aria-label="Основная навигация">

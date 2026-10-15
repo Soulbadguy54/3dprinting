@@ -349,7 +349,11 @@ def _game_payload(
     title_parts = [part for part in re.split(r"\\s+", game.title.strip()) if part]
     glyph = "".join(part[0].upper() for part in title_parts[:2]) or "G"
 
+    saved = json.loads(game.details_json) if game.details_json else None
+    extras = saved if isinstance(saved, dict) else {}
     return {
+        "storeLinks": extras.get("storeLinks", []),
+        "trailerUrl": extras.get("trailerUrl"),
         "id": game.igdb_id,
         "title": game.title,
         "genres": genres,
@@ -423,6 +427,29 @@ def _cache_igdb_games(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             game.developer = developers[0] if developers else None
             game.genres_json = json.dumps(genres, ensure_ascii=False)
             game.platforms_json = json.dumps(platforms, ensure_ascii=False)
+
+            # IGDB search provides store/trailer metadata in the same query.
+            # Persist it immediately so search and library cards can display
+            # links on first open without waiting for the details endpoint.
+            if "websites" in row and "videos" in row:
+                fresh_details = (
+                    game.details_cached_at is not None
+                    and game.details_cached_at.replace(
+                        tzinfo=game.details_cached_at.tzinfo or timezone.utc
+                    ) > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
+                )
+                if not fresh_details:
+                    previous = json.loads(game.details_json) if game.details_json else None
+                    previous = previous if isinstance(previous, dict) else {}
+                    details = {
+                        "storeLinks": _safe_store_links(row.get("websites")),
+                        "trailerUrl": _safe_trailer_url(row.get("videos")),
+                        "storyHours": previous.get("storyHours"),
+                        "completionHours": previous.get("completionHours"),
+                        "_linksOnly": True,
+                    }
+                    game.details_json = json.dumps(details, ensure_ascii=False)
+                    game.details_cached_at = _now()
 
             cached_games.append(game)
 
@@ -661,7 +688,7 @@ def _igdb_search_body(query: str, offset: int) -> str:
         "fields id,name,first_release_date,rating,rating_count,"
         "total_rating_count,hypes,cover.image_id,alternative_names.name,"
         "genres.name,platforms.name,involved_companies.developer,"
-        "involved_companies.company.name; "
+        "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
         f'search "{safe_query}"; '
         "where version_parent = null; "
         f"limit {GAME_SEARCH_PAGE_SIZE + 1}; offset {offset};"
@@ -1000,46 +1027,75 @@ def game_details(game_id: int, request: Request) -> dict[str, object]:
             and game.details_cached_at.replace(tzinfo=game.details_cached_at.tzinfo or timezone.utc)
                 > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
         ):
-            return _detail_response(session, game, cached_details)
+            if not cached_details.get("_linksOnly"):
+                return _detail_response(session, game, cached_details)
+            cached_links_fresh = True
+        else:
+            cached_links_fresh = False
 
+    # Search results already populate the PostgreSQL links cache. For those
+    # games, fetch only the missing playtime; for uncached games, query both
+    # IGDB endpoints concurrently instead of making the first screen wait for
+    # two sequential network round trips.
     try:
         client_id, token = _igdb_access_token()
-        game_rows = _igdb_details_request(
-            "games",
-            f"fields websites.url,videos.name,videos.video_id; where id = {game_id}; limit 1;",
-            client_id, token,
-        )
     except HTTPException:
         if isinstance(cached_details, dict):
             with _session() as session:
-                game = session.scalar(select(Game).where(Game.igdb_id == game_id))
-                if game is not None:
-                    return _detail_response(session, game, cached_details)
+                cached_game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+                if cached_game is not None:
+                    return _detail_response(session, cached_game, cached_details)
         raise
 
-    game_row = game_rows[0] if game_rows else {}
-    details: dict[str, object] = {
-        "storeLinks": _safe_store_links(game_row.get("websites")),
-        "trailerUrl": _safe_trailer_url(game_row.get("videos")),
-        "storyHours": None,
-        "completionHours": None,
-    }
-
-    # Time-to-beat data isn't available for every game. A failure to fetch it
-    # must never prevent the store links / trailer from being shown.
-    try:
-        times = _igdb_details_request(
+    def fetch_playtime():
+        return _igdb_details_request(
             "game_time_to_beats",
             f"fields game_id,hastily,completely; where game_id = {game_id}; limit 1;",
             client_id, token,
         )
-        if times:
-            details["storyHours"] = _hours_from_igdb(times[0].get("hastily"))
-            details["completionHours"] = _hours_from_igdb(times[0].get("completely"))
-    except HTTPException:
-        if isinstance(cached_details, dict):
-            details["storyHours"] = cached_details.get("storyHours")
-            details["completionHours"] = cached_details.get("completionHours")
+
+    if cached_links_fresh and isinstance(cached_details, dict):
+        details: dict[str, object] = dict(cached_details)
+        try:
+            times = fetch_playtime()
+        except HTTPException:
+            times = None
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            times_future = executor.submit(fetch_playtime)
+            try:
+                game_rows = _igdb_details_request(
+                    "games",
+                    f"fields websites.url,videos.name,videos.video_id; where id = {game_id}; limit 1;",
+                    client_id, token,
+                )
+            except HTTPException:
+                if isinstance(cached_details, dict):
+                    with _session() as session:
+                        cached_game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+                        if cached_game is not None:
+                            return _detail_response(session, cached_game, cached_details)
+                raise
+            game_row = game_rows[0] if game_rows else {}
+            details = {
+                "storeLinks": _safe_store_links(game_row.get("websites")),
+                "trailerUrl": _safe_trailer_url(game_row.get("videos")),
+                "storyHours": None,
+                "completionHours": None,
+            }
+            try:
+                times = times_future.result()
+            except HTTPException:
+                times = None
+
+    if times:
+        details["storyHours"] = _hours_from_igdb(times[0].get("hastily"))
+        details["completionHours"] = _hours_from_igdb(times[0].get("completely"))
+    elif isinstance(cached_details, dict):
+        details["storyHours"] = cached_details.get("storyHours")
+        details["completionHours"] = cached_details.get("completionHours")
+    details["_linksOnly"] = bool(cached_links_fresh and times is None)
 
     with _session() as session:
         game = session.scalar(select(Game).where(Game.igdb_id == game_id))
@@ -1133,7 +1189,7 @@ def search_games(
                         "fields id,name,first_release_date,rating,rating_count,"
                         "total_rating_count,hypes,cover.image_id,alternative_names.name,"
                         "genres.name,platforms.name,involved_companies.developer,"
-                        "involved_companies.company.name; "
+                        "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
                         f"where id = ({','.join(map(str, ids))}) & version_parent = null; limit 20;"
                     ),
                     timeout=12.0,
