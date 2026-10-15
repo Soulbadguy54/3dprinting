@@ -2,8 +2,8 @@ import { motion, useReducedMotion } from 'motion/react'
 
 type Props = { progress: number }
 
-// Startup milestones are driven by the actual authentication/bootstrap flow.
-// The bar is not an artificial timer that can reach 100% before the API finishes.
+// The percentage follows actual startup milestones; it never reaches 100%
+// before the bootstrap request finishes.
 export default function LoadingScreen({ progress }: Props) {
   const reduceMotion = useReducedMotion()
   const percent = Math.min(100, Math.max(0, progress))
@@ -20,34 +20,41 @@ export default function LoadingScreen({ progress }: Props) {
       <div className="session-loading__space" aria-hidden="true">
         <span className="session-loading__glow session-loading__glow--green" />
         <span className="session-loading__glow session-loading__glow--blue" />
-        <span className="session-loading__spark session-loading__spark--one" />
-        <span className="session-loading__spark session-loading__spark--two" />
-        <span className="session-loading__spark session-loading__spark--three" />
       </div>
+
       <div className="session-loading__content">
         <motion.div
           className="session-loading__artwork"
-          initial={reduceMotion ? false : { opacity: 0, scale: .94, y: 14 }}
+          initial={reduceMotion ? false : { opacity: 0, scale: .92, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: .58, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: .6, ease: [0.22, 1, 0.36, 1] }}
         >
+          <div className="session-loading__atom" aria-hidden="true">
+            <span className="session-loading__orbit session-loading__orbit--green">
+              <span className="session-loading__electron" />
+            </span>
+            <span className="session-loading__orbit session-loading__orbit--cyan">
+              <span className="session-loading__electron" />
+            </span>
+            <span className="session-loading__orbit session-loading__orbit--violet">
+              <span className="session-loading__electron" />
+            </span>
+            <span className="session-loading__star session-loading__star--one" />
+            <span className="session-loading__star session-loading__star--two" />
+            <span className="session-loading__star session-loading__star--three" />
+          </div>
           <img
             className="session-loading__art"
-            src="/rateapp-splash-art.webp"
-            alt="RateApp — игровой контроллер, звезда и коллекция игр"
+            src="/rateapp-loading-gamepad.avif"
+            alt="Светящийся геймпад со звездой и коллекцией игр"
+            width={720}
+            height={720}
             fetchPriority="high"
+            decoding="async"
           />
-          {!reduceMotion && (
-            <motion.span
-              className="session-loading__orbit"
-              aria-hidden="true"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 12, ease: 'linear', repeat: Infinity }}
-            >
-              <span />
-            </motion.span>
-          )}
         </motion.div>
+
+        <h1 className="session-loading__title">RateApp</h1>
         <div className="session-loading__footer">
           <p className="session-loading__caption">{message}</p>
           <div
