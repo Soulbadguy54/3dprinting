@@ -2609,7 +2609,7 @@ function App() {
           </div>
             </section>
           </div>
-        }
+        )}
 
           </div>
         </motion.div>
