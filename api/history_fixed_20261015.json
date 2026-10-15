@@ -1,0 +1,364 @@
+[
+  {
+    "title": "Rayman: Legends",
+    "query": "Rayman Legends",
+    "releaseYear": 2013,
+    "igdbId": 1968,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 2,
+      "atmosphere": 6,
+      "gameplay": 8
+    },
+    "nastya": {
+      "technology": 6,
+      "story": 2,
+      "atmosphere": 6,
+      "gameplay": 8
+    }
+  },
+  {
+    "title": "Mortal Kombat 1",
+    "query": "Mortal Kombat 1",
+    "releaseYear": 2023,
+    "igdbId": 239392,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 8,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 5
+    },
+    "nastya": {
+      "technology": 8,
+      "story": 9,
+      "atmosphere": 8,
+      "gameplay": 8
+    }
+  },
+  {
+    "title": "Diablo IV",
+    "query": "Diablo IV",
+    "releaseYear": 2023,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 9,
+      "story": 9,
+      "atmosphere": 9,
+      "gameplay": 9
+    },
+    "nastya": {
+      "technology": 9,
+      "story": 9,
+      "atmosphere": 9,
+      "gameplay": 9
+    }
+  },
+  {
+    "title": "Resident Evil Requiem",
+    "query": "Resident Evil Requiem",
+    "releaseYear": 2026,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 10,
+      "story": 10,
+      "atmosphere": 10,
+      "gameplay": 10
+    },
+    "nastya": {
+      "technology": 10,
+      "story": 10,
+      "atmosphere": 10,
+      "gameplay": 10
+    }
+  },
+  {
+    "title": "Ghost of Yotei",
+    "query": "Ghost of Yotei",
+    "releaseYear": 2025,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "Mafia: The Old Country",
+    "query": "Mafia: The Old Country",
+    "releaseYear": 2025,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 4,
+      "story": 4,
+      "atmosphere": 4,
+      "gameplay": 4
+    },
+    "nastya": {
+      "technology": 4,
+      "story": 4,
+      "atmosphere": 4,
+      "gameplay": 4
+    }
+  },
+  {
+    "title": "Quantum Break",
+    "query": "Quantum Break",
+    "releaseYear": 2016,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "Split Fiction",
+    "query": "Split Fiction",
+    "releaseYear": 2025,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 10,
+      "story": 10,
+      "atmosphere": 10,
+      "gameplay": 10
+    },
+    "nastya": {
+      "technology": 10,
+      "story": 10,
+      "atmosphere": 10,
+      "gameplay": 10
+    }
+  },
+  {
+    "title": "Grand Theft Auto V Enhanced",
+    "query": "Grand Theft Auto V Enhanced",
+    "releaseYear": 2025,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 8,
+      "story": 8,
+      "atmosphere": 8,
+      "gameplay": 8
+    },
+    "nastya": {
+      "technology": 8,
+      "story": 8,
+      "atmosphere": 8,
+      "gameplay": 8
+    }
+  },
+  {
+    "title": "Alan Wake Remastered",
+    "query": "Alan Wake Remastered",
+    "releaseYear": 2021,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 10,
+      "story": 10,
+      "atmosphere": 10,
+      "gameplay": 10
+    },
+    "nastya": {
+      "technology": 10,
+      "story": 10,
+      "atmosphere": 10,
+      "gameplay": 10
+    }
+  },
+  {
+    "title": "Far Cry 3",
+    "query": "Far Cry 3",
+    "releaseYear": 2012,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 6,
+      "story": 6,
+      "atmosphere": 6,
+      "gameplay": 6
+    },
+    "nastya": {
+      "technology": 6,
+      "story": 6,
+      "atmosphere": 6,
+      "gameplay": 6
+    }
+  },
+  {
+    "title": "Ratchet & Clank",
+    "query": "Ratchet & Clank",
+    "releaseYear": 2016,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "Metro Exodus: Enhanced Edition",
+    "query": "Metro Exodus: Enhanced Edition",
+    "releaseYear": 2021,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "The Walking Dead: Michonne",
+    "query": "The Walking Dead: Michonne",
+    "releaseYear": 2016,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 5,
+      "story": 5,
+      "atmosphere": 5,
+      "gameplay": 5
+    },
+    "nastya": {
+      "technology": 5,
+      "story": 5,
+      "atmosphere": 5,
+      "gameplay": 5
+    }
+  },
+  {
+    "title": "The Walking Dead: The Final Season",
+    "query": "The Walking Dead: The Final Season",
+    "releaseYear": 2018,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 8,
+      "story": 8,
+      "atmosphere": 8,
+      "gameplay": 8
+    },
+    "nastya": {
+      "technology": 8,
+      "story": 8,
+      "atmosphere": 8,
+      "gameplay": 8
+    }
+  },
+  {
+    "title": "The Walking Dead: A New Frontier",
+    "query": "The Walking Dead: A New Frontier",
+    "releaseYear": 2016,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "The Walking Dead: Season Two",
+    "query": "The Walking Dead: Season Two",
+    "releaseYear": 2013,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "The Walking Dead",
+    "query": "The Walking Dead",
+    "releaseYear": 2012,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 8,
+      "story": 8,
+      "atmosphere": 8,
+      "gameplay": 8
+    },
+    "nastya": {
+      "technology": 8,
+      "story": 8,
+      "atmosphere": 8,
+      "gameplay": 8
+    }
+  },
+  {
+    "title": "Red Dead Redemption",
+    "query": "Red Dead Redemption",
+    "releaseYear": 2023,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  },
+  {
+    "title": "Little Nightmares",
+    "query": "Little Nightmares",
+    "releaseYear": 2017,
+    "status": "completed",
+    "soulbadguy": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    },
+    "nastya": {
+      "technology": 7,
+      "story": 7,
+      "atmosphere": 7,
+      "gameplay": 7
+    }
+  }
+]
