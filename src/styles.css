@@ -1705,20 +1705,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   flex: 0 0 clamp(156px, 52%, 212px);
   scroll-snap-align: start;
 }
-.detail-collection-card__mosaic {
-  height: 112px;
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-}
-.detail-collection-card__mosaic--1,
-.detail-collection-card__mosaic--2 {
-  grid-template-rows: 1fr;
-}
-.detail-collection-card__mosaic--1 {
-  grid-template-columns: 1fr;
-}
-.detail-collection-card__mosaic--3 > .cover:first-child {
-  grid-row: span 2;
-}
 .detail-collection-card .collection-card__footer {
   min-width: 0;
   min-height: 55px;
@@ -1734,6 +1720,79 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .detail-collection-card:focus-visible {
   outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Inline, optimistic collection membership editor on a game's page. */
+.detail-catalog-icon--collections[aria-expanded="true"] {
+  border-color: rgba(146, 233, 174, .6);
+  background: rgba(71, 142, 98, .22);
+  color: #a4f5b9;
+}
+.detail-collection-picker {
+  margin: -4px 0 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+.detail-collection-picker__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 13px;
+}
+.detail-collection-picker__heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.detail-collection-picker__heading span {
+  color: #9da8b8;
+  font-size: 11px;
+}
+.detail-collection-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));
+  gap: 12px;
+}
+.detail-collection-option {
+  position: relative;
+}
+.detail-collection-option .collection-card__footer {
+  min-height: 56px;
+  padding: 10px;
+}
+.detail-collection-option .collection-card__footer > div {
+  min-width: 0;
+}
+.detail-collection-option__toggle {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(225, 255, 232, .65);
+  border-radius: 11px;
+  background: #32a75d;
+  color: white;
+  box-shadow: 0 3px 13px rgba(0, 0, 0, .45);
+  cursor: pointer;
+  transition: transform .15s ease, background .15s ease;
+}
+.detail-collection-option__toggle:hover {
+  transform: scale(1.06);
+}
+.detail-collection-option__toggle--added {
+  border-color: rgba(255, 225, 231, .55);
+  background: #c84c62;
+}
+.detail-collection-option__toggle:focus-visible {
+  outline: 2px solid white;
   outline-offset: 3px;
 }
 
@@ -2790,14 +2849,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   padding-top: 1px;
 }
 .collection-detail-toolbar {
-  position: sticky;
-  z-index: 20;
-  top: max(0px, var(--safe-top));
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 8px 0;
-  background: var(--bg);
+  background: transparent;
 }
 .collection-detail-toolbar .icon-button {
   height: 42px;

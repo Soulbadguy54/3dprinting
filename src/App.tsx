@@ -282,33 +282,39 @@ const sortCollections = (items: GameCollection[]) =>
   )
 
 
-// Wishlist-only records hold collection membership, not a playthrough.
+// A collection-only entry tracks membership but is not a playthrough.
 const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
   Boolean(entry && ['completed', 'playing', 'dropped'].includes(entry.status))
 
-// Apply membership optimistically while preserving all playthrough fields.
-function withWishlistMembership(entries: LibraryEntry[], gameId: number, enabled: boolean): LibraryEntry[] {
+// Optimistic update that preserves existing playthrough data and other collections.
+function withCollectionMembership(
+  entries: LibraryEntry[], gameId: number, collectionId: string, enabled: boolean,
+): LibraryEntry[] {
   const entry = entries.find((item) => item.gameId === gameId)
   if (!entry) {
     if (!enabled) return entries
     return [...entries, {
       gameId,
-      status: 'untracked', // API placeholder, not a playthrough status.
-      collectionIds: [WISHLIST_COLLECTION_ID],
+      status: 'untracked',
+      collectionIds: [collectionId],
       addedAt: new Date().toISOString().slice(0, 10),
     }]
   }
 
   const collectionIds = enabled
-    ? Array.from(new Set([...entry.collectionIds, WISHLIST_COLLECTION_ID]))
-    : entry.collectionIds.filter((id) => id !== WISHLIST_COLLECTION_ID)
+    ? Array.from(new Set([...entry.collectionIds, collectionId]))
+    : entry.collectionIds.filter((id) => id !== collectionId)
   const others = entries.filter((item) => item.gameId !== gameId)
   return !isPlaythrough(entry) && collectionIds.length === 0
     ? others
     : [...others, { ...entry, collectionIds }]
 }
 
-type WishlistUpdate = { desired: boolean; persisted: boolean; syncing: boolean }
+type CollectionUpdate = {
+  desired: Map<string, boolean>
+  persisted: Map<string, boolean>
+  syncing: boolean
+}
 
 type GameStoreLink = {
   provider: string
@@ -662,7 +668,9 @@ function App() {
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
-  const wishlistUpdatesRef = useRef(new Map<number, WishlistUpdate>())
+  const [collectionPickerOpen, setCollectionPickerOpen] = useState(false)
+  const collectionUpdatesRef = useRef(new Map<number, CollectionUpdate>())
+  useEffect(() => { setCollectionPickerOpen(false) }, [selectedGameId])
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
@@ -1441,44 +1449,54 @@ function App() {
     }
   }
 
-  const syncWishlist = async (gameId: number, update: WishlistUpdate) => {
+  const syncCollectionMemberships = async (gameId: number, update: CollectionUpdate) => {
     if (update.syncing) return
     update.syncing = true
     try {
-      // Serialize requests per game so fast repeated taps cannot race on the server.
-      while (update.desired !== update.persisted) {
-        const next = update.desired
-        const response = await fetch(`/api/library/${gameId}/wishlist`, {
-          method: next ? 'PUT' : 'DELETE',
-        })
-        if (!response.ok) throw new Error('Wishlist update failed')
-        update.persisted = next
+      // Serialize all membership changes for the game: simultaneous taps must not
+      // create duplicate library placeholders or race with one another.
+      while (true) {
+        const pending = [...update.desired].find(
+          ([collectionId, enabled]) => update.persisted.get(collectionId) !== enabled,
+        )
+        if (!pending) break
+        const [collectionId, enabled] = pending
+        const url = collectionId === WISHLIST_COLLECTION_ID
+          ? `/api/library/${gameId}/wishlist`
+          : `/api/library/${gameId}/collections/${encodeURIComponent(collectionId)}`
+        const response = await fetch(url, { method: enabled ? 'PUT' : 'DELETE' })
+        if (!response.ok) throw new Error('Collection membership update failed')
+        update.persisted.set(collectionId, enabled)
       }
     } catch {
-      // Restore the last confirmed state only if persistence fails.
-      setEntries((current) => withWishlistMembership(current, gameId, update.persisted))
-      window.alert('Не удалось обновить список «Хочу пройти». Попробуйте ещё раз.')
+      // Only revert unconfirmed changes; preserve other collection memberships.
+      setEntries((current) => [...update.desired].reduce(
+        (state, [collectionId]) => withCollectionMembership(
+          state, gameId, collectionId, update.persisted.get(collectionId) ?? false,
+        ),
+        current,
+      ))
+      window.alert('Не удалось обновить коллекции. Попробуйте ещё раз.')
     } finally {
-      wishlistUpdatesRef.current.delete(gameId)
+      collectionUpdatesRef.current.delete(gameId)
       update.syncing = false
     }
   }
 
-  const toggleWishlist = (game: Game) => {
-    let update = wishlistUpdatesRef.current.get(game.id)
-    const inWishlist = update?.desired ?? Boolean(
-      entryMap.get(game.id)?.collectionIds.includes(WISHLIST_COLLECTION_ID),
-    )
+  const toggleCollectionMembership = (game: Game, collectionId: string) => {
+    let update = collectionUpdatesRef.current.get(game.id)
+    const included = update?.desired.get(collectionId) ??
+      Boolean(entryMap.get(game.id)?.collectionIds.includes(collectionId))
     if (!update) {
-      update = { desired: !inWishlist, persisted: inWishlist, syncing: false }
-      wishlistUpdatesRef.current.set(game.id, update)
-    } else {
-      update.desired = !inWishlist
+      update = { desired: new Map(), persisted: new Map(), syncing: false }
+      collectionUpdatesRef.current.set(game.id, update)
     }
+    if (!update.persisted.has(collectionId)) update.persisted.set(collectionId, included)
+    update.desired.set(collectionId, !included)
 
-    // Update the interface immediately; persist in the background.
-    setEntries((current) => withWishlistMembership(current, game.id, !inWishlist))
-    void syncWishlist(game.id, update)
+    // Change the plus to a cross immediately, even on a slow connection.
+    setEntries((current) => withCollectionMembership(current, game.id, collectionId, !included))
+    void syncCollectionMemberships(game.id, update)
   }
 
   const deleteGame = async (game: Game) => {
@@ -1567,20 +1585,22 @@ function App() {
   }
 
   const saveCollectionEdit = async (collection: GameCollection) => {
-    if (collectionEditBusy || !editCollectionTitle.trim()) return
+    if (collectionEditBusy || (!collection.isSystem && !editCollectionTitle.trim())) return
     setCollectionEditBusy(true)
     setCollectionEditError('')
     try {
       const response = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editCollectionTitle.trim(),
-          description: editCollectionDescription.trim(),
-          colorScheme: editCollectionColor,
-          emoji: editCollectionEmoji,
-          removedGameIds: removedCollectionGameIds,
-        }),
+        body: JSON.stringify(collection.isSystem
+          ? { removedGameIds: removedCollectionGameIds }
+          : {
+              title: editCollectionTitle.trim(),
+              description: editCollectionDescription.trim(),
+              colorScheme: editCollectionColor,
+              emoji: editCollectionEmoji,
+              removedGameIds: removedCollectionGameIds,
+            }),
       })
       const payload = await response.json().catch(() => null) as {
         collection?: GameCollection
@@ -1705,11 +1725,6 @@ function App() {
     const gameCollections = selectedEntry
       ? collections.filter((collection) => selectedEntry.collectionIds.includes(collection.id))
       : []
-    // A game already being played or completed does not need a wish action,
-    // regardless of which collections it belongs to.
-    const canWish = selectedEntry?.status !== 'completed' && selectedEntry?.status !== 'playing'
-    const isWished = Boolean(selectedEntry?.collectionIds.includes(WISHLIST_COLLECTION_ID))
-    const wishlistCollection = collections.find((collection) => collection.id === WISHLIST_COLLECTION_ID)
     const rateAppScore = selectedGame.communityRatings > 0
       ? selectedGame.communityRating.toFixed(1)
       : '—'
@@ -1736,35 +1751,14 @@ function App() {
             <Icon name="back" size={20} />
           </button>
           <div className="detail-toolbar__actions">
-            {canWish && (
-              <motion.button
-                type="button"
-                className={`round-add detail-catalog-icon detail-catalog-icon--wish${isWished ? ' detail-catalog-icon--wish-active' : ''}`}
-                style={wishlistCollection ? collectionThemeStyle(wishlistCollection) : collectionThemeStyle({ id: WISHLIST_COLLECTION_ID, title: '', description: '', mark: '' })}
-                onClick={() => { void toggleWishlist(selectedGame) }}
-                aria-pressed={isWished}
-                aria-label={isWished ? 'Убрать из коллекции «Хочу пройти»' : 'Хочу пройти — добавить в коллекцию'}
-                title={isWished ? 'В «Хочу пройти» — нажми, чтобы убрать' : 'Добавить в «Хочу пройти»'}
-                whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
-                transition={{ type: 'spring', stiffness: 460, damping: 27 }}
-              >
-                <motion.span
-                  key={isWished ? 'wished' : 'not-wished'}
-                  className="detail-catalog-icon__glyph"
-                  initial={shouldReduceMotion ? false : { opacity: .55, scale: .72, rotate: -12 }}
-                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                  transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                >
-                  <Icon name="heart" size={19} />
-                </motion.span>
-              </motion.button>
-            )}
             <button
               type="button"
               className="round-add detail-catalog-icon detail-catalog-icon--collections"
-              aria-label="Коллекции (скоро)"
-              title="Коллекции — скоро"
-              disabled
+              aria-label="Коллекции"
+              title="Управление коллекциями"
+              aria-expanded={collectionPickerOpen}
+              aria-controls="game-collection-picker"
+              onClick={() => setCollectionPickerOpen((open) => !open)}
             >
               <Icon name="layers" size={20} />
             </button>
@@ -1800,6 +1794,51 @@ function App() {
             )}
           </div>
         </div>
+
+        {collectionPickerOpen && (
+          <section className="detail-collection-picker" id="game-collection-picker" aria-label="Управление коллекциями">
+            <div className="detail-collection-picker__heading">
+              <h2>Коллекции</h2>
+              <span>Нажми +, чтобы добавить игру, или ×, чтобы убрать</span>
+            </div>
+            <div className="detail-collection-picker__grid">
+              {sortCollections(collections).map((collection) => {
+                const included = Boolean(selectedEntry?.collectionIds.includes(collection.id))
+                const collectionGames = entries
+                  .filter((entry) => entry.collectionIds.includes(collection.id))
+                  .flatMap((entry) => {
+                    const game = catalogGames.find((item) => item.id === entry.gameId)
+                    return game ? [game] : []
+                  })
+                return (
+                  <div className="collection-card detail-collection-option" style={collectionThemeStyle(collection)} key={collection.id}>
+                    <div className="collection-card__mosaic">
+                      {collectionGames.slice(0, 4).map((game) => <Cover game={game} compact key={game.id} />)}
+                      {collectionGames.length === 0 && <div className="collection-card__empty">ПУСТО</div>}
+                    </div>
+                    <button
+                      type="button"
+                      className={included ? 'detail-collection-option__toggle detail-collection-option__toggle--added' : 'detail-collection-option__toggle'}
+                      aria-label={included ? `Убрать «${selectedGame.title}» из «${collection.title}»` : `Добавить «${selectedGame.title}» в «${collection.title}»`}
+                      title={included ? 'Убрать из коллекции' : 'Добавить в коллекцию'}
+                      aria-pressed={included}
+                      onClick={() => toggleCollectionMembership(selectedGame, collection.id)}
+                    >
+                      <Icon name={included ? 'close' : 'plus'} size={19} />
+                    </button>
+                    <div className="collection-card__footer">
+                      <div>
+                        <strong>{collection.title}</strong>
+                        <span>{collectionGames.length} {collectionGames.length === 1 ? 'игра' : 'игр'}</span>
+                      </div>
+                      <span className="collection-card__mark"><CollectionIcon collection={collection} /></span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         <section className="detail-hero">
           <div className={selectedGame.coverUrl ? 'detail-hero__cover detail-hero__cover--image' : 'detail-hero__cover'}>
@@ -1933,7 +1972,7 @@ function App() {
                     })}
                     aria-label={`Открыть коллекцию «${collection.title}»`}
                   >
-                    <div className={`collection-card__mosaic detail-collection-card__mosaic detail-collection-card__mosaic--${Math.min(collectionGames.length, 4)}`}>
+                    <div className="collection-card__mosaic">
                       {collectionGames.slice(0, 4).map((game) => (
                         <Cover game={game} compact key={game.id} />
                       ))}
@@ -2650,7 +2689,7 @@ function App() {
       const collection = collections.find((item) => item.id === selectedCollectionId)
       if (!collection) return null
       const editing = editingCollectionId === collection.id
-      const draftCollection = editing
+      const draftCollection = editing && !collection.isSystem
         ? { ...collection, title: editCollectionTitle, description: editCollectionDescription, colorScheme: editCollectionColor, emoji: editCollectionEmoji, iconData: null }
         : collection
       const collectionEntries = entries.filter((entry) =>
@@ -2675,7 +2714,7 @@ function App() {
               <span className="collection-detail-toolbar__avatar" aria-hidden="true">
                 <CollectionIcon collection={draftCollection} size={22} />
               </span>
-              {editing ? (
+              {editing && !collection.isSystem ? (
                 <input
                   className="collection-detail-toolbar__title-input"
                   aria-label="Название коллекции"
@@ -2704,7 +2743,7 @@ function App() {
                     className="round-add collection-edit-save"
                     aria-label="Сохранить изменения"
                     title="Сохранить"
-                    disabled={collectionEditBusy || !editCollectionTitle.trim()}
+                    disabled={collectionEditBusy || (collection.isSystem ? removedCollectionGameIds.length === 0 : !editCollectionTitle.trim())}
                     whileTap={shouldReduceMotion ? undefined : { scale: .93 }}
                     onClick={() => { void saveCollectionEdit(collection) }}
                   ><Icon name="check" size={21} /></motion.button>
@@ -2733,10 +2772,10 @@ function App() {
           </header>
 
           <section
-            className={editing ? 'collection-detail-hero collection-detail-hero--editing' : 'collection-detail-hero'}
+            className={editing && !collection.isSystem ? 'collection-detail-hero collection-detail-hero--editing' : 'collection-detail-hero'}
             style={collectionThemeStyle(draftCollection)}
           >
-            {editing ? (
+            {editing && !collection.isSystem ? (
               <>
                 <label className="collection-create-field">
                   <span>Описание</span>
