@@ -1888,7 +1888,9 @@ function App() {
       setCollectionDescription('')
       setCollectionColorScheme('violet')
       setCollectionEmoji('')
-      navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null })
+      // Replace the creation form in browser history so both the toolbar
+      // Back button and native mobile Back return to the collections list.
+      navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null }, { replace: true })
     } catch {
       setCollectionError('Не удалось создать коллекцию. Проверьте соединение.')
     } finally {
