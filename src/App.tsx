@@ -563,7 +563,7 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
   const activityDate =
-    entry.status === 'completed' && entry.completedAt
+    ratedStatuses.has(entry.status) && entry.completedAt
       ? entry.completedAt
       : entry.status === 'playing' && entry.startedAt
         ? entry.startedAt
@@ -607,7 +607,7 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   )
 })
 
-const RATING_WHEEL_ROW_HEIGHT = 44
+const RATING_WHEEL_ROW_HEIGHT = 36
 const RATING_WHEEL_VALUES = Array.from({ length: 91 }, (_, index) => (index + 10) / 10)
 
 function RatingWheel({
@@ -1674,7 +1674,7 @@ function App() {
       gameId: game.id,
       status: addStatus,
       platform: addStatus === 'wishlist' ? undefined : addPlatform,
-      completedAt: addStatus === 'completed' ? addDate : undefined,
+      completedAt: ratedStatuses.has(addStatus) ? addDate : undefined,
       startedAt: addStatus === 'playing' ? today : undefined,
       score: ratedStatuses.has(addStatus) ? calculatedAddScore : undefined,
       atmosphereScore: ratedStatuses.has(addStatus) ? addAtmosphereScore : undefined,
@@ -2208,7 +2208,10 @@ function App() {
             <span className="eyebrow detail-section-eyebrow">МОЁ ПРОХОЖДЕНИЕ</span>
             <div className="info-list">
               <div><span><Icon name="gamepad" size={17} />Платформа</span><strong>{selectedEntry.platform ?? 'Не указана'}</strong></div>
-              <div><span><Icon name="calendar" size={17} />Дата прохождения</span><strong>{selectedEntry.completedAt ? formatDate(selectedEntry.completedAt) : '—'}</strong></div>
+              <div>
+                <span><Icon name="calendar" size={17} />{selectedEntry.status === 'dropped' ? 'Дата дропа' : selectedEntry.status === 'playing' ? 'Дата начала' : 'Дата прохождения'}</span>
+                <strong>{selectedEntry.status === 'playing' ? formatDate(selectedEntry.startedAt) || '—' : formatDate(selectedEntry.completedAt) || '—'}</strong>
+              </div>
             </div>
             {selectedEntry.review && (
               <div className="review-box">
@@ -2692,9 +2695,9 @@ function App() {
               </select>
             </label>
 
-            {addStatus === 'completed' && (
+            {ratedStatuses.has(addStatus) && (
               <label className="form-field">
-                <span>Дата прохождения</span>
+                <span>{addStatus === 'dropped' ? 'Дата дропа' : 'Дата прохождения'}</span>
                 <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
                 <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
               </label>
