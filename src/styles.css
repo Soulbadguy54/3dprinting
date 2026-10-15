@@ -3183,3 +3183,35 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: #b93749;
 }
 .rateapp-confirm__actions button:disabled { opacity: .55; cursor: progress; }
+
+/* Keep every top-right game action and the back button optically balanced. */
+.detail-page > .detail-toolbar .detail-toolbar__actions > button,
+.detail-page > .detail-toolbar > .detail-back {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  flex: 0 0 42px;
+  padding: 0;
+  border-radius: 14px;
+}
+.detail-page > .detail-toolbar .detail-toolbar__actions > button > svg,
+.detail-page > .detail-toolbar > .detail-back > svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 2;
+}
+
+/* Simplified profile: avatar, nickname, notifications and account only. */
+.profile-hero--compact {
+  padding: 24px 15px 19px;
+}
+.profile-hero--compact .profile-avatar {
+  margin-bottom: 13px;
+}
+.profile-hero--compact h1 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}

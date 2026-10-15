@@ -67,6 +67,7 @@ type AppHistoryEntry = {
   view: AppView
   scrollY: number
   fromApp: boolean
+  collectionPickerOpen?: boolean
   controls?: {
     progress: number
     anchor: number
@@ -624,6 +625,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [screenRevision, setScreenRevision] = useState(0)
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [collections, setCollections] = useState<GameCollection[]>([])
   const [catalogGames, setCatalogGames] = useState<Game[]>(games)
@@ -670,14 +672,15 @@ function App() {
   const libraryTopLatchRef = useRef(false)
   const libraryForcedRevealStartRef = useRef<number | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(firstViewRef.current.gameId)
-  const [collectionPickerOpen, setCollectionPickerOpen] = useState(false)
+  const [collectionPickerOpen, setCollectionPickerOpen] = useState(
+    () => Boolean(readAppHistoryEntry(window.history.state)?.collectionPickerOpen && firstViewRef.current?.gameId),
+  )
   const [deleteCollectionPrompt, setDeleteCollectionPrompt] = useState<GameCollection | null>(null)
   const [deleteCollectionBusy, setDeleteCollectionBusy] = useState(false)
   const [deleteCollectionError, setDeleteCollectionError] = useState('')
   const deleteCollectionCancelRef = useRef<HTMLButtonElement>(null)
   const viewportPageRef = useRef<HTMLElement | null>(null)
   const collectionUpdatesRef = useRef(new Map<number, CollectionUpdate>())
-  useEffect(() => { setCollectionPickerOpen(false) }, [selectedGameId])
   const [gameDetailsById, setGameDetailsById] = useState<Record<number, GameDetailExtras>>({})
   const [loadingGameDetailsId, setLoadingGameDetailsId] = useState<number | null>(null)
   const [failedGameDetailsId, setFailedGameDetailsId] = useState<number | null>(null)
@@ -781,6 +784,7 @@ function App() {
       rateAppView: true,
       view,
       fromApp: existing?.fromApp ?? false,
+      collectionPickerOpen: view.gameId != null ? collectionPickerOpen : false,
       scrollY: Math.max(0,
         view.gameId == null && (view.tab === 'collections' || (view.tab === 'add' && view.formGameId == null))
           ? (viewportPageRef.current?.scrollTop ?? 0)
@@ -813,6 +817,7 @@ function App() {
     }
     setActiveTab(view.tab)
     setSelectedGameId(view.gameId)
+    setCollectionPickerOpen(view.gameId != null && Boolean(restoredEntry.collectionPickerOpen))
     setSelectedCollectionId(view.collectionId)
     setAddGameId(view.formGameId)
   }
@@ -829,6 +834,7 @@ function App() {
       fromApp: options?.replace
         ? (readAppHistoryEntry(window.history.state)?.fromApp ?? false)
         : true,
+      collectionPickerOpen: false,
       controls: savedLibrary?.controls,
     }
     if (options?.replace) window.history.replaceState(entry, '', urlForAppView(view))
@@ -1392,6 +1398,99 @@ function App() {
     navigateTo({ tab, gameId: null, collectionId: null, formGameId: null })
   }
 
+  // Re-selecting the active bottom tab, or tapping the My Games title,
+  // starts that tab from scratch without logging out or reloading the PWA.
+  const resetTab = (tab: Tab) => {
+    const view: AppView = { tab, gameId: null, collectionId: null, formGameId: null }
+    setCollectionPickerOpen(false)
+    setDeleteCollectionPrompt(null)
+    setDeleteCollectionError('')
+
+    if (tab === 'library') {
+      libraryToggleAnimationRef.current?.stop()
+      libraryToggleAnimationRef.current = null
+      libraryHasOpenedRef.current = false
+      libraryScrollAnchorRef.current = 4
+      libraryEntryAnchorActiveRef.current = false
+      libraryForceCollapsedRef.current = false
+      libraryForcedRevealStartRef.current = null
+      libraryTopLatchRef.current = true
+      libraryLastScrollYRef.current = 0
+      libraryCollapseProgress.set(0)
+      setLibraryControlsCollapsed(false)
+      setStatusFilters([])
+      setGenreFilter('all')
+      setPlatformFilter('all')
+      setSortMode('activity')
+      setQuery('')
+      setFiltersOpen(false)
+      setLibrarySearchOpen(false)
+      focusLibrarySearchOnOpen.current = false
+      librarySearchInputRef.current?.blur()
+      libraryLastSnapshotRef.current = null
+    }
+
+    if (tab === 'add') {
+      addSearchGenerationRef.current += 1
+      addSearchAbortRef.current?.abort()
+      addSearchAbortRef.current = null
+      addSearchBusyRef.current = false
+      setAddQuery('')
+      setAddResults([])
+      setAddSearchLoading(false)
+      setAddSearchError('')
+      setAddSearchSource('local')
+      setAddSearchHasMore(false)
+      setAddSearchNextOffset(0)
+      setLocalSearchMissQuery(null)
+      setAddStatus('completed')
+      setAddPlatform('')
+      setAddReview('')
+      setAddReviewOpen(false)
+      setAddCollectionIds([])
+      setAddDate(new Date().toISOString().slice(0, 10))
+      setAddAtmosphereScore(8)
+      setAddStoryScore(8)
+      setAddTechnologyScore(8)
+      setAddGameplayScore(8)
+      addSearchInputRef.current?.blur()
+    }
+
+    if (tab === 'collections') {
+      setEditingCollectionId(null)
+      setRemovedCollectionGameIds([])
+      setCollectionEditError('')
+      setCollectionTitle('')
+      setCollectionDescription('')
+      setCollectionColorScheme('violet')
+      setCollectionEmoji('')
+      setCollectionError('')
+    }
+
+    const entry: AppHistoryEntry = {
+      rateAppView: true, view, scrollY: 0,
+      fromApp: readAppHistoryEntry(window.history.state)?.fromApp ?? false,
+      collectionPickerOpen: false,
+      ...(tab === 'library' ? { controls: {
+        progress: 0, anchor: 4, forcedCollapsed: false,
+        topLatch: true, entryAnchorActive: false,
+      } } : {}),
+    }
+    // Replace the nested tab location so Back doesn't reopen the stale view.
+    window.history.replaceState(entry, '', urlForAppView(view))
+    showAppView(view, entry)
+    viewportPageRef.current?.scrollTo({ top: 0, behavior: 'instant' })
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    setScreenRevision((revision) => revision + 1)
+
+    // Refresh server-backed membership/status data on a tab reset as well.
+    void fetch('/api/bootstrap').then(async (response) => {
+      if (!response.ok) return
+      const payload = await response.json() as BootstrapPayload
+      if (payload.user.nickname === authUser?.nickname) applyBootstrap(payload)
+    }).catch(() => { /* Keep the existing local data while offline. */ })
+  }
+
   const openGame = (gameId: number) => {
     navigateTo({
       tab: currentViewRef.current.tab,
@@ -1775,6 +1874,13 @@ function App() {
     const storeLinks = gameDetails?.storeLinks ?? selectedGame.storeLinks ?? []
     const trailerUrl = gameDetails?.trailerUrl ?? selectedGame.trailerUrl ?? null
     const loadingDetails = loadingGameDetailsId === selectedGame.id
+    // Compare local calendar dates to avoid hiding the action early because of UTC.
+    // Without a confirmed date, a future release year also counts as unreleased.
+    const today = new Date()
+    const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const notReleased = selectedGame.releaseDate
+      ? selectedGame.releaseDate > todayLocal
+      : selectedGame.year > today.getFullYear()
 
     return (
       <div className="detail-page">
@@ -1802,7 +1908,7 @@ function App() {
               aria-controls="game-collection-picker"
               onClick={() => setCollectionPickerOpen((open) => !open)}
             >
-              <Icon name="layers" size={20} />
+              <Icon name="layers" size={19} />
             </button>
             {isPlaythrough(selectedEntry) ? (
               <>
@@ -1823,17 +1929,17 @@ function App() {
                   <Icon name="trash" size={19} />
                 </button>
               </>
-            ) : (
+            ) : !notReleased ? (
               <button
                 type="button"
                 className="round-add detail-catalog-icon detail-catalog-icon--add"
                 onClick={() => startAdding(selectedGame)}
-                aria-label="Добавить игру в библиотеку"
-                title="Добавить игру"
+                aria-label="Добавить прохождение"
+                title="Добавить прохождение"
               >
-                <Icon name="plus" size={20} />
+                <Icon name="plus" size={19} />
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -2020,9 +2126,9 @@ function App() {
         <motion.button
           layout
           className="library-title"
-          onClick={() => setStatusFilters([])}
-          aria-label="Показать все игры"
-          aria-pressed={statusFilters.length === 0}
+          onClick={() => resetTab('library')}
+          aria-label="Обновить страницу «Мои игры»"
+          title="Сбросить и обновить страницу"
           whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
           transition={{ type: 'spring', stiffness: 480, damping: 34 }}
         >
@@ -2921,57 +3027,16 @@ function App() {
     )
   }
 
-  const renderProfile = () => {
-    const recent = entries
-      .filter((entry) => entry.status === 'completed' && entry.completedAt)
-      .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
-      .slice(0, 3)
+  const renderProfile = () => (
+    <>
+      <section className="profile-hero profile-hero--compact">
+        <div className="profile-avatar">{authUser?.nickname.slice(0, 1).toUpperCase()}</div>
+        <h1>@{authUser?.nickname}</h1>
+      </section>
 
-    return (
-      <>
-        <div className="profile-back-row">
-          <button className="profile-back" onClick={() => openTab('library')}>
-            <Icon name="back" size={18} />
-            <span>Мои игры</span>
-          </button>
-        </div>
+      <PushSettings user={authUser?.nickname ?? ''} />
 
-        <section className="profile-hero">
-          <div className="profile-avatar">{authUser?.nickname.slice(0, 1).toUpperCase()}</div>
-          <span className="public-badge"><Icon name="globe" size={14} />Публичный профиль</span>
-          <h1>@{authUser?.nickname}</h1>
-          <p>rateapp / {authUser?.nickname}</p>
-          <div className="profile-stats">
-            <div><strong>{entries.length}</strong><span>игр</span></div>
-            <div><strong>{counts.completed}</strong><span>пройдено</span></div>
-            <div><strong>{collections.length}</strong><span>коллекции</span></div>
-          </div>
-        </section>
-
-        <section className="info-card">
-          <div className="section-heading section-heading--tight">
-            <div>
-              <span className="eyebrow">ПОСЛЕДНЕЕ</span>
-              <h2>Недавно пройдено</h2>
-            </div>
-          </div>
-          <div className="activity-list">
-            {recent.map((entry) => {
-              const game = catalogGames.find((item) => item.id === entry.gameId)!
-              return (
-                <button key={game.id} onClick={() => openGame(game.id)}>
-                  <span className="activity-cover"><Cover game={game} compact /></span>
-                  <span><strong>{game.title}</strong><small>{formatDate(entry.completedAt)}</small></span>
-                  <b>{entry.score?.toFixed(1)}</b>
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
-        <PushSettings user={authUser?.nickname ?? ''} />
-
-        <section className="info-card account-card">
+      <section className="info-card account-card">
           <span className="eyebrow">АККАУНТ</span>
           <h2>Вход и восстановление</h2>
           <div className="account-row">
@@ -2982,7 +3047,7 @@ function App() {
             <span><Icon name="lock" size={18} /><span><small>PIN-код</small>••••••</span></span>
             <button>Изменить</button>
           </div>
-          <p className="privacy-note">Email и настройки входа видны только вам. Игровой профиль и коллекции публичные.</p>
+          <p className="privacy-note">Email и настройки входа видны только вам. Данные аккаунта защищены настройками входа.</p>
           <button
             className="logout-button"
             onClick={async () => {
@@ -3000,9 +3065,8 @@ function App() {
             Выйти из аккаунта
           </button>
         </section>
-      </>
-    )
-  }
+    </>
+  )
 
   const nav: { id: Tab; label: string; icon: IconName }[] = [
     { id: 'library', label: 'Мои игры', icon: 'gamepad' },
@@ -3040,7 +3104,7 @@ function App() {
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={keyForAppView(currentViewRef.current)}
+            key={`${keyForAppView(currentViewRef.current)}-${screenRevision}`}
             ref={restoreScreenPosition}
             className="page-motion"
             initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
@@ -3101,7 +3165,10 @@ function App() {
             <motion.button
               layout
               key={item.id}
-              onClick={() => openTab(item.id)}
+              onClick={() => {
+                if (activeTab === item.id) resetTab(item.id)
+                else openTab(item.id)
+              }}
               className={activeTab === item.id ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'}
               whileTap={shouldReduceMotion ? undefined : { scale: .92 }}
               transition={{ type: 'spring', stiffness: 500, damping: 34 }}
