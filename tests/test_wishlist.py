@@ -478,6 +478,29 @@ class WishlistApiTests(unittest.TestCase):
         finally:
             second.close()
 
+    def test_collection_added_at_survives_playthrough_edits(self):
+        game_path = f"/api/library/{self.game_id}"
+        wished = self.client.put(f"{game_path}/wishlist")
+        self.assertEqual(wished.status_code, 200, wished.text)
+        initial = wished.json()["entry"]["collectionAddedAt"][WISHLIST_SLUG]
+        self.assertTrue(initial)
+        payload = {
+            "status": "completed", "platform": "PC",
+            "completedAt": "2026-10-15",
+            "atmosphereScore": 8, "storyScore": 9,
+            "technologyScore": 7, "gameplayScore": 8,
+            "collectionIds": [WISHLIST_SLUG],
+        }
+        saved = self.client.put(game_path, json=payload)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["collectionAddedAt"][WISHLIST_SLUG], initial)
+        edited = self.client.put(game_path, json={**payload, "review": "Updated"})
+        self.assertEqual(edited.status_code, 200, edited.text)
+        self.assertEqual(edited.json()["collectionAddedAt"][WISHLIST_SLUG], initial)
+        library = self.client.get("/api/library")
+        self.assertEqual(library.status_code, 200, library.text)
+        self.assertEqual(library.json()[0]["collectionAddedAt"][WISHLIST_SLUG], initial)
+
 
 if __name__ == "__main__":
     unittest.main()

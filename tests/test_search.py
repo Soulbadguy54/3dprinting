@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from api import index
 from api.database import SessionLocal
-from api.models import Game, GameAlias
+from api.models import Game, GameAlias, Genre, GameGenre
 
 
 class SearchApiTests(unittest.TestCase):
@@ -144,6 +144,33 @@ class SearchApiTests(unittest.TestCase):
     def test_search_without_matching_titles(self):
         self.insert_game("Elephant Kingdom")
         self.assertEqual(self.search("xxveryunlikelyname"), [])
+
+    def test_igdb_game_genres_are_normalized_and_preserve_ids(self):
+        name = "Genre integration QA " + secrets.token_hex(3)
+        genre_id = secrets.randbelow(500_000_000) + 500_000_000
+        class Response:
+            status_code = 200
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return [{
+                    "id": self.game_id, "name": name,
+                    "genres": [{"id": genre_id, "name": "QA unique genre"}],
+                }]
+        with patch.object(index, "_igdb_access_token", return_value=("client", "token")):
+            with patch.object(index.httpx, "post", return_value=Response()):
+                result = self.search(name, "igdb")
+        self.assertEqual(result[0]["genres"], ["QA unique genre"])
+        with SessionLocal() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
+            genre = session.get(Genre, genre_id)
+            self.assertEqual(genre.name, "QA unique genre")
+            self.assertIsNotNone(session.scalar(
+                select(GameGenre.id).where(
+                    GameGenre.game_id == game.id,
+                    GameGenre.genre_id == genre_id,
+                )
+            ))
 
 
 if __name__ == "__main__":
