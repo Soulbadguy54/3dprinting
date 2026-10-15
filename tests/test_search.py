@@ -148,13 +148,14 @@ class SearchApiTests(unittest.TestCase):
     def test_igdb_game_genres_are_normalized_and_preserve_ids(self):
         name = "Genre integration QA " + secrets.token_hex(3)
         genre_id = secrets.randbelow(500_000_000) + 500_000_000
+        game_id = self.game_id
         class Response:
             status_code = 200
             def raise_for_status(self):
                 pass
             def json(self):
                 return [{
-                    "id": self.game_id, "name": name,
+                    "id": game_id, "name": name,
                     "genres": [{"id": genre_id, "name": "QA unique genre"}],
                 }]
         with patch.object(index, "_igdb_access_token", return_value=("client", "token")):
