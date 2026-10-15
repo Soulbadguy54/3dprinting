@@ -1,0 +1,25 @@
+name: Inspect Stash collections Oct 15
+on:
+  push:
+    branches: [probe/stash-source-20261015]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read public collection cards
+        run: |
+          python -m pip install -q beautifulsoup4 requests
+          python - <<'PY'
+          import requests,re,json
+          from bs4 import BeautifulSoup
+          u='https://stash.games/users/Soulbadguy/collections/'
+          r=requests.get(u, timeout=30,headers={'User-Agent':'Mozilla/5.0'})
+          print('STATUS',r.status_code,'LEN',len(r.content),'URL',r.url)
+          soup=BeautifulSoup(r.text,'html.parser')
+          print('TITLE',soup.title.get_text(' ',strip=True) if soup.title else None)
+          for x in soup.select('a[href]'):
+              h=x.get('href','')
+              if 'collection' not in h and 'games' not in h:continue
+              print('LINK',json.dumps({'href':h,'text':x.get_text(' ',strip=True)[:180],'class':x.get('class'),'outer':str(x)[:1200]},ensure_ascii=False))
+          print('MAIN',str(soup.select_one('main'))[:4000])
+          PY
