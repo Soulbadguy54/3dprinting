@@ -19,7 +19,6 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from api.history_import import RatedHistoryBatch, match_igdb, save_rated_history_row
 from api.bootstrap import initialize_database
 from api.push import push_ready, send_push, valid_push_endpoint
 from api.database import SessionLocal, engine
@@ -717,7 +716,6 @@ def _igdb_search_body(query: str, offset: int) -> str:
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
-    migration_report = _advance_fixed_history_migration()
     database_configured = engine is not None
     database_ok = False
 
@@ -740,7 +738,6 @@ def health() -> dict[str, object]:
             )
         },
         "environment": os.getenv("VERCEL_ENV", "local"),
-        "historyMigration": migration_report,
     }
 
 
@@ -1253,111 +1250,6 @@ def search_games(
         "hasMore": has_more,
         "nextOffset": offset + GAME_SEARCH_PAGE_SIZE if has_more else None,
     }
-
-
-@app.post("/api/admin/history-import")
-def import_rated_game_history(payload: RatedHistoryBatch, request: Request) -> dict[str, object]:
-    """Temporary, opt-in migration. Disabled unless HISTORY_IMPORT_TOKEN is configured.
-
-    The token is not the user's session token and is never passed to IGDB.
-    Both recipients are fixed server-side; a caller cannot redirect imports.
-    """
-    configured = os.getenv("HISTORY_IMPORT_TOKEN", "").strip()
-    if not configured:
-        raise HTTPException(status_code=404, detail="Import disabled.")
-    given = request.headers.get("x-rateapp-import-token", "")
-    if not secrets.compare_digest(configured, given):
-        raise HTTPException(status_code=403, detail="Forbidden.")
-
-    from api.history_import import rounded_scores
-    import_results: list[dict[str, object]] = []
-    with _session() as session:
-        users = {
-            user.nickname: user.id
-            for user in session.scalars(
-                select(User).where(User.nickname.in_(("soulbadguy", "nastya")))
-            ).all()
-        }
-        if set(users) != {"soulbadguy", "nastya"}:
-            raise HTTPException(status_code=409, detail="Target account missing.")
-
-        client_id, token = _igdb_access_token()
-        for row in payload.rows:
-            try:
-                response = httpx.post(
-                    "https://api.igdb.com/v4/games",
-                    headers={
-                        "Client-ID": client_id,
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/json",
-                    },
-                    content=_igdb_search_body(row.query, 0),
-                    timeout=12.0,
-                )
-                response.raise_for_status()
-                candidates = response.json()
-                if not isinstance(candidates, list):
-                    raise ValueError("Unexpected IGDB response")
-                # Keep all IGDB results for future searches, even if a row
-                # cannot be matched safely and therefore isn't imported.
-                if candidates:
-                    _cache_igdb_games(candidates[:GAME_SEARCH_PAGE_SIZE])
-                matched = match_igdb(candidates, row.query, row.releaseYear, row.igdbId, row.igdbCover)
-                if matched is None:
-                    import_results.append({
-                        "title": row.title,
-                        "status": "unmatched",
-                        "query": row.query,
-                        "year": row.releaseYear,
-                        "candidates": [
-                            {"id": item.get("id"), "name": item.get("name"),
-                             "year": datetime.fromtimestamp(
-                                 int(item["first_release_date"]), tz=timezone.utc
-                             ).year if item.get("first_release_date") else None}
-                            for item in candidates[:10] if isinstance(item, dict)
-                        ],
-                    })
-                    continue
-
-                game = session.scalar(select(Game).where(Game.igdb_id == int(matched["id"])))
-                if game is None:
-                    raise ValueError("Cached game not found")
-                result: dict[str, object] = {
-                    "title": row.title, "status": "matched",
-                    "gameId": game.igdb_id, "igdbTitle": game.title,
-                    "scoreSoulbadguy": float(rounded_scores(row.soulbadguy)[-1]),
-                    "scoreNastya": float(rounded_scores(row.nastya)[-1]),
-                }
-                # Migration must not overwrite a previous user's score, status,
-                # review, or collection membership. Re-running is idempotent.
-                for nickname, scores in (
-                    ("soulbadguy", row.soulbadguy),
-                    ("nastya", row.nastya),
-                ):
-                    already = session.scalar(
-                        select(UserGame.id).where(
-                            UserGame.user_id == users[nickname],
-                            UserGame.game_id == game.id,
-                        )
-                    )
-                    if already is not None:
-                        result[nickname] = "skipped_existing"
-                    elif payload.dryRun:
-                        result[nickname] = "would_create"
-                    else:
-                        result[nickname] = save_rated_history_row(
-                            session, game, row.status, users[nickname], scores,
-                        )
-                if not payload.dryRun:
-                    session.commit()
-                import_results.append(result)
-            except (httpx.HTTPError, ValueError, SQLAlchemyError) as exc:
-                session.rollback()
-                import_results.append({
-                    "title": row.title, "status": "error",
-                    "reason": type(exc).__name__,
-                })
-    return {"dryRun": payload.dryRun, "results": import_results}
 
 
 @app.get("/api/collections")
@@ -2025,76 +1917,3 @@ def release_alert_cron(request: Request) -> dict[str, object]:
             session.commit()
 
     return {"date": today.isoformat(), "accepted": accepted, "failed": failed}
-
-
-
-
-def _advance_fixed_history_migration() -> dict[str, object] | None:
-    """Run a small, fixed, one-off user-approved migration on health requests.
-
-    No input from HTTP can pick target accounts or change values. All work is
-    idempotent and each row is audited in PostgreSQL; no auth token is exposed.
-    Remove this runner and queue file after verification.
-    """
-    if os.getenv("VERCEL_ENV") != "production" or not os.getenv("HISTORY_IMPORT_TOKEN"):
-        return None
-    from pathlib import Path
-    from api.history_import import RatedHistoryRow
-
-    queue = json.loads(Path(__file__).with_name("history_fixed_20261015.json").read_text(encoding="utf-8"))
-    with _session() as session:
-        session.execute(text("""
-            CREATE TABLE IF NOT EXISTS app_history_migration_20261015 (
-                position INTEGER PRIMARY KEY,
-                report TEXT NOT NULL
-            )
-        """))
-        session.commit()
-        # Retry unresolved names without repeating successful writes.
-        completed = {
-            int(position) for position, report in session.execute(text(
-                "SELECT position, report FROM app_history_migration_20261015"
-            )).all()
-            if json.loads(report).get("status") == "matched"
-        }
-
-    # At most four IGDB lookups per request, not a long-running background job.
-    last_batch: list[dict[str, object]] = []
-    for position, entry in enumerate(queue):
-        if position in completed:
-            continue
-        if len(last_batch) >= 4:
-            break
-        try:
-            payload = RatedHistoryBatch(dryRun=False, rows=[RatedHistoryRow(**entry)])
-            internal_request = Request({
-                "type": "http",
-                "method": "POST",
-                "path": "/api/admin/history-import",
-                "headers": [(b"x-rateapp-import-token", os.environ["HISTORY_IMPORT_TOKEN"].encode())],
-            })
-            result = import_rated_game_history(payload, internal_request)["results"][0]
-        except Exception as exc:
-            # Keep the endpoint healthy; preserve a concise audit row for review.
-            result = {"title": entry["title"], "status": "error", "reason": type(exc).__name__}
-
-        with _session() as session:
-            session.execute(text("""
-                INSERT INTO app_history_migration_20261015(position, report)
-                VALUES (:position, :report)
-                ON CONFLICT(position) DO UPDATE SET report = EXCLUDED.report
-            """), {"position": position, "report": json.dumps(result, ensure_ascii=False)})
-            session.commit()
-        completed.add(position)
-        last_batch.append({
-            "title": result.get("title"),
-            "status": result.get("status"),
-            "gameId": result.get("gameId"),
-            "soulbadguy": result.get("soulbadguy"),
-            "nastya": result.get("nastya"),
-            "reason": result.get("reason"),
-            "candidates": result.get("candidates") if result.get("status") == "unmatched" else None,
-        })
-
-    return {"total": len(queue), "processed": len(completed), "lastBatch": last_batch}
-
