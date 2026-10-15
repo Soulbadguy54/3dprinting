@@ -15,7 +15,7 @@ import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -139,6 +139,25 @@ class LibraryPayload(BaseModel):
     collectionIds: list[str] = Field(default_factory=list, max_length=100)
     addedAt: date | None = None
 
+    @model_validator(mode="after")
+    def validate_playthrough(self):
+        rated = self.status in {"completed", "dropped"}
+        criteria = (self.atmosphereScore, self.storyScore, self.technologyScore, self.gameplayScore)
+        if rated:
+            if any(value is None for value in criteria):
+                raise ValueError("Для статуса «Пройдено» или «Дропнуто» обязательны все четыре оценки.")
+            if self.startedAt is not None:
+                raise ValueError("Дата начала допустима только для статуса «Прохожу».")
+        else:
+            if any(value is not None for value in criteria) or self.score is not None:
+                raise ValueError("Оценки допустимы только для «Пройдено» и «Дропнуто».")
+            if self.completedAt is not None:
+                raise ValueError("Дата окончания допустима только для «Пройдено» и «Дропнуто».")
+            if self.status != "playing" and self.startedAt is not None:
+                raise ValueError("Дата начала допустима только для «Прохожу».")
+            if self.review:
+                raise ValueError("Отзыв допустим только для оценённых прохождений.")
+        return self
 
 
 class PushSubscriptionPayload(BaseModel):
@@ -1453,13 +1472,11 @@ def upsert_library_game(
                 entry.gameplay_score,
             ) = rounded_criteria
 
-            if all(value is not None for value in rounded_criteria):
-                entry.score = round(
-                    sum(value for value in rounded_criteria if value is not None) / 4,
-                    1,
-                )
-            else:
-                entry.score = round(payload.score, 1) if payload.score is not None else None
+            # PostgreSQL ROUND(numeric, 1) uses half-up; keep the API identical.
+            from decimal import Decimal, ROUND_HALF_UP
+            entry.score = sum(
+                Decimal(str(value)) for value in rounded_criteria if value is not None
+            ).__truediv__(Decimal("4")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         else:
             entry.score = None
             entry.atmosphere_score = None
@@ -1467,7 +1484,7 @@ def upsert_library_game(
             entry.technology_score = None
             entry.gameplay_score = None
 
-        entry.review = payload.review
+        entry.review = payload.review if payload.status in {"completed", "dropped"} else None
 
         session.flush()
         session.execute(delete(CollectionGame).where(CollectionGame.user_game_id == entry.id))
