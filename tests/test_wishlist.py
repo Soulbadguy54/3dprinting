@@ -85,6 +85,36 @@ class WishlistApiTests(unittest.TestCase):
             entry["gameId"] == self.game_id for entry in self.client.get("/api/library").json()
         ))
 
+    def test_dropped_playthrough_date_is_saved_and_can_be_edited(self):
+        path = f"/api/library/{self.game_id}"
+        dropped = self.client.put(path, json={
+            "status": "dropped", "platform": "PC",
+            "completedAt": "2026-01-14", "score": 6.5,
+            "collectionIds": [],
+        })
+        self.assertEqual(dropped.status_code, 200, dropped.text)
+        self.assertEqual(dropped.json()["status"], "dropped")
+        self.assertEqual(dropped.json()["completedAt"], "2026-01-14")
+        self.assertEqual(dropped.json()["score"], 6.5)
+
+        changed = self.client.put(path, json={
+            "status": "dropped", "platform": "PC",
+            "completedAt": "2026-02-20", "collectionIds": [],
+        })
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertEqual(changed.json()["completedAt"], "2026-02-20")
+        library = self.client.get("/api/library").json()
+        saved = next(row for row in library if row["gameId"] == self.game_id)
+        self.assertEqual(saved["completedAt"], "2026-02-20")
+
+        playing = self.client.put(path, json={
+            "status": "playing", "startedAt": "2026-02-21",
+            "collectionIds": [],
+        })
+        self.assertEqual(playing.status_code, 200, playing.text)
+        self.assertIsNone(playing.json()["completedAt"])
+        self.assertEqual(playing.json()["startedAt"], "2026-02-21")
+
     def test_custom_membership_preserves_completed_playthrough(self):
         saved = self.client.put(f"/api/library/{self.game_id}", json={
             "status": "completed", "score": 8.5, "platform": "PC", "collectionIds": [],
