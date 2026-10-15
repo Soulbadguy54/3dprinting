@@ -6,17 +6,27 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect Stash collection HTML payload
+      - name: Read public collection JSON-LD and page endpoints
         run: |
           python -m pip install -q beautifulsoup4 requests
           python - <<'PY'
-          import requests,json
+          import requests,re,json
           from bs4 import BeautifulSoup
-          url='https://stash.games/users/Soulbadguy/collections/dfhpn'
-          html=requests.get(url,timeout=30,headers={'User-Agent':'Mozilla/5.0'}).text
-          s=BeautifulSoup(html,'html.parser')
-          print('BODY_TEXT',s.get_text(' ',strip=True)[-9000:])
-          print('BODY_HTML',str(s.body)[-20000:])
-          print('SCRIPTS',json.dumps([{'src':x.get('src'),'type':x.get('type'),'body':x.get_text()[:600]} for x in s.find_all('script')],ensure_ascii=False))
-          print('IMAGES',json.dumps([{'src':x.get('src'),'data-src':x.get('data-src'),'alt':x.get('alt')} for x in s.find_all('img')],ensure_ascii=False))
+          root='https://stash.games/users/Soulbadguy/collections/'
+          for cid in ('dfhpn','zdpqj','hgwtg'):
+              html=requests.get(root+cid,timeout=30,headers={'User-Agent':'Mozilla/5.0'}).text
+              soup=BeautifulSoup(html,'html.parser')
+              print('COLLECTION',cid)
+              for script in soup.select('script[type="application/ld+json"]'):
+                  src=script.get_text()
+                  try:
+                      payload=json.loads(src[src.index('{'):src.rindex('}')+1])
+                      print('JSONLD',json.dumps(payload,ensure_ascii=False)[:35000])
+                  except Exception as e:print('JSONLD_ERR',repr(e),src[:5000])
+              for tag in soup.find_all(True):
+                  if tag.name=='script':continue
+                  htmlattrs={k:str(v)[:150] for k,v in tag.attrs.items() if 'url' in k or 'ajax' in k or 'load' in k or 'game' in k or 'collection' in k or 'page' in k or 'hx-' in k}
+                  if htmlattrs and ('game' in str(htmlattrs) or 'collection' in str(htmlattrs)):
+                      print('DYNAMIC_TAG',str(tag.name),json.dumps(htmlattrs,ensure_ascii=False),tag.get_text(' ',strip=True)[:100])
+              print('ANCHORS',json.dumps([{'href':a.get('href'),'text':a.get_text(' ',strip=True)[:75]} for a in soup.select('a[href]') if 'games/' in a.get('href','')][:30],ensure_ascii=False))
           PY
