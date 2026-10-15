@@ -559,6 +559,7 @@ type GameCardProps = {
   onOpen: () => void
   animationIndex?: number
   readOnly?: boolean
+  quietPress?: boolean
 }
 
 const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
@@ -567,6 +568,7 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
   onOpen,
   animationIndex = 0,
   readOnly = false,
+  quietPress = false,
 }, ref) {
   const shouldReduceMotion = useReducedMotion()
   const activityDate =
@@ -580,13 +582,13 @@ const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard(
     <motion.button
       ref={ref}
       layout="position"
-      className="game-card"
+      className={quietPress ? 'game-card game-card--quiet-touch' : 'game-card'}
       disabled={readOnly}
       onClick={onOpen}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 28, scale: .96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
-      whileTap={shouldReduceMotion ? undefined : { scale: .985 }}
+      whileTap={shouldReduceMotion || quietPress ? undefined : { scale: .985 }}
       transition={{
         layout: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
         opacity: { duration: .3, delay: Math.min(animationIndex, 12) * .045 },
@@ -3255,6 +3257,7 @@ function App() {
                       game={game}
                       entry={entry}
                       readOnly={editing}
+                      quietPress
                       onOpen={() => openGame(game.id)}
                     />
                     {editing && (

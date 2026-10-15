@@ -3978,3 +3978,14 @@ body:has(.auth-shell) .install-prompt {
    Otherwise two independently animated heights fight the scroll observer. */
 .library-filter-panel-clip { overflow: visible; }
 .library-control-clip { overflow: hidden; }
+
+/* Collection detail cards should not visually enter a pressed/selected state
+   when someone rests a finger on a game cover. Navigation still works. */
+.collection-detail-page .game-card--quiet-touch,
+.collection-detail-page .game-card--quiet-touch * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.collection-detail-page .game-card--quiet-touch { touch-action: pan-y; }
