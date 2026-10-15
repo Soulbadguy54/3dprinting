@@ -39,6 +39,68 @@ class WishlistApiTests(unittest.TestCase):
         forbidden = self.client.delete(f"/api/collections/{WISHLIST_SLUG}")
         self.assertEqual(forbidden.status_code, 403)
 
+    def test_system_collection_only_allows_removing_games(self):
+        self.client.put(f"/api/library/{self.game_id}/wishlist")
+        path = f"/api/collections/{WISHLIST_SLUG}"
+        changes = {"title": "Изменённое название", "removedGameIds": [self.game_id]}
+        forbidden = self.client.patch(path, json=changes)
+        self.assertEqual(forbidden.status_code, 403, forbidden.text)
+        self.assertIn(WISHLIST_SLUG, self.client.get("/api/library").json()[0]["collectionIds"])
+
+        allowed = self.client.patch(path, json={"removedGameIds": [self.game_id]})
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertEqual(allowed.json()["collection"]["title"], "Хочу пройти")
+        self.assertFalse(any(
+            WISHLIST_SLUG in entry["collectionIds"] for entry in allowed.json()["library"]
+        ))
+
+    def test_custom_collection_membership_toggle_is_idempotent(self):
+        first = self.client.post("/api/collections", json={
+            "title": "Моя коллекция", "emoji": "🎮", "colorScheme": "teal",
+        })
+        self.assertEqual(first.status_code, 201, first.text)
+        second = self.client.post("/api/collections", json={"title": "Другие игры"})
+        self.assertEqual(second.status_code, 201, second.text)
+
+        first_path = f"/api/library/{self.game_id}/collections/{first.json()['id']}"
+        second_path = f"/api/library/{self.game_id}/collections/{second.json()['id']}"
+        for _ in range(2):
+            added = self.client.put(first_path)
+            self.assertEqual(added.status_code, 200, added.text)
+            self.assertTrue(added.json()["inCollection"])
+            self.assertEqual(added.json()["entry"]["status"], "untracked")
+            self.assertEqual(added.json()["entry"]["collectionIds"].count(first.json()["id"]), 1)
+
+        also_added = self.client.put(second_path)
+        self.assertEqual(also_added.status_code, 200, also_added.text)
+        removed = self.client.delete(first_path)
+        self.assertEqual(removed.status_code, 200, removed.text)
+        self.assertEqual(removed.json()["entry"]["collectionIds"], [second.json()["id"]])
+
+        for _ in range(2):
+            last_removed = self.client.delete(second_path)
+            self.assertEqual(last_removed.status_code, 200, last_removed.text)
+            self.assertIsNone(last_removed.json()["entry"])
+        self.assertFalse(any(
+            entry["gameId"] == self.game_id for entry in self.client.get("/api/library").json()
+        ))
+
+    def test_custom_membership_preserves_completed_playthrough(self):
+        saved = self.client.put(f"/api/library/{self.game_id}", json={
+            "status": "completed", "score": 8.5, "platform": "PC", "collectionIds": [],
+        })
+        self.assertEqual(saved.status_code, 200, saved.text)
+        collection = self.client.post("/api/collections", json={"title": "Избранное"}).json()
+        path = f"/api/library/{self.game_id}/collections/{collection['id']}"
+        self.assertEqual(self.client.put(path).status_code, 200)
+        removed = self.client.delete(path)
+        self.assertEqual(removed.status_code, 200, removed.text)
+        entry = removed.json()["entry"]
+        self.assertEqual(entry["status"], "completed")
+        self.assertEqual(entry["score"], 8.5)
+        self.assertEqual(entry["platform"], "PC")
+        self.assertNotIn(collection["id"], entry["collectionIds"])
+
     def test_toggle_wishlist_is_idempotent(self):
         path = f"/api/library/{self.game_id}/wishlist"
         for _ in range(2):
