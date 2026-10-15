@@ -26,6 +26,7 @@ type IconName =
   | 'library'
   | 'plus'
   | 'layers'
+  | 'heart'
   | 'user'
   | 'search'
   | 'filter'
@@ -175,22 +176,26 @@ function emojiUnified(emoji: string): string {
 }
 
 function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
-  const emoji = collection.emoji || (collection.id === WISHLIST_COLLECTION_ID ? '🎁' : '🗂️')
-  if (!collection.emoji && collection.iconData) {
+  if (collection.emoji) {
+    return <RenderEmoji unified={emojiUnified(collection.emoji)} size={size} emojiStyle={EmojiStyle.TWITTER} />
+  }
+  if (collection.iconData) {
     return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
   }
-  return <RenderEmoji unified={emojiUnified(emoji)} size={size} emojiStyle={EmojiStyle.TWITTER} />
+  // Default symbols match the layered Collections icon in the bottom navigation.
+  return <Icon name={collection.id === WISHLIST_COLLECTION_ID ? 'heart' : 'layers'} size={size} />
 }
 
 const POPULAR_COLLECTION_EMOJIS = ['🎮', '🏆', '💎', '🔥', '⭐', '🎯', '🎁', '💜', '🕹️', '👑', '🚀', '🌌']
 
 function CollectionAppearanceEditor({
-  colorScheme, emoji, onColorChange, onEmojiChange,
+  colorScheme, emoji, onColorChange, onEmojiChange, fallbackIcon = 'layers',
 }: {
   colorScheme: string
   emoji: string
   onColorChange: (value: string) => void
   onEmojiChange: (value: string) => void
+  fallbackIcon?: 'layers' | 'heart'
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   return (
@@ -222,7 +227,9 @@ function CollectionAppearanceEditor({
             className="collection-icon-preview"
             style={collectionThemeStyle({ id: 'preview', title: '', description: '', mark: '', colorScheme })}
           >
-            <RenderEmoji unified={emojiUnified(emoji || '🎮')} size={36} emojiStyle={EmojiStyle.TWITTER} />
+            {emoji
+              ? <RenderEmoji unified={emojiUnified(emoji)} size={36} emojiStyle={EmojiStyle.TWITTER} />
+              : <Icon name={fallbackIcon} size={36} />}
           </div>
           <button type="button" className="collection-emoji-open" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
             <Icon name="sparkles" size={17} />
@@ -414,6 +421,7 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     library: <><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V4Z"/><path d="M7 20V6a2 2 0 0 0-2-2"/><path d="M9 8h6M9 12h6"/></>,
     plus: <><path d="M12 5v14M5 12h14"/></>,
     layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></>,
+    heart: <path d="M20.8 4.8a5.5 5.5 0 0 0-7.8 0L12 5.9l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.4a5.5 5.5 0 0 0 0-7.8Z"/>,
     user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.2 3.5-6.3 8-6.3s7.2 2.1 8 6.3"/></>,
     search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
     filter: <><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></>,
@@ -665,12 +673,12 @@ function App() {
   const [collectionTitle, setCollectionTitle] = useState('')
   const [collectionDescription, setCollectionDescription] = useState('')
   const [collectionColorScheme, setCollectionColorScheme] = useState('violet')
-  const [collectionEmoji, setCollectionEmoji] = useState('🎮')
+  const [collectionEmoji, setCollectionEmoji] = useState('')
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null)
   const [editCollectionTitle, setEditCollectionTitle] = useState('')
   const [editCollectionDescription, setEditCollectionDescription] = useState('')
   const [editCollectionColor, setEditCollectionColor] = useState('violet')
-  const [editCollectionEmoji, setEditCollectionEmoji] = useState('🎮')
+  const [editCollectionEmoji, setEditCollectionEmoji] = useState('')
   const [removedCollectionGameIds, setRemovedCollectionGameIds] = useState<number[]>([])
   const [collectionEditBusy, setCollectionEditBusy] = useState(false)
   const [collectionEditError, setCollectionEditError] = useState('')
@@ -685,6 +693,7 @@ function App() {
   const [collectionError, setCollectionError] = useState('')
 
   const [addQuery, setAddQuery] = useState('')
+  const addSearchInputRef = useRef<HTMLInputElement>(null)
   const [addGameId, setAddGameId] = useState<number | null>(firstViewRef.current.formGameId)
   const [addStatus, setAddStatus] = useState<LibraryStatus>('completed')
   const [addPlatform, setAddPlatform] = useState('')
@@ -1531,7 +1540,7 @@ function App() {
       setCollectionTitle('')
       setCollectionDescription('')
       setCollectionColorScheme('violet')
-      setCollectionEmoji('🎮')
+      setCollectionEmoji('')
       navigateTo({ tab: 'collections', gameId: null, collectionId: payload.id, formGameId: null })
     } catch {
       setCollectionError('Не удалось создать коллекцию. Проверьте соединение.')
@@ -1546,7 +1555,7 @@ function App() {
     setEditCollectionTitle(collection.title)
     setEditCollectionDescription(collection.description)
     setEditCollectionColor(collection.colorScheme ?? 'violet')
-    setEditCollectionEmoji(collection.emoji || (collection.id === WISHLIST_COLLECTION_ID ? '🎁' : '🗂️'))
+    setEditCollectionEmoji(collection.emoji ?? '')
     setRemovedCollectionGameIds([])
     setCollectionEditError('')
   }
@@ -1746,10 +1755,19 @@ function App() {
                   animate={{ opacity: 1, scale: 1, rotate: 0 }}
                   transition={{ type: 'spring', stiffness: 520, damping: 28 }}
                 >
-                  <Icon name="bookmark" size={19} />
+                  <Icon name="heart" size={19} />
                 </motion.span>
               </motion.button>
             )}
+            <button
+              type="button"
+              className="round-add detail-catalog-icon detail-catalog-icon--collections"
+              aria-label="Коллекции (скоро)"
+              title="Коллекции — скоро"
+              disabled
+            >
+              <Icon name="layers" size={20} />
+            </button>
             {isPlaythrough(selectedEntry) ? (
               <>
                 <button
@@ -2481,11 +2499,26 @@ function App() {
         <div className="search-wrap game-database-search">
           <Icon name="search" size={20} />
           <input
+            ref={addSearchInputRef}
             value={addQuery}
             onChange={(event) => setAddQuery(event.target.value)}
             placeholder="Название игры..."
             aria-label="Поиск по базе игр"
           />
+          {addQuery.length > 0 && (
+            <button
+              type="button"
+              className="game-database-search__clear"
+              aria-label="Очистить поиск"
+              title="Очистить поле поиска"
+              onClick={() => {
+                setAddQuery('')
+                addSearchInputRef.current?.focus()
+              }}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          )}
         </div>
 
         <section className="search-results">
@@ -2638,6 +2671,23 @@ function App() {
             >
               <Icon name="back" size={20} />
             </button>
+            <div className="collection-detail-toolbar__identity" style={collectionThemeStyle(draftCollection)}>
+              <span className="collection-detail-toolbar__avatar" aria-hidden="true">
+                <CollectionIcon collection={draftCollection} size={22} />
+              </span>
+              {editing ? (
+                <input
+                  className="collection-detail-toolbar__title-input"
+                  aria-label="Название коллекции"
+                  value={editCollectionTitle}
+                  onChange={(event) => setEditCollectionTitle(event.target.value)}
+                  maxLength={100}
+                  placeholder="Название"
+                />
+              ) : (
+                <h1 className="collection-detail-toolbar__title">{collection.title}</h1>
+              )}
+            </div>
             <div className="detail-toolbar__actions">
               {editing ? (
                 <>
@@ -2682,28 +2732,10 @@ function App() {
             </div>
           </header>
 
-          <section className="collection-detail-hero" style={collectionThemeStyle(draftCollection)}>
-            <div className="collection-detail-identity">
-              <span className="collection-detail-identity__icon"><CollectionIcon collection={draftCollection} size={45} /></span>
-              <div className="collection-detail-identity__text">
-                {editing ? (
-                  <label className="collection-create-field collection-detail-edit-title">
-                    <span>Название</span>
-                    <input
-                      value={editCollectionTitle}
-                      onChange={(event) => setEditCollectionTitle(event.target.value)}
-                      maxLength={100}
-                      placeholder="Название коллекции"
-                      autoFocus
-                    />
-                  </label>
-                ) : (
-                  <h1>{collection.title}</h1>
-                )}
-                <span className="collection-detail-count">{collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}</span>
-              </div>
-            </div>
-
+          <section
+            className={editing ? 'collection-detail-hero collection-detail-hero--editing' : 'collection-detail-hero'}
+            style={collectionThemeStyle(draftCollection)}
+          >
             {editing ? (
               <>
                 <label className="collection-create-field">
@@ -2721,11 +2753,23 @@ function App() {
                   emoji={editCollectionEmoji}
                   onColorChange={setEditCollectionColor}
                   onEmojiChange={setEditCollectionEmoji}
+                  fallbackIcon={collection.id === WISHLIST_COLLECTION_ID ? 'heart' : 'layers'}
                 />
               </>
-            ) : collection.description ? (
-              <p className="collection-detail-description">{collection.description}</p>
-            ) : null}
+            ) : (
+              <>
+                {collection.description && (
+                  <p className="collection-detail-description">
+                    {collection.id === WISHLIST_COLLECTION_ID
+                      ? collection.description.trim().replace(/\.\s*$/, '')
+                      : collection.description}
+                  </p>
+                )}
+                <span className="collection-detail-count">
+                  {collectionEntries.length} {collectionEntries.length === 1 ? 'игра' : 'игр'}
+                </span>
+              </>
+            )}
           </section>
 
           {editing && (
