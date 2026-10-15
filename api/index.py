@@ -83,6 +83,10 @@ class CollectionPayload(BaseModel):
     emoji: str | None = Field(default=None, max_length=24)
 
 
+class CollectionBulkDeletePayload(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=100)
+
+
 class CollectionEditPayload(BaseModel):
     # PATCH is partial: system collections accept only removedGameIds.
     title: str | None = Field(default=None, min_length=1, max_length=32)
@@ -1393,6 +1397,52 @@ def update_collection(collection_id: str, payload: CollectionEditPayload, reques
             "collection": next(row for row in _collections_payload(session, user) if row["id"] == collection_id),
             "library": _library_payload(session, user),
         }
+
+
+@app.post("/api/collections/bulk-delete")
+def delete_collections_bulk(payload: CollectionBulkDeletePayload, request: Request) -> dict[str, object]:
+    ids = payload.ids
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=422, detail="Список коллекций содержит повторы.")
+
+    with _session() as session:
+        user = _current_user(request, session)
+        selected = session.scalars(
+            select(Collection).where(
+                Collection.user_id == user.id,
+                Collection.slug.in_(ids),
+            )
+        ).all()
+        # Validate all of the user's collections before mutating any.
+        if len(selected) != len(ids):
+            raise HTTPException(status_code=404, detail="Одна из коллекций не найдена.")
+        if any(item.is_system or item.slug == WISHLIST_SLUG for item in selected):
+            raise HTTPException(status_code=403, detail="Системную коллекцию удалить нельзя.")
+
+        collection_ids = [item.id for item in selected]
+        previous_entries = session.scalars(
+            select(UserGame)
+            .join(CollectionGame, CollectionGame.user_game_id == UserGame.id)
+            .where(
+                CollectionGame.collection_id.in_(collection_ids),
+                UserGame.user_id == user.id,
+            )
+        ).unique().all()
+        session.execute(
+            delete(CollectionGame).where(CollectionGame.collection_id.in_(collection_ids))
+        )
+        session.flush()
+        for entry in previous_entries:
+            if entry.status in {"untracked", "wishlist"}:
+                remaining = session.scalar(
+                    select(CollectionGame.id).where(CollectionGame.user_game_id == entry.id).limit(1)
+                )
+                if remaining is None:
+                    session.delete(entry)
+        for collection in selected:
+            session.delete(collection)
+        session.commit()
+        return {"deletedIds": ids, "library": _library_payload(session, user)}
 
 
 @app.delete("/api/collections/{collection_id}", status_code=204)
