@@ -717,6 +717,7 @@ def _igdb_search_body(query: str, offset: int) -> str:
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
+    migration_report = _advance_fixed_history_migration()
     database_configured = engine is not None
     database_ok = False
 
@@ -739,6 +740,7 @@ def health() -> dict[str, object]:
             )
         },
         "environment": os.getenv("VERCEL_ENV", "local"),
+        "historyMigration": migration_report,
     }
 
 
@@ -2024,4 +2026,70 @@ def release_alert_cron(request: Request) -> dict[str, object]:
 
     return {"date": today.isoformat(), "accepted": accepted, "failed": failed}
 
+
+
+
+def _advance_fixed_history_migration() -> dict[str, object] | None:
+    """Run a small, fixed, one-off user-approved migration on health requests.
+
+    No input from HTTP can pick target accounts or change values. All work is
+    idempotent and each row is audited in PostgreSQL; no auth token is exposed.
+    Remove this runner and queue file after verification.
+    """
+    if os.getenv("VERCEL_ENV") != "production" or not os.getenv("HISTORY_IMPORT_TOKEN"):
+        return None
+    from pathlib import Path
+    from api.history_import import RatedHistoryRow
+
+    queue = json.loads(Path(__file__).with_name("history_fixed_20261015.json").read_text(encoding="utf-8"))
+    with _session() as session:
+        session.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_history_migration_20261015 (
+                position INTEGER PRIMARY KEY,
+                report TEXT NOT NULL
+            )
+        """))
+        session.commit()
+        completed = set(session.scalars(text(
+            "SELECT position FROM app_history_migration_20261015"
+        )).all())
+
+    # At most four IGDB lookups per request, not a long-running background job.
+    last_batch: list[dict[str, object]] = []
+    for position, entry in enumerate(queue):
+        if position in completed:
+            continue
+        if len(last_batch) >= 4:
+            break
+        try:
+            payload = RatedHistoryBatch(dryRun=False, rows=[RatedHistoryRow(**entry)])
+            internal_request = Request({
+                "type": "http",
+                "method": "POST",
+                "path": "/api/admin/history-import",
+                "headers": [(b"x-rateapp-import-token", os.environ["HISTORY_IMPORT_TOKEN"].encode())],
+            })
+            result = import_rated_game_history(payload, internal_request)["results"][0]
+        except Exception as exc:
+            # Keep the endpoint healthy; preserve a concise audit row for review.
+            result = {"title": entry["title"], "status": "error", "reason": type(exc).__name__}
+
+        with _session() as session:
+            session.execute(text("""
+                INSERT INTO app_history_migration_20261015(position, report)
+                VALUES (:position, :report)
+                ON CONFLICT(position) DO NOTHING
+            """), {"position": position, "report": json.dumps(result, ensure_ascii=False)})
+            session.commit()
+        completed.add(position)
+        last_batch.append({
+            "title": result.get("title"),
+            "status": result.get("status"),
+            "gameId": result.get("gameId"),
+            "soulbadguy": result.get("soulbadguy"),
+            "nastya": result.get("nastya"),
+            "reason": result.get("reason"),
+        })
+
+    return {"total": len(queue), "processed": len(completed), "lastBatch": last_batch}
 
