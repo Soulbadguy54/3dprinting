@@ -3631,3 +3631,86 @@ body:has(.auth-shell) .install-prompt {
   .install-prompt__heading span { font-size: 10px; }
   .install-prompt__actions button { font-size: 11px; }
 }
+
+/* Desktop-only gate. On touch-first/mobile devices DesktopGate renders
+   a fragment and these styles have no effect. */
+.rateapp-desktop-gate {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #070e18;
+}
+.rateapp-desktop-gate__background {
+  position: absolute;
+  inset: -22px;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  filter: blur(14px) brightness(.50) saturate(.70);
+  transform: scale(1.025);
+}
+.rateapp-desktop-gate__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(ellipse at 50% 43%, rgba(20, 35, 48, .24), rgba(4, 7, 16, .70) 72%),
+    rgba(4, 7, 16, .36);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  text-align: center;
+}
+.rateapp-desktop-gate__notice {
+  width: min(100%, 520px);
+  padding: 28px 20px;
+}
+.rateapp-desktop-gate__emoji {
+  display: block;
+  margin-bottom: 18px;
+  font-size: clamp(56px, 8vw, 88px);
+  line-height: 1;
+  filter: drop-shadow(0 9px 23px rgba(0, 0, 0, .25));
+}
+.rateapp-desktop-gate__eyebrow {
+  margin-bottom: 10px;
+  color: #a9f3a1;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.rateapp-desktop-gate__notice h1 {
+  margin: 0 0 15px;
+  color: #f4fbf7;
+  font-size: clamp(26px, 4vw, 37px);
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -.03em;
+}
+.rateapp-desktop-gate__notice p {
+  max-width: 435px;
+  margin: 0 auto;
+  color: #b6c5cc;
+  font-size: clamp(14px, 1.65vw, 17px);
+  line-height: 1.7;
+}
+.rateapp-desktop-gate__phones {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+  color: #9fdabc;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+.rateapp-desktop-gate__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #69d9cf;
+}
