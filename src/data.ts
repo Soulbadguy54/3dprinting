@@ -17,6 +17,8 @@ export type Game = {
   accent2: string
   glyph: string
   coverUrl?: string
+  storeLinks?: { provider: string; label: string; url: string }[]
+  trailerUrl?: string | null
 }
 
 export type LibraryEntry = {
