@@ -83,10 +83,11 @@ class CollectionPayload(BaseModel):
 
 
 class CollectionEditPayload(BaseModel):
-    title: str = Field(min_length=1, max_length=100)
+    # PATCH is partial: system collections accept only removedGameIds.
+    title: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)
     colorScheme: Literal["violet", "rose", "blue", "cyan", "teal",
-                         "emerald", "lime", "amber", "orange", "slate"]
+                         "emerald", "lime", "amber", "orange", "slate"] | None = None
     emoji: str | None = Field(default=None, max_length=24)
     removedGameIds: list[int] = Field(default_factory=list, max_length=500)
 
@@ -1236,10 +1237,6 @@ def create_collection(payload: CollectionPayload, request: Request) -> dict[str,
 
 @app.patch("/api/collections/{collection_id}")
 def update_collection(collection_id: str, payload: CollectionEditPayload, request: Request) -> dict[str, object]:
-    title = payload.title.strip()
-    if not title:
-        raise HTTPException(status_code=422, detail="Укажите название коллекции.")
-    emoji = _validated_collection_emoji(payload.emoji)
     removed = set(payload.removedGameIds)
 
     with _session() as session:
@@ -1253,12 +1250,27 @@ def update_collection(collection_id: str, payload: CollectionEditPayload, reques
         if collection is None:
             raise HTTPException(status_code=404, detail="Коллекция не найдена.")
 
-        collection.title = title
-        collection.description = (payload.description or "").strip() or None
-        collection.color_scheme = payload.colorScheme
-        collection.emoji = emoji
-        # Previous uploaded icons are superseded by the selected emoji.
-        collection.icon_data = None
+        appearance_fields = {"title", "description", "colorScheme", "emoji"}
+        requested_appearance = payload.model_fields_set & appearance_fields
+        if collection.is_system or collection.slug == WISHLIST_SLUG:
+            if requested_appearance:
+                raise HTTPException(status_code=403, detail="Системную коллекцию можно редактировать только удаляя игры.")
+        else:
+            if "title" in requested_appearance:
+                title = (payload.title or "").strip()
+                if not title:
+                    raise HTTPException(status_code=422, detail="Укажите название коллекции.")
+                collection.title = title
+            if "description" in requested_appearance:
+                collection.description = (payload.description or "").strip() or None
+            if "colorScheme" in requested_appearance:
+                if payload.colorScheme is None:
+                    raise HTTPException(status_code=422, detail="Выберите цветовую схему.")
+                collection.color_scheme = payload.colorScheme
+            if "emoji" in requested_appearance:
+                collection.emoji = _validated_collection_emoji(payload.emoji)
+                # Previous uploaded icons are superseded by the selected emoji.
+                collection.icon_data = None
 
         if removed:
             member_entries = session.scalars(
@@ -1432,6 +1444,89 @@ def upsert_library_game(
             session, entry,
             community_rating=_community_rating_map(session, [game.id]).get(game.id),
         )
+
+
+def _set_collection_membership(game_id: int, collection_id: str, request: Request, enabled: bool) -> dict[str, object]:
+    """Idempotent membership update; never delete an existing playthrough."""
+    with _session() as session:
+        user = _current_user(request, session)
+        collection = session.scalar(
+            select(Collection).where(
+                Collection.user_id == user.id,
+                Collection.slug == collection_id,
+            )
+        )
+        if collection is None:
+            raise HTTPException(status_code=404, detail="Коллекция не найдена.")
+
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра пока недоступна в каталоге.")
+
+        entry = session.scalar(
+            select(UserGame).where(
+                UserGame.user_id == user.id,
+                UserGame.game_id == game.id,
+            )
+        )
+        if enabled:
+            if entry is None:
+                entry = UserGame(user_id=user.id, game_id=game.id, status="untracked")
+                session.add(entry)
+                session.flush()
+
+            already_added = session.scalar(
+                select(CollectionGame.id).where(
+                    CollectionGame.collection_id == collection.id,
+                    CollectionGame.user_game_id == entry.id,
+                )
+            )
+            if already_added is None:
+                session.add(CollectionGame(
+                    collection_id=collection.id,
+                    user_game_id=entry.id,
+                ))
+        elif entry is not None:
+            session.execute(
+                delete(CollectionGame).where(
+                    CollectionGame.collection_id == collection.id,
+                    CollectionGame.user_game_id == entry.id,
+                )
+            )
+            session.flush()
+            if entry.status in {"wishlist", "untracked"}:
+                remaining = session.scalar(
+                    select(CollectionGame.id)
+                    .where(CollectionGame.user_game_id == entry.id)
+                    .limit(1)
+                )
+                if remaining is None:
+                    session.delete(entry)
+                    entry = None
+                else:
+                    entry.status = "untracked"
+
+        session.commit()
+        if entry is None:
+            return {"inCollection": enabled, "entry": None}
+        session.refresh(entry)
+        return {
+            "inCollection": enabled,
+            "entry": _serialize_entry(
+                session, entry,
+                community_rating=_community_rating_map(session, [game.id]).get(game.id),
+            ),
+        }
+
+
+@app.put("/api/library/{game_id}/collections/{collection_id}")
+def add_game_to_collection(game_id: int, collection_id: str, request: Request) -> dict[str, object]:
+    return _set_collection_membership(game_id, collection_id, request, True)
+
+
+@app.delete("/api/library/{game_id}/collections/{collection_id}")
+def remove_game_from_collection(game_id: int, collection_id: str, request: Request) -> dict[str, object]:
+    return _set_collection_membership(game_id, collection_id, request, False)
 
 
 @app.put("/api/library/{game_id}/wishlist")
