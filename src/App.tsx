@@ -1653,7 +1653,7 @@ function App() {
     editingFromDetailRef.current = currentViewRef.current.gameId === game.id
     setAddStatus(entry.status)
     setAddPlatform(entry.platform ?? preferredPlatform(game.platforms))
-    setAddDate((entry.status === 'playing' ? entry.startedAt : entry.completedAt) ?? new Date().toISOString().slice(0, 10))
+    setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
     const fallbackScore = entry.score ?? 8
     setAddAtmosphereScore(entry.atmosphereScore ?? fallbackScore)
     setAddStoryScore(entry.storyScore ?? fallbackScore)
@@ -1670,7 +1670,7 @@ function App() {
     if (!game) return
 
     const today = new Date().toISOString().slice(0, 10)
-    if (!addPlatform.trim() || !addDate) {
+    if (ratedStatuses.has(addStatus) && (!addPlatform.trim() || !addDate)) {
       window.alert('Для прохождения обязательно укажите платформу и дату.')
       return
     }
@@ -1679,7 +1679,7 @@ function App() {
       status: addStatus,
       platform: addStatus === 'wishlist' ? undefined : addPlatform,
       completedAt: ratedStatuses.has(addStatus) ? addDate : undefined,
-      startedAt: addStatus === 'playing' ? addDate : undefined,
+      startedAt: addStatus === 'playing' ? today : undefined,
       score: ratedStatuses.has(addStatus) ? calculatedAddScore : undefined,
       atmosphereScore: ratedStatuses.has(addStatus) ? addAtmosphereScore : undefined,
       storyScore: ratedStatuses.has(addStatus) ? addStoryScore : undefined,
@@ -2710,9 +2710,9 @@ function App() {
               )}
             </label>
 
-            {(ratedStatuses.has(addStatus) || addStatus === 'playing') && (
+            {ratedStatuses.has(addStatus) && (
               <label className="form-field">
-                <span>{addStatus === 'playing' ? 'Дата начала' : addStatus === 'dropped' ? 'Дата дропа' : 'Дата прохождения'}</span>
+                <span>{addStatus === 'dropped' ? 'Дата дропа' : 'Дата прохождения'}</span>
                 <input type="date" value={addDate} onChange={(event) => setAddDate(event.target.value)} />
                 <small>По умолчанию — сегодня. Можно указать любую прошлую дату.</small>
               </label>
