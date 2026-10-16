@@ -53,5 +53,7 @@ jobs:
           python-version: '3.12'
       - name: Install backend requirements
         run: python -m pip install -r requirements.txt
+      - name: Apply versioned PostgreSQL migrations
+        run: python -m alembic upgrade head
       - name: Integration tests against PostgreSQL
         run: python -m unittest discover -s tests -v

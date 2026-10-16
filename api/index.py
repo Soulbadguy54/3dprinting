@@ -20,7 +20,6 @@ from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from api.data_integrity import playthrough_integrity_summary
-from api.bootstrap import initialize_database
 from api.push import push_ready, send_push, valid_push_endpoint
 from api.database import SessionLocal, engine
 from api.models import (
@@ -47,7 +46,8 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-initialize_database()
+# Database schema is upgraded by `alembic upgrade head` outside the request path.
+# Never run schema changes at cold start: one malformed historic row can break login.
 
 PIN_RE = re.compile(r"^\d{4,8}$")
 NICK_RE = re.compile(r"^[a-z0-9_]{3,16}$")
@@ -774,7 +774,7 @@ def _igdb_search_body(query: str, offset: int) -> str:
 
 
 @app.get("/api/health")
-def health() -> dict[str, object]:
+def health(response: Response) -> dict[str, object]:
     database_configured = engine is not None
     database_ok = False
     integrity_report = None
@@ -789,8 +789,10 @@ def health() -> dict[str, object]:
         except SQLAlchemyError:
             database_ok = False
 
+    if not database_ok:
+        response.status_code = 503
     return {
-        "ok": True,
+        "ok": database_ok,
         "service": "rateapp-api",
         "database": {"configured": database_configured, "reachable": database_ok},
         "igdb": {

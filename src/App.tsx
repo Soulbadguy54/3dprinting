@@ -755,6 +755,8 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>(firstViewRef.current.tab)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [bootstrapError, setBootstrapError] = useState(false)
+  const [bootstrapRetry, setBootstrapRetry] = useState(0)
   const [loadingProgress, setLoadingProgress] = useState(12)
   const [loadingPhase, setLoadingPhase] = useState<'loading' | 'preparing' | 'complete'>('loading')
   const [screenRevision, setScreenRevision] = useState(0)
@@ -954,10 +956,16 @@ function App() {
 
     try {
       const response = await fetch('/api/bootstrap')
-      if (!response.ok) return
+      if (response.status === 401) {
+        setAuthUser(null)
+        return
+      }
+      if (!response.ok) throw new Error('Bootstrap unavailable')
       applyBootstrap(await response.json() as BootstrapPayload)
+      setBootstrapError(false)
     } catch {
-      // Login itself succeeded; keep the authenticated shell and retry on refresh.
+      // Authentication succeeded but loading user data failed; don't show empty UI.
+      setBootstrapError(true)
     }
   }
 
@@ -1140,17 +1148,21 @@ function App() {
       try {
         const response = await fetch('/api/bootstrap')
         if (cancelled) return
-        if (!response.ok) {
+        if (response.status === 401) {
           setAuthUser(null)
+          setBootstrapError(false)
           return
         }
+        if (!response.ok) throw new Error('Bootstrap unavailable')
 
         const payload = await response.json() as BootstrapPayload
         if (cancelled) return
         setLoadingPhase('preparing')
         applyBootstrap(payload)
+        setBootstrapError(false)
       } catch {
-        if (!cancelled) setAuthUser(null)
+        // A 5xx response, network failure or invalid JSON is NOT a logout.
+        if (!cancelled) setBootstrapError(true)
       } finally {
         finishProgress()
       }
@@ -1163,7 +1175,7 @@ function App() {
       if (progressTimer !== undefined) window.clearInterval(progressTimer)
       if (progressFrame !== undefined) window.cancelAnimationFrame(progressFrame)
     }
-  }, [])
+  }, [bootstrapRetry])
 
   useEffect(() => {
     if (
@@ -3611,6 +3623,25 @@ function App() {
 
   if (!authReady) {
     return <LoadingScreen progress={loadingProgress} phase={loadingPhase} />
+  }
+
+  if (bootstrapError) {
+    return (
+      <main className="bootstrap-failure" role="alert">
+        <div className="bootstrap-failure__body">
+          <span className="bootstrap-failure__icon" aria-hidden="true">🎮</span>
+          <h1>Сервер временно недоступен</h1>
+          <p>Твои игры и коллекции сохранены. Ошибка соединения не означает выход из аккаунта.</p>
+          <button type="button" onClick={() => {
+            setBootstrapError(false)
+            setAuthReady(false)
+            setLoadingProgress(12)
+            setLoadingPhase('loading')
+            setBootstrapRetry((value) => value + 1)
+          }}>Повторить попытку</button>
+        </div>
+      </main>
+    )
   }
 
   if (!authUser) {
