@@ -16,7 +16,8 @@ import {
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import LoadingScreen from './LoadingScreen'
-import { Emoji as RenderEmoji, EmojiStyle } from 'emoji-picker-react'
+// Emoji art still uses the same Twitter assets; its runtime is lazy-loaded only
+// when the user first needs a collection icon.
 import PushSettings, { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
 import {
   games,
@@ -174,13 +175,23 @@ type GameSearchPage = {
 
 type SearchSource = 'local' | 'igdb'
 
+const AsyncEmojiDisplay = lazy(() => import('./EmojiDisplay'))
+
+function RenderEmoji({ unified, size }: { unified: string; size: number }) {
+  return (
+    <Suspense fallback={<span aria-hidden="true" style={{ display: 'inline-block', width: size, height: size }} />}>
+      <AsyncEmojiDisplay unified={unified} size={size} />
+    </Suspense>
+  )
+}
+
 function emojiUnified(emoji: string): string {
   return Array.from(emoji).map((character) => character.codePointAt(0)!.toString(16)).join('-')
 }
 
 function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
   if (collection.emoji) {
-    return <RenderEmoji unified={emojiUnified(collection.emoji)} size={size} emojiStyle={EmojiStyle.TWITTER} />
+    return <RenderEmoji unified={emojiUnified(collection.emoji)} size={size} />
   }
   if (collection.iconData) {
     return <img className="collection-icon__image" src={collection.iconData} width={size} height={size} alt="" aria-hidden="true" />
@@ -233,7 +244,7 @@ function CollectionAppearanceEditor({
             style={collectionThemeStyle({ id: 'preview', title: '', description: '', mark: '', colorScheme })}
           >
             {emoji
-              ? <RenderEmoji unified={emojiUnified(emoji)} size={36} emojiStyle={EmojiStyle.TWITTER} />
+              ? <RenderEmoji unified={emojiUnified(emoji)} size={36} />
               : <Icon name={fallbackIcon} size={36} />}
           </div>
           <button type="button" className="collection-emoji-open" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
@@ -251,7 +262,7 @@ function CollectionAppearanceEditor({
               aria-label={`Выбрать ${item}`}
               aria-pressed={emoji === item}
             >
-              <RenderEmoji unified={emojiUnified(item)} size={25} emojiStyle={EmojiStyle.TWITTER} />
+              <RenderEmoji unified={emojiUnified(item)} size={25} />
             </button>
           ))}
         </div>
