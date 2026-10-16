@@ -76,7 +76,7 @@ class PushTests(unittest.TestCase):
 
     def test_test_push_only_for_users_own_wishlist_game(self):
         self.assertEqual(self.subscribe().status_code, 200)
-        with patch.object(index, "send_push", return_value=(True, False)) as sender:
+        with patch("api.push_routes.send_push", return_value=(True, False)) as sender:
             sent = self.client.post("/api/push/test", json={"gameId": self.game_id})
             self.assertEqual(sent.status_code, 200, sent.text)
             self.assertEqual(sent.json()["accepted"], 1)
@@ -117,7 +117,7 @@ class PushTests(unittest.TestCase):
     def test_cron_checks_secret_and_sends_only_once_per_release(self):
         self.assertEqual(self.subscribe().status_code, 200)
         self.assertEqual(self.run_cron("wrong").status_code, 401)
-        with patch.object(index, "send_push", return_value=(True, False)) as sender:
+        with patch("api.push_routes.send_push", return_value=(True, False)) as sender:
             first = self.run_cron()
             self.assertEqual(first.status_code, 200, first.text)
             self.assertGreaterEqual(first.json()["accepted"], 1)
@@ -142,7 +142,7 @@ class PushTests(unittest.TestCase):
             game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
             game.release_date = datetime.now(timezone.utc).date() + timedelta(days=12)
             session.commit()
-        with patch.object(index, "send_push", return_value=(True, False)) as sender:
+        with patch("api.push_routes.send_push", return_value=(True, False)) as sender:
             result = self.run_cron()
             self.assertEqual(result.status_code, 200, result.text)
             self.assertEqual(sender.call_count, 0)
@@ -153,7 +153,7 @@ class PushTests(unittest.TestCase):
             session.commit()
         removed = self.client.delete(f"/api/library/{self.game_id}/wishlist")
         self.assertEqual(removed.status_code, 200)
-        with patch.object(index, "send_push", return_value=(True, False)) as sender:
+        with patch("api.push_routes.send_push", return_value=(True, False)) as sender:
             self.run_cron()
             self.assertEqual(sender.call_count, 0)
 
@@ -161,7 +161,7 @@ class PushTests(unittest.TestCase):
         self.assertEqual(self.subscribe().status_code, 200)
         response = self.client.request("DELETE", "/api/push/subscription", json=self.subscription)
         self.assertEqual(response.status_code, 200, response.text)
-        with patch.object(index, "send_push", return_value=(True, False)) as sender:
+        with patch("api.push_routes.send_push", return_value=(True, False)) as sender:
             result = self.run_cron()
             self.assertEqual(result.status_code, 200)
             self.assertFalse(
