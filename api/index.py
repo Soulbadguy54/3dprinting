@@ -15,9 +15,11 @@ import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import selectinload
 
 from api.data_integrity import playthrough_integrity_summary
 from api.push import push_ready, send_push, valid_push_endpoint
@@ -649,6 +651,7 @@ def _collections_payload(session, user: User) -> list[dict[str, object]]:
 def _library_payload(session, user: User) -> list[dict[str, object]]:
     rows = session.scalars(
         select(UserGame)
+        .options(selectinload(UserGame.game))
         .where(UserGame.user_id == user.id)
         .order_by(UserGame.added_at.desc())
     ).all()
@@ -822,8 +825,8 @@ def register(payload: RegisterPayload, response: Response) -> dict[str, object]:
             status_code=422,
             detail="Ник: 3–16 символов, только латиница, цифры и _.",
         )
-    if not PIN_RE.fullmatch(pin):
-        raise HTTPException(status_code=422, detail="PIN должен содержать 4–8 цифр.")
+    if not PIN_RE.fullmatch(pin) or len(pin) < 6:
+        raise HTTPException(status_code=422, detail="Для нового аккаунта PIN должен содержать 6–8 цифр.")
 
     with _session() as session:
         conflict = session.scalar(
@@ -1591,6 +1594,26 @@ def delete_collection(collection_id: str, request: Request) -> Response:
     return Response(status_code=204)
 
 
+@app.get("/api/export")
+def export_user_data(request: Request) -> JSONResponse:
+    """Account-scoped portable backup; no credentials or session tokens."""
+    with _session() as session:
+        user = _current_user(request, session)
+        payload = {
+            "format": "rateapp-export",
+            "schemaVersion": 1,
+            "exportedAt": _now().isoformat(),
+            "nickname": user.nickname,
+            "collections": _collections_payload(session, user),
+            "library": _library_payload(session, user),
+        }
+    return JSONResponse(payload, headers={
+        "Content-Disposition": 'attachment; filename="rateapp-export.json"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
 @app.get("/api/library")
 def library(request: Request) -> list[dict[str, object]]:
     with _session() as session:
@@ -1672,29 +1695,33 @@ def upsert_library_game(
             select(CollectionGame.collection_id, CollectionGame.added_at)
             .where(CollectionGame.user_game_id == entry.id)
         ).all())
-        session.execute(delete(CollectionGame).where(CollectionGame.user_game_id == entry.id))
-
         selected_slugs = set(payload.collectionIds)
         if payload.status == "wishlist":
             _ensure_wishlist_collection(session, user.id)
             selected_slugs.add(WISHLIST_SLUG)
 
-        if selected_slugs:
-            selected_collections = session.scalars(
-                select(Collection).where(
-                    Collection.user_id == user.id,
-                    Collection.slug.in_(selected_slugs),
-                )
-            ).all()
+        selected_collections = session.scalars(
+            select(Collection).where(
+                Collection.user_id == user.id,
+                Collection.slug.in_(selected_slugs),
+            )
+        ).all() if selected_slugs else []
+        selected_ids = {collection.id for collection in selected_collections}
+        existing_ids = set(existing_membership_dates)
+        to_remove = existing_ids - selected_ids
+        to_add = selected_ids - existing_ids
+        # Leave unchanged rows (including their original added_at) untouched.
+        # Recreating the entire membership set on every rating edit causes
+        # unnecessary DELETE/INSERT churn and can race with other updates.
+        if to_remove:
+            session.execute(delete(CollectionGame).where(
+                CollectionGame.user_game_id == entry.id,
+                CollectionGame.collection_id.in_(to_remove),
+            ))
+        if to_add:
             session.add_all(
-                [
-                    CollectionGame(
-                        collection_id=collection.id,
-                        user_game_id=entry.id,
-                        added_at=existing_membership_dates.get(collection.id, _now()),
-                    )
-                    for collection in selected_collections
-                ]
+                CollectionGame(collection_id=collection_id, user_game_id=entry.id)
+                for collection_id in to_add
             )
 
         session.commit()

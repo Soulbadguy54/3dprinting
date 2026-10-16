@@ -3582,6 +3582,15 @@ function App() {
       />
 
       <section className="info-card account-card">
+          <span className="eyebrow">РЕЗЕРВНАЯ КОПИЯ</span>
+          <h2>Экспорт данных</h2>
+          <p className="privacy-note">Сохрани свои прохождения, оценки, отзывы и коллекции в одном JSON-файле. Только твои данные.</p>
+          <a className="account-export-link" href="/api/export" download="rateapp-export.json">
+            <Icon name="download" size={17} /> Скачать данные
+          </a>
+      </section>
+
+      <section className="info-card account-card">
           <span className="eyebrow">АККАУНТ</span>
           <h2>Вход и восстановление</h2>
           <div className="account-row">

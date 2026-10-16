@@ -30,6 +30,55 @@ class WishlistApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
+
+    def test_export_is_auth_scoped_and_contains_collection_membership(self):
+        anonymous = TestClient(index.app, base_url="https://testserver")
+        self.assertEqual(anonymous.get("/api/export").status_code, 401)
+        anonymous.close()
+
+        collection = self.client.post("/api/collections", json={"title": "Backup source"}).json()["id"]
+        self.assertEqual(self.client.put(
+            f"/api/library/{self.game_id}/collections/{collection}"
+        ).status_code, 200)
+        result = self.client.get("/api/export")
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertIn("attachment;", result.headers.get("content-disposition", ""))
+        self.assertEqual(result.json()["format"], "rateapp-export")
+        self.assertEqual(result.json()["schemaVersion"], 1)
+        self.assertEqual(result.json()["nickname"], self.nickname)
+        match = next(x for x in result.json()["library"] if x["gameId"] == self.game_id)
+        self.assertEqual(match["collectionIds"], [collection])
+        self.assertNotIn("pinHash", str(result.json()))
+        self.assertNotIn("session", str(result.json()))
+
+    def test_same_status_edit_preserves_exact_collection_membership_rows(self):
+        from sqlalchemy import func
+        collection = self.client.post("/api/collections", json={"title": "Stable membership"}).json()["id"]
+        path = f"/api/library/{self.game_id}"
+        data = {
+            "status": "completed", "platform": "PC", "completedAt": "2026-10-15",
+            "collectionIds": [collection], "atmosphereScore": 8, "storyScore": 8,
+            "technologyScore": 8, "gameplayScore": 8,
+        }
+        self.assertEqual(self.client.put(path, json=data).status_code, 200)
+        with SessionLocal() as session:
+            user_game = session.scalar(select(UserGame).join(User).where(
+                User.nickname == self.nickname, UserGame.game.has(Game.igdb_id == self.game_id),
+            ))
+            original_id = session.scalar(select(CollectionGame.id).join(
+                Collection, Collection.id == CollectionGame.collection_id
+            ).where(
+                Collection.slug == collection,
+                CollectionGame.user_game_id == user_game.id,
+            ))
+        edited = self.client.put(path, json={**data, "review": "Edit without collection changes"})
+        self.assertEqual(edited.status_code, 200, edited.text)
+        with SessionLocal() as session:
+            new_id = session.scalar(select(CollectionGame.id).where(
+                CollectionGame.user_game_id == user_game.id
+            ))
+        self.assertEqual(original_id, new_id)
+
     def test_complete_ratings_are_required_for_finished_or_dropped(self):
         path = f"/api/library/{self.game_id}"
         for status in ("completed", "dropped"):

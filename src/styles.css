@@ -4052,6 +4052,9 @@ body:has(.auth-shell) .install-prompt {
   background: #a8f3a7;
 }
 
+.account-export-link { display: inline-flex; align-items: center; gap: 9px; margin-top: 9px; padding: 12px 15px; background: rgba(168,243,167,.10); border: 1px solid rgba(168,243,167,.30); border-radius: 12px; color: #baf3bb; font-weight: 800; font-size: 12px; text-decoration: none; }
+.account-export-link:focus-visible { outline: 2px solid #a8f3a7; outline-offset: 3px; }
+
 /* Network failure is not a sign-out. Keep the retry experience accessible. */
 .bootstrap-failure { min-height: 100dvh; display: grid; place-items: center; background: #0b0d12; padding: 30px 20px; color: white; }
 .bootstrap-failure__body { max-width: 350px; text-align: center; }
