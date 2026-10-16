@@ -7,6 +7,7 @@ import DesktopGate from './DesktopGate'
 import InstallPage from './InstallPage'
 import PwaUpdateNotice from './PwaUpdateNotice'
 import './collectionCards.css'
+import './ratingWheel.css'
 import './styles.css'
 
 // Installed PWAs can stay open in the background for days. Check for a fresh
