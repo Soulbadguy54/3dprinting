@@ -21,6 +21,7 @@ def _ensure_wishlist_collection(session, user_id: int) -> Collection:
         title=WISHLIST_TITLE,
         description=WISHLIST_DESCRIPTION,
         mark=WISHLIST_MARK,
+        emoji=WISHLIST_MARK,
         color_scheme="rose",
         is_system=True,
     )
