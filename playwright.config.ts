@@ -9,10 +9,12 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    ...devices['Pixel 7'],
-    browserName: 'chromium',
     trace: 'retain-on-failure',
   },
+  projects: [
+    { name: 'Android Chromium', use: { ...devices['Pixel 7'], browserName: 'chromium' } },
+    { name: 'iPhone WebKit', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
+  ],
   webServer: [
     {
       command: 'python -m uvicorn api.index:app --host 127.0.0.1 --port 8000',
