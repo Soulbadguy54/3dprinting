@@ -43,4 +43,25 @@ test('mobile registration, collections and account backup', async ({ page }) => 
   expect(body.format).toBe('rateapp-export')
   expect(body.nickname).toBe(nickname)
   expect(body.collections.some((c: { title: string }) => c.title === 'Playwright smoke')).toBe(true)
+
+  // Exercise the same long-press selection and confirmed bulk-remove flow
+  // that mobile users invoke, against real API + PostgreSQL.
+  const collection = body.collections.find((c: { title: string }) => c.title === 'Playwright smoke')
+  const added = await page.request.put(`/api/library/1/collections/${collection.id}`)
+  expect(added.status()).toBe(200)
+  await page.goto(`/?tab=collections&collection=${encodeURIComponent(collection.id)}`)
+  await expect(page.locator('.game-card')).toHaveCount(1)
+  const card = page.locator('.game-card').first()
+  await card.dispatchEvent('pointerdown', { pointerId: 17, button: 0, clientX: 20, clientY: 20 })
+  await expect(card).toHaveAttribute('aria-pressed', 'true', { timeout: 4000 })
+  await card.dispatchEvent('pointerup', { pointerId: 17, button: 0, clientX: 20, clientY: 20 })
+  await page.getByRole('button', { name: /Убрать выбранные игры из коллекции/ }).click()
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Удалить' }).click()
+  await expect(page.locator('.game-card')).toHaveCount(0)
+  const libraryResponse = await page.request.get('/api/library')
+  expect(libraryResponse.status()).toBe(200)
+  expect((await libraryResponse.json()).every(
+    (entry: { collectionIds: string[] }) => !entry.collectionIds.includes(collection.id)
+  )).toBe(true)
 })
