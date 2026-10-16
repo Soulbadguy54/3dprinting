@@ -3504,6 +3504,7 @@ function App() {
           tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
         })}
       />
+      <p className="app-build-version">Версия приложения: {__RATEAPP_BUILD__}</p>
 
       <section className="info-card account-card">
           <span className="eyebrow">РЕЗЕРВНАЯ КОПИЯ</span>

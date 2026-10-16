@@ -5,14 +5,18 @@ import App from './App'
 import InstallPrompt from './InstallPrompt'
 import DesktopGate from './DesktopGate'
 import InstallPage from './InstallPage'
+import PwaUpdateNotice from './PwaUpdateNotice'
 import './collectionCards.css'
 import './styles.css'
 
 // Installed PWAs can stay open in the background for days. Check for a fresh
 // service worker when they return to the foreground instead of leaving old
 // CSS/JS cached until the next full browser launch.
-registerSW({
+const updatePwa = registerSW({
   immediate: true,
+  onNeedRefresh() {
+    window.dispatchEvent(new Event('rateapp:update-available'))
+  },
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return
     let lastCheck = 0
@@ -36,6 +40,7 @@ createRoot(document.getElementById('root')!).render(
       : <DesktopGate>
           <App />
           <InstallPrompt />
+          <PwaUpdateNotice onUpdate={() => { void updatePwa(true) }} />
         </DesktopGate>}
   </StrictMode>,
 )

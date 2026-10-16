@@ -3945,3 +3945,9 @@ body:has(.auth-shell) .install-prompt {
 .bootstrap-failure h1 { font-size: 20px; margin: 20px 0 12px; }
 .bootstrap-failure p { color: #aab5c4; font-size: 13px; line-height: 1.6; }
 .bootstrap-failure button { color: #0b0d12; background: #a8f3a7; border-radius: 12px; font-weight: 800; padding: 13px 24px; margin-top: 12px; }
+
+.pwa-update-notice { position: fixed; z-index: 60; left: 14px; right: 14px; bottom: 85px; margin: 0 auto; max-width: 440px; display: flex; gap: 9px; align-items: center; padding: 10px 12px; border: 1px solid rgba(168,243,167,.35); border-radius: 14px; background: #1a2228; color: #f3f8f5; box-shadow: 0 12px 32px rgba(0,0,0,.5); font-size: 12px; }
+.pwa-update-notice > span { flex: 1; }
+.pwa-update-notice button { background: rgba(168,243,167,.16); color: #a8f3a7; border-radius: 9px; padding: 8px 11px; font-weight: 800; }
+.pwa-update-notice button:last-child { padding: 8px 10px; background: transparent; color: #b2bcc9; font-size: 18px; }
+.app-build-version { color: #838d9e; text-align: center; font-size: 10px; margin: 8px auto 18px; }

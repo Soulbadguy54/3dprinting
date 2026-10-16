@@ -16,10 +16,18 @@ writeFileSync(
 )
 
 export default defineConfig({
+  define: {
+    __RATEAPP_BUILD__: JSON.stringify(
+      // @ts-expect-error Environment supplied by Vercel build runtime
+      process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ||
+      // @ts-expect-error GitHub CI build sha
+      process.env.GITHUB_SHA?.slice(0, 8) || 'local'
+    ),
+  },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['rateapp-icon-192.png', 'rateapp-icon-512.png', 'rateapp-icon.svg', 'rateapp-loading-gamepad.avif', 'push-sw.js'],
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
