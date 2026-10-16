@@ -1,5 +1,7 @@
-import { forwardRef, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import GameCard, { Cover } from './components/GameCard'
+import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
 import RatingWheel from './components/RatingWheel'
 import {
@@ -314,24 +316,6 @@ const normalizeEntry = (entry: ApiLibraryEntry | LibraryEntry): LibraryEntry => 
   review: entry.review ?? undefined,
 })
 
-const statusMeta: Record<LibraryStatus, { label: string; short: string }> = {
-  completed: { label: 'Пройдено', short: 'Пройдено' },
-  playing: { label: 'Прохожу', short: 'Прохожу' },
-  wishlist: { label: 'В коллекции', short: 'В коллекции' },
-  untracked: { label: 'В коллекции', short: 'В коллекции' },
-  dropped: { label: 'Дропнуто', short: 'Дропнуто' },
-}
-
-const statusIcons: Record<LibraryStatus, IconName> = {
-  completed: 'check',
-  playing: 'play',
-  wishlist: 'bookmark',
-  untracked: 'layers',
-  dropped: 'close',
-}
-
-const ratedStatuses = new Set<LibraryStatus>(['completed', 'dropped'])
-
 const preferredPlatform = (platforms: string[]) => {
   const priorities = [
     /^(pc|pc \(microsoft windows\))$/i,
@@ -359,151 +343,6 @@ function formatDate(value?: string) {
     year: 'numeric',
   }).format(new Date(`${value}T12:00:00`))
 }
-
-function formatCardDate(value?: string) {
-  if (!value) return ''
-  const [year, month, day] = value.split('-')
-  if (!year || !month || !day) return value
-  return `${day}.${month}.${year}`
-}
-
-function Cover({
-  game,
-  compact = false,
-  thumbnail = false,
-  priority = false,
-}: {
-  game: Game
-  compact?: boolean
-  thumbnail?: boolean
-  priority?: boolean
-}) {
-  const imageUrl = thumbnail
-    ? game.coverUrl?.replace('/t_cover_big_2x/', '/t_cover_small/')
-    : game.coverUrl
-  const style = {
-    '--cover-accent': game.accent,
-    '--cover-accent-2': game.accent2,
-  } as CSSProperties
-
-  return (
-    <div className={compact ? 'cover cover--compact' : 'cover'} style={style}>
-      {imageUrl && (
-        <img
-          className="cover__image"
-          src={imageUrl}
-          alt=""
-          loading={priority ? 'eager' : 'lazy'}
-          fetchPriority={priority ? 'high' : undefined}
-          decoding="async"
-        />
-      )}
-      {!game.coverUrl && <div className="cover__orb cover__orb--one" />}
-      {!game.coverUrl && <div className="cover__orb cover__orb--two" />}
-      {!game.coverUrl && <span className="cover__noise" />}
-      {!game.coverUrl && <span className="cover__glyph">{game.glyph}</span>}
-    </div>
-  )
-}
-
-type GameCardProps = {
-  game: Game
-  entry: LibraryEntry
-  onOpen: (event: ReactMouseEvent<HTMLButtonElement>) => void
-  animationIndex?: number
-  readOnly?: boolean
-  quietPress?: boolean
-  selectionMode?: boolean
-  selected?: boolean
-  onPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onPointerCancel?: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onPointerLeave?: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onContextMenu?: (event: ReactMouseEvent<HTMLButtonElement>) => void
-}
-
-const GameCard = forwardRef<HTMLButtonElement, GameCardProps>(function GameCard({
-  game,
-  entry,
-  onOpen,
-  animationIndex = 0,
-  readOnly = false,
-  quietPress = false,
-  selectionMode = false,
-  selected = false,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-  onPointerLeave,
-  onContextMenu,
-}, ref) {
-  const shouldReduceMotion = useReducedMotion()
-  const activityDate =
-    ratedStatuses.has(entry.status) && entry.completedAt
-      ? entry.completedAt
-      : entry.status === 'playing' && entry.startedAt
-        ? entry.startedAt
-        : entry.addedAt
-
-  return (
-    <motion.button
-      ref={ref}
-      layout="position"
-      className={[
-        'game-card',
-        quietPress && 'game-card--quiet-touch',
-        selectionMode && 'game-card--selection-mode',
-        selected && 'game-card--selected',
-      ].filter(Boolean).join(' ')}
-      disabled={readOnly}
-      aria-pressed={selectionMode ? selected : undefined}
-      aria-label={selectionMode ? `${game.title}, ${selected ? 'выбрано' : 'выбрать'}` : undefined}
-      onClick={onOpen}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      onPointerLeave={onPointerLeave}
-      onContextMenu={onContextMenu}
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 28, scale: .96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={shouldReduceMotion ? undefined : { opacity: 0, scale: .975 }}
-      whileTap={shouldReduceMotion || quietPress ? undefined : { scale: .985 }}
-      transition={{
-        layout: { type: 'spring', stiffness: 430, damping: 34, mass: .72 },
-        opacity: { duration: .3, delay: Math.min(animationIndex, 12) * .045 },
-        scale: { type: 'spring', stiffness: 330, damping: 29, delay: Math.min(animationIndex, 12) * .045 },
-        y: { type: 'spring', stiffness: 335, damping: 29, delay: Math.min(animationIndex, 12) * .045 },
-      }}
-    >
-      <div className="game-card__cover-wrap">
-        <Cover game={game} />
-        {selectionMode && (
-          <span className={selected
-            ? 'game-card__selection game-card__selection--checked'
-            : 'game-card__selection'} aria-hidden="true">
-            {selected && <Icon name="check" size={16} />}
-          </span>
-        )}
-        {entry.score != null && (
-          <span className="score-badge">{entry.score.toFixed(1)}</span>
-        )}
-        {isPlaythrough(entry) && (
-          <span className={`status-badge status-badge--${entry.status}`}>
-            <Icon name={statusIcons[entry.status]} size={12} />
-            <span className="status-badge__label">{statusMeta[entry.status].short}</span>
-            <span className="status-badge__date">{formatCardDate(activityDate)}</span>
-          </span>
-        )}
-      </div>
-      <div className="game-card__body">
-        <h3>{game.title}</h3>
-      </div>
-    </motion.button>
-  )
-})
 
 function App() {
   const shouldReduceMotion = useReducedMotion()
