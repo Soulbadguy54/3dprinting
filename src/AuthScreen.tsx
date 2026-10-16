@@ -212,11 +212,11 @@ export default function AuthScreen({
               value={pin}
               onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 8))}
               placeholder="••••••"
-              minLength={4}
+              minLength={mode === "register" ? 6 : 4}
               maxLength={8}
               required
             />
-            <small>4–8 цифр. На этом устройстве повторно вводить PIN обычно не понадобится.</small>
+            <small>{mode === 'register' ? 'Для новых аккаунтов: 6–8 цифр.' : 'PIN: 4–8 цифр.'} На этом устройстве повторно вводить PIN обычно не понадобится.</small>
           </label>
 
           {mode === 'register' && (
@@ -229,7 +229,7 @@ export default function AuthScreen({
                 value={pinConfirm}
                 onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, '').slice(0, 8))}
                 placeholder="••••••"
-                minLength={4}
+                minLength={6}
                 maxLength={8}
                 required
               />

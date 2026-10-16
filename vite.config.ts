@@ -24,6 +24,8 @@ export default defineConfig({
       process.env.GITHUB_SHA?.slice(0, 8) || 'local'
     ),
   },
+  preview: { proxy: { '/api': 'http://127.0.0.1:8000' } },
+  server: { proxy: { '/api': 'http://127.0.0.1:8000' } },
   plugins: [
     react(),
     VitePWA({
