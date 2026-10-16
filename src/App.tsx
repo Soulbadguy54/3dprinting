@@ -835,6 +835,22 @@ function App() {
   }, [libraryMeasuredControlsHeight])
 
   const catalogGameById = useMemo(() => new Map(catalogGames.map((game) => [game.id, game])), [catalogGames])
+  // Build all memberships in one pass instead of filtering the library once
+  // for every cover on the collections overview.
+  const collectionGamesById = useMemo(() => {
+    const byCollection = new Map<string, Game[]>()
+    for (const entry of entries) {
+      const game = catalogGameById.get(entry.gameId)
+      if (!game) continue
+      for (const collectionId of entry.collectionIds) {
+        const games = byCollection.get(collectionId)
+        if (games) games.push(game)
+        else byCollection.set(collectionId, [game])
+      }
+    }
+    return byCollection
+  }, [entries, catalogGameById])
+
   const sortedCollections = useMemo(() => sortCollections(collections), [collections])
 
   const entryMap = useMemo(
@@ -2989,12 +3005,7 @@ function App() {
         )}
         <section className="collection-grid">
           {sortedCollections.map((collection) => {
-            const items = entries
-              .filter((entry) => entry.collectionIds.includes(collection.id))
-              .flatMap((entry) => {
-                const game = catalogGameById.get(entry.gameId)
-                return game ? [game] : []
-              })
+            const items = collectionGamesById.get(collection.id) ?? []
             return (
               <motion.button
                 className={selectedCollectionIds.includes(collection.id)
