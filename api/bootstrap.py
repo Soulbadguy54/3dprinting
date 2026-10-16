@@ -133,9 +133,9 @@ def initialize_database() -> None:
         # repeating app initialization never re-adds an intentionally removed game.
         connection.exec_driver_sql("""
             WITH created AS (
-                INSERT INTO collections (user_id, slug, title, description, mark, is_system)
+                INSERT INTO collections (user_id, slug, title, description, mark, emoji, is_system)
                 SELECT id, 'wishlist', 'Хочу пройти',
-                       'Игры, которые планирую пройти.', '♡', TRUE
+                       'Игры, которые планирую пройти.', '❤️', '❤️', TRUE
                 FROM users
                 WHERE TRUE
                 ON CONFLICT (user_id, slug) DO NOTHING
@@ -147,6 +147,19 @@ def initialize_database() -> None:
             JOIN user_games AS ug ON ug.user_id = created.user_id
             WHERE ug.status = 'wishlist'
             ON CONFLICT (collection_id, user_game_id) DO NOTHING
+        """)
+        # Existing system collections were created with the outline glyph ♡.
+        # Replace only the visual identity, preserving all game memberships,
+        # titles, themes, and other collection settings.
+        connection.exec_driver_sql("""
+            UPDATE collections
+            SET mark = '❤️', emoji = '❤️', icon_data = NULL
+            WHERE slug = 'wishlist'
+              AND (
+                  mark IS DISTINCT FROM '❤️'
+                  OR emoji IS DISTINCT FROM '❤️'
+                  OR icon_data IS NOT NULL
+              )
         """)
 
         # Legacy membership dates were not tracked. Use original library
