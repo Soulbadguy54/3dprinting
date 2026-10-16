@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
@@ -21,7 +21,7 @@ import {
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import LoadingScreen from './LoadingScreen'
-import PushSettings, { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
+import { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
 import {
   games,
   type Game,
@@ -29,6 +29,8 @@ import {
   type LibraryEntry,
   type LibraryStatus,
 } from './data'
+
+const ProfileView = lazy(() => import('./views/ProfileView'))
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
 
@@ -3062,60 +3064,23 @@ function App() {
   }
 
   const renderProfile = () => (
-    <>
-      <section className="profile-hero profile-hero--compact">
-        <div className="profile-avatar">{authUser?.nickname.slice(0, 1).toUpperCase()}</div>
-        <h1>@{authUser?.nickname}</h1>
-      </section>
-
-      <PushSettings
-        user={authUser?.nickname ?? ''}
-        onOpenWishlist={() => navigateTo({
-          tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
-        })}
-      />
-      <p className="app-build-version">Версия приложения: {__RATEAPP_BUILD__}</p>
-
-      <section className="info-card account-card">
-          <span className="eyebrow">РЕЗЕРВНАЯ КОПИЯ</span>
-          <h2>Экспорт данных</h2>
-          <p className="privacy-note">Сохрани свои прохождения, оценки, отзывы и коллекции в одном JSON-файле. Только твои данные.</p>
-          <a className="account-export-link" href="/api/export" download="rateapp-export.json">
-            <Icon name="download" size={17} /> Скачать данные
-          </a>
-      </section>
-
-      <section className="info-card account-card">
-          <span className="eyebrow">АККАУНТ</span>
-          <h2>Вход и восстановление</h2>
-          <div className="account-row">
-            <span><Icon name="mail" size={18} /><span><small>Email</small>{authUser?.email}</span></span>
-            <button>Изменить</button>
-          </div>
-          <div className="account-row">
-            <span><Icon name="lock" size={18} /><span><small>PIN-код</small>••••••</span></span>
-            <button>Изменить</button>
-          </div>
-          <p className="privacy-note">Email и настройки входа видны только вам. Данные аккаунта защищены настройками входа.</p>
-          <button
-            className="logout-button"
-            onClick={async () => {
-              try { await disconnectPushForLogout() } catch { /* Log out regardless of push API availability. */ }
-              await fetch('/api/auth/logout', { method: 'POST' })
-              clearPushStateCache(authUser?.nickname ?? '')
-              setAuthUser(null)
-              setEntries([])
-              setCollections([])
-              navigateTo(
-                { tab: 'library', gameId: null, collectionId: null, formGameId: null },
-                { replace: true },
-              )
-            }}
-          >
-            Выйти из аккаунта
-          </button>
-        </section>
-    </>
+    <Suspense fallback={<div className="profile-loading">Загружаем профиль…</div>}>
+    <ProfileView
+      user={authUser!}
+      onOpenWishlist={() => navigateTo({
+        tab: 'collections', gameId: null, collectionId: WISHLIST_COLLECTION_ID, formGameId: null,
+      })}
+      onLogout={async () => {
+        try { await disconnectPushForLogout() } catch { /* Log out regardless of push API availability. */ }
+        await fetch('/api/auth/logout', { method: 'POST' })
+        clearPushStateCache(authUser?.nickname ?? '')
+        setAuthUser(null)
+        setEntries([])
+        setCollections([])
+        navigateTo({ tab: 'library', gameId: null, collectionId: null, formGameId: null }, { replace: true })
+      }}
+    />
+    </Suspense>
   )
 
   const nav: { id: Tab; label: string; icon: IconName }[] = [
