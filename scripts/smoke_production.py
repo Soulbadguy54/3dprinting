@@ -1,5 +1,6 @@
 """Safe read-only production smoke; invalid username never touches a real account."""
 import json
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -45,7 +46,7 @@ else:
 for method, endpoint, body, expected in [
     ("GET", "/api/bootstrap", None, 401),
     ("GET", "/api/export", None, 401),
-    ("POST", "/api/auth/login", {"identifier": "rateapp-ci-smoke-nonexistent-20261016", "pin": "12345678"}, 401),
+    ("POST", "/api/auth/login", {"identifier": "ci-nonexistent-" + secrets.token_hex(8), "pin": "12345678"}, 401),
 ]:
     status, _ = probe(method, endpoint, body)
     print(f"{method} {endpoint}: HTTP {status}")
