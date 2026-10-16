@@ -3,7 +3,7 @@ import type { GameCollection } from '../data'
 import { WISHLIST_COLLECTION_ID, COLLECTION_THEMES, collectionThemeStyle } from '../collectionModel'
 import Icon from './Icon'
 
-const AsyncEmojiDisplay = lazy(() => import('./EmojiDisplay'))
+const AsyncEmojiDisplay = lazy(() => import('../EmojiDisplay'))
 
 function RenderEmoji({ unified, size }: { unified: string; size: number }) {
   return (
@@ -28,7 +28,7 @@ export function CollectionIcon({ collection, size = 19 }: { collection: GameColl
   return <Icon name={collection.id === WISHLIST_COLLECTION_ID ? 'heart' : 'layers'} size={size} />
 }
 
-const CollectionEmojiPicker = lazy(() => import('./EmojiPickerPanel'))
+const CollectionEmojiPicker = lazy(() => import('../EmojiPickerPanel'))
 
 const POPULAR_COLLECTION_EMOJIS = ['🎮', '🏆', '💎', '🔥', '⭐', '🎯', '🎁', '💜', '🕹️', '👑', '🚀', '🌌']
 
