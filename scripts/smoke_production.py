@@ -23,10 +23,10 @@ def probe(method, path, body=None):
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             status = response.status
-            content = response.read(4000)
+            content = response.read(65536)
     except urllib.error.HTTPError as err:
         status = err.code
-        content = err.read(4000)
+        content = err.read(65536)
     return status, content
 
 
