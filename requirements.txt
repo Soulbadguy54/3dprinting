@@ -7,3 +7,5 @@ httpx>=0.27,<1
 pywebpush>=2.0,<3
 py-vapid>=1.7,<1.9.5
 alembic==1.16.5
+sentry-sdk>=2.40,<3
+uvicorn>=0.35,<1

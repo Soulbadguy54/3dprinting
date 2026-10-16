@@ -33,6 +33,16 @@ const updatePwa = registerSW({
   },
 })
 
+// Load browser error tracking only if configured; it never blocks the app.
+if (import.meta.env.VITE_SENTRY_DSN) {
+  void import('@sentry/react').then(({ init }) => init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.MODE,
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+  })).catch(() => {})
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {window.location.pathname.replace(/\/+$/, '') === '/install'

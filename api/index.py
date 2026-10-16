@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 import httpx
+import sentry_sdk
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -40,6 +41,16 @@ from api.models import (
     UserGame,
     WISHLIST_SLUG, WISHLIST_TITLE, WISHLIST_DESCRIPTION, WISHLIST_MARK,
 )
+
+# Reporting is opt-in. Disable automatic request-body and PII collection.
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        environment=os.getenv("VERCEL_ENV", "development"),
+        send_default_pii=False,
+        max_request_body_size="never",
+        traces_sample_rate=0,
+    )
 
 app = FastAPI(
     title="RateApp API",
