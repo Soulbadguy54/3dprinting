@@ -53,6 +53,7 @@ type IconName =
   | 'cpu'
   | 'clock'
   | 'video'
+  | 'download'
 
 type Tab = 'library' | 'add' | 'collections' | 'profile'
 
@@ -493,6 +494,7 @@ function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     cpu: <><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/></>,
     clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></>,
     video: <><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="m10 9 5 3-5 3V9Z"/></>,
+    download: <><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M4 17v3h16v-3"/></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
