@@ -3951,3 +3951,6 @@ body:has(.auth-shell) .install-prompt {
 .pwa-update-notice button { background: rgba(168,243,167,.16); color: #a8f3a7; border-radius: 9px; padding: 8px 11px; font-weight: 800; }
 .pwa-update-notice button:last-child { padding: 8px 10px; background: transparent; color: #b2bcc9; font-size: 18px; }
 .app-build-version { color: #838d9e; text-align: center; font-size: 10px; margin: 8px auto 18px; }
+
+/* Never cover login/registration controls with the install suggestion. */
+body:has(.auth-shell) .install-prompt { display: none; }

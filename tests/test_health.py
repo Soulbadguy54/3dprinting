@@ -1,15 +1,15 @@
-"""API health is a readiness check, not a false positive when DB is down."""
+"""Readiness must fail with HTTP 503 on database outages."""
+import unittest
 from unittest.mock import patch
-
 from fastapi.testclient import TestClient
-
 from api import index
 
 
-def test_health_returns_503_without_database():
-    with patch.object(index, "engine", None):
-        with TestClient(index.app) as client:
-            r = client.get("/api/health")
-            assert r.status_code == 503
-            assert r.json()["ok"] is False
-            assert r.json()["database"]["reachable"] is False
+class HealthTests(unittest.TestCase):
+    def test_health_returns_503_without_database(self):
+        with patch.object(index, "engine", None):
+            with TestClient(index.app) as client:
+                response = client.get("/api/health")
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])
+        self.assertFalse(response.json()["database"]["reachable"])

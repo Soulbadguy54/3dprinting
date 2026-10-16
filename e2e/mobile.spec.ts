@@ -24,6 +24,9 @@ test('mobile registration, collections and account backup', async ({ page }) => 
   await page.locator('input[autocomplete=new-password]').last().fill('29843571')
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
   await expect(page.locator('.bottom-nav')).toBeVisible()
+  // PWA install invite may appear after login. Dismiss before tapping bottom nav.
+  const installClose = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await installClose.isVisible()) await installClose.click()
 
   await page.locator('.bottom-nav__item').filter({ hasText: 'Коллекции' }).click()
   await expect(page.getByRole('heading', { name: 'Коллекции' })).toBeVisible()
