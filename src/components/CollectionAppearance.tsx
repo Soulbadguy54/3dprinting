@@ -18,6 +18,11 @@ function emojiUnified(emoji: string): string {
 }
 
 export function CollectionIcon({ collection, size = 19 }: { collection: GameCollection; size?: number }) {
+  // Protected system collection always uses the same red emoji, including
+  // for clients that still have the old outlined heart in their cached data.
+  if (collection.id === WISHLIST_COLLECTION_ID) {
+    return <RenderEmoji unified="2764-fe0f" size={size} />
+  }
   if (collection.emoji) {
     return <RenderEmoji unified={emojiUnified(collection.emoji)} size={size} />
   }

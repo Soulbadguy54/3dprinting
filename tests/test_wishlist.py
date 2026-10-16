@@ -192,8 +192,43 @@ class WishlistApiTests(unittest.TestCase):
         self.assertEqual(len(wishes), 1)
         self.assertTrue(wishes[0]["isSystem"])
         self.assertEqual(wishes[0]["title"], "Хочу пройти")
+        self.assertEqual(wishes[0]["emoji"], "❤️")
+        self.assertEqual(wishes[0]["mark"], "❤️")
         forbidden = self.client.delete(f"/api/collections/{WISHLIST_SLUG}")
         self.assertEqual(forbidden.status_code, 403)
+
+    def test_legacy_wishlist_icon_is_migrated_without_losing_collection(self):
+        original = next(
+            item for item in self.client.get("/api/collections").json()
+            if item["id"] == WISHLIST_SLUG
+        )
+        with SessionLocal() as session:
+            user_id = session.scalar(select(User.id).where(User.nickname == self.nickname))
+            wishlist = session.scalar(select(Collection).where(
+                Collection.user_id == user_id, Collection.slug == WISHLIST_SLUG,
+            ))
+            self.assertIsNotNone(wishlist)
+            old_id = wishlist.id
+            wishlist.mark = "♡"
+            wishlist.emoji = None
+            session.commit()
+
+        initialize_database()
+
+        with SessionLocal() as session:
+            user_id = session.scalar(select(User.id).where(User.nickname == self.nickname))
+            wishlist = session.scalar(select(Collection).where(
+                Collection.user_id == user_id, Collection.slug == WISHLIST_SLUG,
+            ))
+            self.assertEqual(wishlist.id, old_id)
+        refreshed = next(
+            item for item in self.client.get("/api/collections").json()
+            if item["id"] == WISHLIST_SLUG
+        )
+        self.assertEqual(refreshed["mark"], "❤️")
+        self.assertEqual(refreshed["emoji"], "❤️")
+        self.assertEqual(refreshed["title"], original["title"])
+        self.assertEqual(refreshed["colorScheme"], original["colorScheme"])
 
     def test_system_collection_only_allows_removing_games(self):
         self.client.put(f"/api/library/{self.game_id}/wishlist")

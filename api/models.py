@@ -10,7 +10,7 @@ from api.database import Base
 WISHLIST_SLUG = "wishlist"
 WISHLIST_TITLE = "Хочу пройти"
 WISHLIST_DESCRIPTION = "Игры, которые планирую пройти."
-WISHLIST_MARK = "♡"
+WISHLIST_MARK = "❤️"
 
 
 class User(Base):
