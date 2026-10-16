@@ -12,8 +12,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'Android Chromium', use: { ...devices['Pixel 7'], browserName: 'chromium' } },
-    { name: 'iPhone WebKit', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
+    { name: 'Android Chromium', testIgnore: '**/desktop.spec.ts', use: { ...devices['Pixel 7'], browserName: 'chromium' } },
+    { name: 'iPhone WebKit', testIgnore: '**/desktop.spec.ts', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
+    { name: 'Desktop Chrome', testMatch: '**/desktop.spec.ts', use: { ...devices['Desktop Chrome'], browserName: 'chromium' } },
   ],
   webServer: [
     {

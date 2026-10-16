@@ -6,6 +6,7 @@ import InstallPrompt from './InstallPrompt'
 import DesktopGate from './DesktopGate'
 import InstallPage from './InstallPage'
 import PwaUpdateNotice from './PwaUpdateNotice'
+import AppErrorBoundary from './AppErrorBoundary'
 import './collectionCards.css'
 import './ratingWheel.css'
 import './styles.css'
@@ -46,12 +47,14 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {window.location.pathname.replace(/\/+$/, '') === '/install'
-      ? <InstallPage />
-      : <DesktopGate>
-          <App />
-          <InstallPrompt />
-          <PwaUpdateNotice onUpdate={() => { void updatePwa(true) }} />
-        </DesktopGate>}
+    <AppErrorBoundary>
+      {window.location.pathname.replace(/\/+$/, '') === '/install'
+        ? <InstallPage />
+        : <DesktopGate>
+            <App />
+            <InstallPrompt />
+            <PwaUpdateNotice onUpdate={() => { void updatePwa(true) }} />
+          </DesktopGate>}
+    </AppErrorBoundary>
   </StrictMode>,
 )

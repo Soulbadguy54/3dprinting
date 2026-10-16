@@ -29,9 +29,14 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['rateapp-icon-192.png', 'rateapp-icon-512.png', 'rateapp-icon.svg', 'rateapp-loading-gamepad.avif', 'push-sw.js'],
       workbox: {
+        // An old worker waiting forever to be approved can keep serving stale
+        // HTML that references JS chunks deleted by a newer Vercel deployment.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         navigateFallbackDenylist: [/^\/api\//],
         importScripts: ['/push-sw.js'],
       },

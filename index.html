@@ -18,9 +18,70 @@
     <link rel="prefetch" as="image" href="/brand/nintendoswitch.svg" />
     <link rel="prefetch" as="image" href="/brand/youtube.svg" />
     <title>RateApp — мои игры</title>
+        <style>
+      .rateapp-startup { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 18px; padding: 24px; text-align: center; background: radial-gradient(circle at 85% -10%, rgba(108,77,255,.13), transparent 29rem), #0b0d12; color: #f7f7fa; font-family: system-ui, sans-serif; }
+      .rateapp-startup h1 { margin: 0; font-size: 26px; font-weight: 800; }
+      .rateapp-startup p { max-width: 320px; color: #afb9c8; font-size: 14px; line-height: 1.6; }
+      .rateapp-startup button { background: #a8f3a7; color: #0b1410; border: 0; border-radius: 12px; padding: 13px 18px; font: inherit; font-weight: 800; cursor: pointer; }
+    </style>
+    <script>
+      // Runs before the versioned JS bundle. If Chrome has cached an old PWA
+      // shell whose chunk is now 404, React never mounts; don't leave it blank.
+      (function () {
+        var booted = false;
+        function stillStarting() {
+          var root = document.getElementById('root');
+          return root && (root.querySelector('[data-rateapp-startup]') || !root.children.length);
+        }
+        function failed() {
+          if (booted || !stillStarting()) return;
+          booted = true;
+          var root = document.getElementById('root');
+          if (!root) return;
+          root.innerHTML = '<main class="rateapp-startup" data-rateapp-recovery role="alert"><h1>RateApp</h1><p>Не удалось загрузить приложение. Возможно, Chrome сохранил файлы старой версии.</p><button type="button" id="rateapp-recover">Восстановить загрузку</button></main>';
+          document.getElementById('rateapp-recover').addEventListener('click', function () {
+            var button = document.getElementById('rateapp-recover');
+            button.disabled = true;
+            button.textContent = 'Обновляем приложение…';
+            (async function () {
+              try {
+                if ('serviceWorker' in navigator) {
+                  var registrations = await navigator.serviceWorker.getRegistrations();
+                  await Promise.all(registrations.filter(function (r) {
+                    return r.scope.indexOf(location.origin + '/') === 0;
+                  }).map(function (r) { return r.unregister(); }));
+                }
+                if ('caches' in window) {
+                  var names = await caches.keys();
+                  await Promise.all(names.filter(function (name) {
+                    return /workbox|precache|rateapp/i.test(name);
+                  }).map(function (name) { return caches.delete(name); }));
+                }
+              } catch (error) { /* A reload still works without cache access. */ }
+              var url = new URL(location.href);
+              url.searchParams.set('_rateapp_refresh', String(Date.now()));
+              location.replace(url.href);
+            })();
+          });
+        }
+        window.addEventListener('error', function (event) {
+          var el = event.target;
+          if (el && el.tagName === 'SCRIPT') failed();
+        }, true);
+        window.addEventListener('unhandledrejection', function () {
+          if (stillStarting()) failed();
+        });
+        window.setTimeout(failed, 12000);
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="rateapp-startup" data-rateapp-startup role="status" aria-live="polite">
+        <h1>RateApp</h1>
+        <p>Загружаем приложение…</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

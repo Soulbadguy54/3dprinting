@@ -1,5 +1,6 @@
 """Safe read-only production smoke; invalid username never touches a real account."""
 import json
+import re
 import secrets
 import time
 import urllib.error
@@ -28,6 +29,21 @@ def probe(method, path, body=None):
         content = err.read(4000)
     return status, content
 
+
+# Detect HTML that references a missing JS bundle before a user hits a blank
+# screen. Old HTML may live in a browser service worker; that is handled by
+# the inline recovery UI in index.html.
+page_status, html_bytes = probe("GET", "/")
+if page_status != 200:
+    raise SystemExit(f"Production landing page failed: {page_status}")
+script_match = re.search(rb'<script[^>]+src="(/assets/[^"]+\.js)"', html_bytes)
+if not script_match:
+    raise SystemExit("Production HTML does not reference a hashed JS bundle")
+script_path = script_match.group(1).decode("ascii")
+script_status, _ = probe("GET", script_path)
+print(f"GET {script_path}: HTTP {script_status}")
+if script_status != 200:
+    raise SystemExit("Production JS bundle is unavailable")
 
 # The latest Git deployment can still be rolling out when CI finishes.
 for attempt in range(12):
