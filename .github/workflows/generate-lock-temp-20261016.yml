@@ -1,0 +1,27 @@
+name: Generate RateApp package lock (temporary)
+on:
+  push:
+    branches: [probe/stash-source-20261015]
+permissions:
+  contents: write
+jobs:
+  generate-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Produce reproducible lockfile for current main dependencies
+        run: |
+          git fetch origin main
+          git show origin/main:package.json > package.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'Generate reproducible npm dependency lockfile'
+          git push origin HEAD:probe/stash-source-20261015
