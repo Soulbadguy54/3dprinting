@@ -1,5 +1,9 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from 'react'
+import {
+  WISHLIST_COLLECTION_ID, COLLECTION_THEMES, collectionThemeStyle,
+  sortCollections, sortCollectionsForGame, isPlaythrough, withCollectionMembership,
+} from './collectionModel'
 import {
   AnimatePresence,
   LayoutGroup,
@@ -12,8 +16,7 @@ import {
 } from 'motion/react'
 import AuthScreen, { type AuthUser } from './AuthScreen'
 import LoadingScreen from './LoadingScreen'
-import EmojiPicker, { Emoji as RenderEmoji, EmojiStyle, Theme } from 'emoji-picker-react'
-import russianEmojis from 'emoji-picker-react/dist/data/emojis-ru'
+import { Emoji as RenderEmoji, EmojiStyle } from 'emoji-picker-react'
 import PushSettings, { PushOnboarding, clearPushStateCache, disconnectPushForLogout, preloadPushState } from './PushSettings'
 import {
   games,
@@ -170,30 +173,6 @@ type GameSearchPage = {
 }
 
 type SearchSource = 'local' | 'igdb'
-const WISHLIST_COLLECTION_ID = 'wishlist'
-
-const COLLECTION_THEMES = [
-  { id: 'violet', name: 'Фиолетовый', accent: '#c4a2ff', shade: '#7b46c7', glow: 'rgba(155, 105, 230, .22)' },
-  { id: 'rose', name: 'Розовый', accent: '#ffa2ca', shade: '#b94478', glow: 'rgba(235, 87, 153, .22)' },
-  { id: 'blue', name: 'Синий', accent: '#8ebaff', shade: '#366ac1', glow: 'rgba(75, 129, 225, .24)' },
-  { id: 'cyan', name: 'Голубой', accent: '#85ddf2', shade: '#238ba8', glow: 'rgba(50, 170, 198, .23)' },
-  { id: 'teal', name: 'Бирюзовый', accent: '#7ee2d7', shade: '#218e88', glow: 'rgba(47, 181, 166, .22)' },
-  { id: 'emerald', name: 'Зелёный', accent: '#92e9ae', shade: '#35895a', glow: 'rgba(59, 175, 102, .22)' },
-  { id: 'lime', name: 'Лаймовый', accent: '#d7ee86', shade: '#859831', glow: 'rgba(175, 194, 65, .21)' },
-  { id: 'amber', name: 'Жёлтый', accent: '#f8d783', shade: '#ae7b29', glow: 'rgba(221, 171, 57, .21)' },
-  { id: 'orange', name: 'Оранжевый', accent: '#ffb285', shade: '#bc623a', glow: 'rgba(226, 120, 64, .22)' },
-  { id: 'slate', name: 'Серый', accent: '#b8c7d8', shade: '#61758d', glow: 'rgba(117, 143, 171, .20)' },
-] as const
-
-function collectionThemeStyle(collection: GameCollection): CSSProperties {
-  const id = collection.colorScheme ?? (collection.id === WISHLIST_COLLECTION_ID ? 'rose' : 'violet')
-  const theme = COLLECTION_THEMES.find((choice) => choice.id === id) ?? COLLECTION_THEMES[0]
-  return {
-    '--collection-accent': theme.accent,
-    '--collection-shade': theme.shade,
-    '--collection-glow': theme.glow,
-  } as CSSProperties
-}
 
 function emojiUnified(emoji: string): string {
   return Array.from(emoji).map((character) => character.codePointAt(0)!.toString(16)).join('-')
@@ -209,6 +188,8 @@ function CollectionIcon({ collection, size = 19 }: { collection: GameCollection;
   // Default symbols match the layered Collections icon in the bottom navigation.
   return <Icon name={collection.id === WISHLIST_COLLECTION_ID ? 'heart' : 'layers'} size={size} />
 }
+
+const CollectionEmojiPicker = lazy(() => import('./EmojiPickerPanel'))
 
 const POPULAR_COLLECTION_EMOJIS = ['🎮', '🏆', '💎', '🔥', '⭐', '🎯', '🎁', '💜', '🕹️', '👑', '🚀', '🌌']
 
@@ -276,79 +257,17 @@ function CollectionAppearanceEditor({
         </div>
         {pickerOpen && (
           <div className="collection-emoji-full-picker">
-            <EmojiPicker
-              theme={Theme.DARK}
-              emojiData={russianEmojis}
-              emojiStyle={EmojiStyle.TWITTER}
-              width="100%"
-              height={340}
-              lazyLoadEmojis
-              autoFocusSearch={false}
-              searchPlaceholder="Поиск эмодзи"
-              previewConfig={{ showPreview: false }}
-              onEmojiClick={(value) => {
-                onEmojiChange(value.emoji)
+            <Suspense fallback={<p className="collection-picker-loading">Загружаем эмодзи…</p>}>
+              <CollectionEmojiPicker onSelect={(value) => {
+                onEmojiChange(value)
                 setPickerOpen(false)
-              }}
-            />
+              }} />
+            </Suspense>
           </div>
         )}
       </div>
     </div>
   )
-}
-
-const sortCollections = (items: GameCollection[]) =>
-  [...items].sort((a, b) =>
-    a.id === WISHLIST_COLLECTION_ID ? -1 :
-    b.id === WISHLIST_COLLECTION_ID ? 1 :
-    a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' }),
-  )
-
-// Wishlist first; then already-added collections alphabetically; then remaining.
-const sortCollectionsForGame = (items: GameCollection[], memberships: string[]) => {
-  const selected = new Set(memberships)
-  return [...items].sort((a, b) => {
-    if (a.id === WISHLIST_COLLECTION_ID) return -1
-    if (b.id === WISHLIST_COLLECTION_ID) return 1
-    if (selected.has(a.id) !== selected.has(b.id)) return selected.has(a.id) ? -1 : 1
-    return a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' })
-  })
-}
-
-
-// A collection-only entry tracks membership but is not a playthrough.
-const isPlaythrough = (entry?: LibraryEntry): entry is LibraryEntry =>
-  Boolean(entry && ['completed', 'playing', 'dropped'].includes(entry.status))
-
-// Optimistic update that preserves existing playthrough data and other collections.
-function withCollectionMembership(
-  entries: LibraryEntry[], gameId: number, collectionId: string, enabled: boolean,
-): LibraryEntry[] {
-  const entry = entries.find((item) => item.gameId === gameId)
-  if (!entry) {
-    if (!enabled) return entries
-    return [...entries, {
-      gameId,
-      status: 'untracked',
-      collectionIds: [collectionId],
-      collectionAddedAt: { [collectionId]: new Date().toISOString() },
-      addedAt: new Date().toISOString().slice(0, 10),
-    }]
-  }
-
-  const collectionIds = enabled
-    ? Array.from(new Set([...entry.collectionIds, collectionId]))
-    : entry.collectionIds.filter((id) => id !== collectionId)
-  const others = entries.filter((item) => item.gameId !== gameId)
-  const collectionAddedAt = { ...entry.collectionAddedAt }
-  if (enabled && !entry.collectionIds.includes(collectionId)) {
-    collectionAddedAt[collectionId] = new Date().toISOString()
-  }
-  if (!enabled) delete collectionAddedAt[collectionId]
-  return !isPlaythrough(entry) && collectionIds.length === 0
-    ? others
-    : [...others, { ...entry, collectionIds, collectionAddedAt }]
 }
 
 type CollectionUpdate = {
@@ -1343,6 +1262,9 @@ function App() {
     })
   }, [libraryMeasuredControlsHeight])
 
+  const catalogGameById = useMemo(() => new Map(catalogGames.map((game) => [game.id, game])), [catalogGames])
+  const sortedCollections = useMemo(() => sortCollections(collections), [collections])
+
   const entryMap = useMemo(
     () => new Map(entries.map((entry) => [entry.gameId, entry])),
     [entries],
@@ -1376,7 +1298,7 @@ function App() {
   const availableGenres = useMemo(() => Array.from(new Set([
     ...genreCatalog,
     ...personalLibraryEntries.flatMap((entry) =>
-      catalogGames.find((game) => game.id === entry.gameId)?.genres ?? [],
+      catalogGameById.get(entry.gameId)?.genres ?? [],
     ),
   ])).sort((a, b) => a.localeCompare(b, 'ru')), [genreCatalog, personalLibraryEntries, catalogGames])
 
@@ -1391,7 +1313,7 @@ function App() {
 
     const result = personalLibraryEntries
       .filter((entry) => statusFilters.length === 0 || statusFilters.includes(entry.status))
-      .map((entry) => ({ entry, game: catalogGames.find((game) => game.id === entry.gameId)! }))
+      .map((entry) => ({ entry, game: catalogGameById.get(entry.gameId)! }))
       .filter(({ game, entry }) => {
         const queryMatch =
           !normalized ||
@@ -1429,7 +1351,7 @@ function App() {
         || a.game.title.localeCompare(b.game.title, 'ru', { sensitivity: 'base' })
         || a.game.id - b.game.id
     })
-  }, [personalLibraryEntries, query, statusFilters, genreFilter, platformFilter, sortMode, catalogGames])
+  }, [personalLibraryEntries, query, statusFilters, genreFilter, platformFilter, sortMode, catalogGameById])
 
   const activeExtraFilters =
     (genreFilter !== 'all' ? 1 : 0) +
@@ -1799,7 +1721,7 @@ function App() {
   }
 
   const saveGame = async () => {
-    const game = catalogGames.find((item) => item.id === addGameId)
+    const game = catalogGameById.get(addGameId!)
     if (!game) return
 
     const today = new Date().toISOString().slice(0, 10)
@@ -2209,7 +2131,7 @@ function App() {
   }, [authUser, selectedGameId, gameDetailsById, failedGameDetailsId, rememberCatalogResults])
 
   const selectedEntry = selectedGameId ? entryMap.get(selectedGameId) : undefined
-  const selectedGame = selectedGameId ? catalogGames.find((game) => game.id === selectedGameId) : undefined
+  const selectedGame = selectedGameId ? catalogGameById.get(selectedGameId!) : undefined
 
   const renderDetail = () => {
     if (!selectedGame) {
@@ -2324,7 +2246,7 @@ function App() {
                 const collectionGames = entries
                   .filter((entry) => entry.collectionIds.includes(collection.id))
                   .flatMap((entry) => {
-                    const game = catalogGames.find((item) => item.id === entry.gameId)
+                    const game = catalogGameById.get(entry.gameId)
                     return game ? [game] : []
                   })
                 return (
@@ -2877,7 +2799,7 @@ function App() {
   )
 
   const renderAdd = () => {
-    const addGame = addGameId ? catalogGames.find((game) => game.id === addGameId) : undefined
+    const addGame = addGameId ? catalogGameById.get(addGameId!) : undefined
     const entryForGame = addGame ? entryMap.get(addGame.id) : undefined
     const editingEntry = isPlaythrough(entryForGame) ? entryForGame : undefined
 
@@ -3210,7 +3132,7 @@ function App() {
         entry.collectionIds.includes(collection.id) && (!editing || !removedCollectionGameIds.includes(entry.gameId)),
       )
       const sortedCollectionEntries = collectionEntries.flatMap((entry) => {
-        const game = catalogGames.find((item) => item.id === entry.gameId)
+        const game = catalogGameById.get(entry.gameId)
         return game ? [{ entry, game }] : []
       }).sort((a, b) => {
         const addedA = a.entry.collectionAddedAt?.[collection.id] ?? a.entry.addedAt
@@ -3494,11 +3416,11 @@ function App() {
           </div>
         )}
         <section className="collection-grid">
-          {sortCollections(collections).map((collection) => {
+          {sortedCollections.map((collection) => {
             const items = entries
               .filter((entry) => entry.collectionIds.includes(collection.id))
               .flatMap((entry) => {
-                const game = catalogGames.find((candidate) => candidate.id === entry.gameId)
+                const game = catalogGameById.get(entry.gameId)
                 return game ? [game] : []
               })
             return (
@@ -3512,9 +3434,9 @@ function App() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{
                   layout: { type: 'spring', stiffness: 380, damping: 32 },
-                  opacity: { duration: .3, delay: Math.min(sortCollections(collections).findIndex((item) => item.id === collection.id), 12) * .055 },
-                  y: { type: 'spring', stiffness: 320, damping: 30, delay: Math.min(sortCollections(collections).findIndex((item) => item.id === collection.id), 12) * .055 },
-                  scale: { type: 'spring', stiffness: 320, damping: 30, delay: Math.min(sortCollections(collections).findIndex((item) => item.id === collection.id), 12) * .055 },
+                  opacity: { duration: .3, delay: Math.min(sortedCollections.findIndex((item) => item.id === collection.id), 12) * .055 },
+                  y: { type: 'spring', stiffness: 320, damping: 30, delay: Math.min(sortedCollections.findIndex((item) => item.id === collection.id), 12) * .055 },
+                  scale: { type: 'spring', stiffness: 320, damping: 30, delay: Math.min(sortedCollections.findIndex((item) => item.id === collection.id), 12) * .055 },
                 }}
                 style={collectionThemeStyle(collection)}
                 aria-pressed={selectedCollectionIds.length > 0 ? selectedCollectionIds.includes(collection.id) : undefined}
