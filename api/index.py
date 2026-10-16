@@ -13,7 +13,6 @@ from typing import Literal
 
 import httpx
 import sentry_sdk
-from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -22,6 +21,11 @@ from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
+from api.security import (
+    PIN_RE, NICK_RE, SESSION_COOKIE, password_hasher,
+    _session, _now, _hash_token, _current_user, _create_session,
+    _check_throttle, _record_login_failure, _clear_throttle, _user_payload,
+)
 from api.data_integrity import playthrough_integrity_summary
 from api.push import push_ready, send_push, valid_push_endpoint
 from api.database import SessionLocal, engine
@@ -62,13 +66,6 @@ app = FastAPI(
 # Database schema is upgraded by `alembic upgrade head` outside the request path.
 # Never run schema changes at cold start: one malformed historic row can break login.
 
-PIN_RE = re.compile(r"^\d{4,8}$")
-NICK_RE = re.compile(r"^[a-z0-9_]{3,16}$")
-SESSION_COOKIE = "rateapp_session"
-SESSION_DAYS = 30
-MAX_LOGIN_FAILURES = 5
-LOCK_MINUTES = 15
-password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 _igdb_token: str | None = None
 _igdb_token_expires_at = 0.0
 
@@ -194,105 +191,6 @@ class PushSubscriptionPayload(BaseModel):
 
 class PushTestPayload(BaseModel):
     gameId: int
-
-
-def _session():
-    if SessionLocal is None:
-        raise HTTPException(status_code=503, detail="Database is not configured")
-    return SessionLocal()
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _set_session_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=token,
-        max_age=SESSION_DAYS * 24 * 60 * 60,
-        httponly=True,
-        secure=os.getenv("VERCEL_ENV") != "development",
-        samesite="lax",
-        path="/",
-    )
-
-
-def _user_payload(user: User) -> dict[str, object]:
-    return {
-        "id": user.id,
-        "email": user.email,
-        "nickname": user.nickname,
-        "createdAt": user.created_at.isoformat(),
-        "public": True,
-    }
-
-
-def _create_session(session, user: User, response: Response) -> None:
-    token = secrets.token_urlsafe(32)
-    session.add(
-        AuthSession(
-            user_id=user.id,
-            token_hash=_hash_token(token),
-            expires_at=_now() + timedelta(days=SESSION_DAYS),
-        )
-    )
-    session.commit()
-    _set_session_cookie(response, token)
-
-
-def _current_user(request: Request, session) -> User:
-    token = request.cookies.get(SESSION_COOKIE)
-    if not token:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    row = session.scalar(
-        select(AuthSession).where(
-            AuthSession.token_hash == _hash_token(token),
-            AuthSession.expires_at > _now(),
-        )
-    )
-    if row is None:
-        raise HTTPException(status_code=401, detail="Session expired")
-
-    user = session.get(User, row.user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    return user
-
-
-def _check_throttle(session, identifier: str) -> None:
-    row = session.get(LoginThrottle, identifier)
-    if row is None or row.locked_until is None:
-        return
-    if row.locked_until > _now():
-        raise HTTPException(status_code=429, detail="Слишком много попыток. Попробуйте через 15 минут.")
-    session.delete(row)
-    session.commit()
-
-
-def _record_login_failure(session, identifier: str) -> None:
-    row = session.get(LoginThrottle, identifier)
-    if row is None:
-        row = LoginThrottle(identifier=identifier, failures=0)
-        session.add(row)
-
-    row.failures += 1
-    if row.failures >= MAX_LOGIN_FAILURES:
-        row.failures = 0
-        row.locked_until = _now() + timedelta(minutes=LOCK_MINUTES)
-    session.commit()
-
-
-def _clear_throttle(session, identifier: str) -> None:
-    row = session.get(LoginThrottle, identifier)
-    if row is not None:
-        session.delete(row)
-        session.commit()
 
 
 def _igdb_credentials() -> tuple[str, str]:
