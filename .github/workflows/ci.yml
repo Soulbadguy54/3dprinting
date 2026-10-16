@@ -94,3 +94,12 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Mobile real-browser test suite
         run: npm run test:e2e
+
+  production-smoke:
+    if: github.ref == 'refs/heads/main'
+    needs: [build, backend-tests, mobile-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify production database, API and login responses
+        run: python scripts/smoke_production.py
