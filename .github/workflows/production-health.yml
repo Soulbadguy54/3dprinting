@@ -1,0 +1,21 @@
+name: RateApp daily production health
+
+on:
+  schedule:
+    # UTC; lightweight checks run once daily independently of deployments.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Production database and authentication smoke
+        run: python scripts/smoke_production.py
