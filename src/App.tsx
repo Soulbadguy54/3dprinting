@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
-import RatingWheel from './components/RatingWheel'
+import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
   WISHLIST_COLLECTION_ID, collectionThemeStyle,
@@ -1277,7 +1277,7 @@ function App() {
   const editingFromDetailRef = useRef(false)
 
   const startAdding = (game: Game) => {
-    editingFromDetailRef.current = false
+    editingFromDetailRef.current = currentViewRef.current.gameId === game.id
     setAddStatus('completed')
     setAddPlatform(preferredPlatform(game.platforms))
     setAddDate(new Date().toISOString().slice(0, 10))
@@ -1298,10 +1298,10 @@ function App() {
     setAddPlatform(entry.platform ?? preferredPlatform(game.platforms))
     setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
     const fallbackScore = entry.score ?? 8
-    setAddAtmosphereScore(entry.atmosphereScore ?? fallbackScore)
-    setAddStoryScore(entry.storyScore ?? fallbackScore)
-    setAddTechnologyScore(entry.technologyScore ?? fallbackScore)
-    setAddGameplayScore(entry.gameplayScore ?? fallbackScore)
+    setAddAtmosphereScore(closestHalfPoint(entry.atmosphereScore ?? fallbackScore))
+    setAddStoryScore(closestHalfPoint(entry.storyScore ?? fallbackScore))
+    setAddTechnologyScore(closestHalfPoint(entry.technologyScore ?? fallbackScore))
+    setAddGameplayScore(closestHalfPoint(entry.gameplayScore ?? fallbackScore))
     setAddReview(entry.review ?? '')
     setAddReviewOpen(Boolean(entry.review))
     setAddCollectionIds(entry.collectionIds)
@@ -1353,7 +1353,8 @@ function App() {
       return
     }
 
-    setAddQuery('')
+    // Keep the search text/results in memory so Back from the saved game
+    // returns to the original database results.
     const gameView: AppView = { tab: 'library', gameId: game.id, collectionId: null, formGameId: null }
     if (editingFromDetailRef.current) {
       editingFromDetailRef.current = false
