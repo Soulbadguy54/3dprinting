@@ -105,6 +105,49 @@ class WishlistApiTests(unittest.TestCase):
         })
         self.assertEqual(bad_date.status_code, 422, bad_date.text)
 
+    def test_community_rating_is_fresh_after_another_account_rates(self):
+        url = f"/api/games/{self.game_id}/community-rating"
+        first = self.client.get(url)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.headers["cache-control"], "no-store")
+        self.assertEqual(first.json()["communityRatings"], 0)
+
+        playthrough = {
+            "status": "completed", "platform": "PC",
+            "completedAt": "2026-10-15",
+            "atmosphereScore": 8, "storyScore": 8,
+            "technologyScore": 8, "gameplayScore": 8,
+        }
+        saved = self.client.put(f"/api/library/{self.game_id}", json=playthrough)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["game"]["communityRating"], 8)
+        self.assertEqual(saved.json()["game"]["communityRatings"], 1)
+
+        second = TestClient(index.app, base_url="https://testserver")
+        try:
+            suffix = secrets.token_hex(5)
+            registered = second.post("/api/auth/register", json={
+                "email": f"{suffix}@example.com", "nickname": f"test_{suffix}",
+                "pin": "12348765",
+            })
+            self.assertEqual(registered.status_code, 201, registered.text)
+            another = second.put(f"/api/library/{self.game_id}", json={
+                **playthrough,
+                "atmosphereScore": 8.5, "storyScore": 8.5,
+                "technologyScore": 8.5, "gameplayScore": 8.5,
+            })
+            self.assertEqual(another.status_code, 200, another.text)
+            # 8.25 rounds up to 8.3, not Python's banker's 8.2.
+            self.assertEqual(another.json()["game"]["communityRating"], 8.3)
+            self.assertEqual(another.json()["game"]["communityRatings"], 2)
+
+            refreshed = self.client.get(url)
+            self.assertEqual(refreshed.status_code, 200, refreshed.text)
+            self.assertEqual(refreshed.json()["communityRating"], 8.3)
+            self.assertEqual(refreshed.json()["communityRatings"], 2)
+        finally:
+            second.close()
+
     def test_database_rejects_incomplete_ratings_even_without_api(self):
         from sqlalchemy import text
         from sqlalchemy.exc import IntegrityError
