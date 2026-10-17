@@ -101,7 +101,7 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
   expect(fresh.status()).toBe(200)
   const freshData = await fresh.json() as { communityRating: number; communityRatings: number }
   expect(freshData.communityRatings).toBeGreaterThanOrEqual(1)
-  await expect(page.locator('.detail-rating-panel--community .detail-rating-panel__score'))
+  await expect(page.locator('.detail-rating-panel--community .detail-rating-panel__score strong'))
     .toHaveText(freshData.communityRating.toFixed(1))
 
   // Saving must pop back to the original game entry, not replace the form
