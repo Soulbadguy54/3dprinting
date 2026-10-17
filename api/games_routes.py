@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import case, delete, func, or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from api.security import _session, _current_user, _now
 from api.library_service import _community_rating_map, _game_payload

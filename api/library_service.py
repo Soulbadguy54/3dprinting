@@ -1,6 +1,7 @@
 """FastAPI-independent library and game serialization/query services."""
 import json
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import selectinload
 from api.models import (
@@ -24,7 +25,7 @@ def _community_rating_map(session, game_ids: list[int]) -> dict[int, tuple[float
         .group_by(UserGame.game_id)
     ).all()
     return {
-        int(game_id): (round(float(average), 1), int(count))
+        int(game_id): (float(Decimal(average).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)), int(count))
         for game_id, average, count in rows
     }
 

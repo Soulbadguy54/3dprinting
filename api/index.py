@@ -175,6 +175,23 @@ def bootstrap(request: Request) -> dict[str, object]:
         }
 
 
+@app.get("/api/games/{game_id}/community-rating")
+def get_community_rating(game_id: int, request: Request, response: Response) -> dict[str, object]:
+    """Fresh, inexpensive aggregate for the game detail page.
+
+    This query is independent from IGDB enrichment and browser search caches.
+    The user's just-committed rating and other recent ratings both count.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    with _session() as session:
+        _current_user(request, session)
+        game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+        if game is None:
+            raise HTTPException(status_code=404, detail="Игра не найдена.")
+        rating, voters = _community_rating_map(session, [game.id]).get(game.id, (0.0, 0))
+        return {"gameId": game_id, "communityRating": rating, "communityRatings": voters}
+
+
 @app.get("/api/users/{nickname}")
 def public_profile(nickname: str) -> dict[str, object]:
     with _session() as session:

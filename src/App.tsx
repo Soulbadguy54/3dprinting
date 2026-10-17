@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import GameCard, { Cover } from './components/GameCard'
 import { ratedStatuses, statusIcons, statusMeta } from './statusPresentation'
 import Icon, { type IconName } from './components/Icon'
-import RatingWheel from './components/RatingWheel'
+import RatingWheel, { closestHalfPoint } from './components/RatingWheel'
 import { CollectionIcon, CollectionAppearanceEditor } from './components/CollectionAppearance'
 import {
   WISHLIST_COLLECTION_ID, collectionThemeStyle,
@@ -950,11 +950,18 @@ function App() {
     setPlatformFilter('all')
   }
 
-  const rememberCatalogResults = useCallback((results: Game[]) => {
+  const rememberCatalogResults = useCallback((results: Game[], preserveCommunityRating = false) => {
     if (results.length === 0) return
     setCatalogGames((current) => {
       const merged = new Map(current.map((game) => [game.id, game]))
-      results.forEach((game) => merged.set(game.id, game))
+      results.forEach((game) => {
+        const existing = merged.get(game.id)
+        // Slower IGDB detail responses must not roll back a newer aggregate
+        // received from a completed save or the fresh rating endpoint.
+        merged.set(game.id, preserveCommunityRating && existing
+          ? { ...game, communityRating: existing.communityRating, communityRatings: existing.communityRatings }
+          : game)
+      })
       return Array.from(merged.values())
     })
   }, [])
@@ -1277,7 +1284,7 @@ function App() {
   const editingFromDetailRef = useRef(false)
 
   const startAdding = (game: Game) => {
-    editingFromDetailRef.current = false
+    editingFromDetailRef.current = currentViewRef.current.gameId === game.id
     setAddStatus('completed')
     setAddPlatform(preferredPlatform(game.platforms))
     setAddDate(new Date().toISOString().slice(0, 10))
@@ -1298,10 +1305,10 @@ function App() {
     setAddPlatform(entry.platform ?? preferredPlatform(game.platforms))
     setAddDate(entry.completedAt ?? new Date().toISOString().slice(0, 10))
     const fallbackScore = entry.score ?? 8
-    setAddAtmosphereScore(entry.atmosphereScore ?? fallbackScore)
-    setAddStoryScore(entry.storyScore ?? fallbackScore)
-    setAddTechnologyScore(entry.technologyScore ?? fallbackScore)
-    setAddGameplayScore(entry.gameplayScore ?? fallbackScore)
+    setAddAtmosphereScore(closestHalfPoint(entry.atmosphereScore ?? fallbackScore))
+    setAddStoryScore(closestHalfPoint(entry.storyScore ?? fallbackScore))
+    setAddTechnologyScore(closestHalfPoint(entry.technologyScore ?? fallbackScore))
+    setAddGameplayScore(closestHalfPoint(entry.gameplayScore ?? fallbackScore))
     setAddReview(entry.review ?? '')
     setAddReviewOpen(Boolean(entry.review))
     setAddCollectionIds(entry.collectionIds)
@@ -1353,7 +1360,8 @@ function App() {
       return
     }
 
-    setAddQuery('')
+    // Keep the search text/results in memory so Back from the saved game
+    // returns to the original database results.
     const gameView: AppView = { tab: 'library', gameId: game.id, collectionId: null, formGameId: null }
     if (editingFromDetailRef.current) {
       editingFromDetailRef.current = false
@@ -1676,6 +1684,41 @@ function App() {
     navigateTo({ tab: 'collections', gameId: null, collectionId: 'new', formGameId: null })
   }
 
+  // Refresh the aggregate when a detail page opens, including after saving
+  // a playthrough. Other users may have rated the game since search began.
+  // Fetch only this small aggregate, not the entire IGDB details payload.
+  useEffect(() => {
+    if (!authUser || selectedGameId == null) return
+    const gameId = selectedGameId
+    const controller = new AbortController()
+    const refreshRating = async () => {
+      try {
+        const response = await fetch(`/api/games/${gameId}/community-rating`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!response.ok) return
+        const rating = await response.json() as {
+          gameId: number
+          communityRating: number
+          communityRatings: number
+        }
+        if (controller.signal.aborted || rating.gameId !== gameId) return
+        setCatalogGames((current) => current.map((game) => game.id === gameId
+          ? {
+            ...game,
+            communityRating: rating.communityRating,
+            communityRatings: rating.communityRatings,
+          }
+          : game))
+      } catch {
+        // Show the last known server aggregate when temporarily offline.
+      }
+    }
+    void refreshRating()
+    return () => controller.abort()
+  }, [authUser?.id, selectedGameId])
+
   // IGDB metadata is fetched only when the detail screen opens; search
   // results remain fast. The API caches enriched data for future opens.
   useEffect(() => {
@@ -1698,7 +1741,7 @@ function App() {
         if (!response.ok) throw new Error('Game metadata is not available')
         const payload = await response.json() as GameDetailExtras
         if (controller.signal.aborted) return
-        if (payload.game) rememberCatalogResults([payload.game])
+        if (payload.game) rememberCatalogResults([payload.game], true)
         setGameDetailsById((previous) => ({ ...previous, [gameId]: {
           storyHours: typeof payload.storyHours === 'number' ? payload.storyHours : null,
           completionHours: typeof payload.completionHours === 'number' ? payload.completionHours : null,
