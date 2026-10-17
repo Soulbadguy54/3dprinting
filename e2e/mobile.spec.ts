@@ -95,6 +95,15 @@ test('search -> game -> new playthrough -> back returns to search with fresh rat
   await page.keyboard.press('ArrowDown')
   await expect(atmosphere).toHaveAttribute('aria-valuenow', '8.5')
 
+  // Seeded test catalog games do not always have an IGDB platform list.
+  // A completed playthrough still requires an explicit platform.
+  const platformInput = page.getByPlaceholder('Укажите платформу')
+  if (await platformInput.isVisible()) {
+    await platformInput.fill('PC')
+  } else {
+    await page.locator('.form-field select').first().selectOption({ index: 1 })
+  }
+
   await page.getByRole('button', { name: 'Сохранить в библиотеку' }).click()
   await expect(page.getByRole('button', { name: 'Редактировать запись об игре' })).toBeVisible()
   const fresh = await page.request.get('/api/games/1/community-rating')
