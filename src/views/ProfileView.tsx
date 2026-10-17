@@ -24,10 +24,8 @@ export default function ProfileView({
         <h1>@{user.nickname}</h1>
       </section>
       <PushSettings user={user.nickname} onOpenWishlist={onOpenWishlist} />
-      <p className="app-build-version">Версия приложения: {__RATEAPP_BUILD__}</p>
       <section className="info-card account-card">
-        <span className="eyebrow">РЕЗЕРВНАЯ КОПИЯ</span>
-        <h2>Экспорт данных</h2>
+        <h2>Резервное копирование</h2>
         <p className="privacy-note">Сохрани свои прохождения, оценки, отзывы и коллекции в одном JSON-файле. Только твои данные.</p>
         <a className="account-export-link" href="/api/export" download="rateapp-export.json">
           <Icon name="download" size={17} /> Скачать данные
@@ -49,6 +47,7 @@ export default function ProfileView({
           {loggingOut ? 'Выходим…' : 'Выйти из аккаунта'}
         </button>
       </section>
+      <p className="app-build-version">Версия приложения: {__RATEAPP_BUILD__}</p>
     </>
   )
 }
