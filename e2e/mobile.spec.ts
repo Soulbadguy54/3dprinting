@@ -65,3 +65,49 @@ test('mobile registration, collections and account backup', async ({ page }) => 
     (entry: { collectionIds: string[] }) => !entry.collectionIds.includes(collection.id)
   )).toBe(true)
 })
+
+test('search -> game -> new playthrough -> back returns to search with fresh rating', async ({ page }) => {
+  const nickname = 'flow_' + Date.now().toString(36).slice(-8)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Войти' })).toBeVisible()
+  await page.getByRole('button', { name: 'Регистрация' }).click()
+  await page.locator('input[type=email]').fill(nickname + '@example.com')
+  await page.locator('input[autocomplete=username]').fill(nickname)
+  await page.locator('input[autocomplete=new-password]').first().fill('29843571')
+  await page.locator('input[autocomplete=new-password]').last().fill('29843571')
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click()
+  await expect(page.locator('.bottom-nav')).toBeVisible()
+
+  const installClose = page.getByRole('button', { name: 'Закрыть предложение установки' })
+  if (await installClose.isVisible()) await installClose.click()
+
+  await page.locator('.bottom-nav__item').filter({ hasText: 'База игр' }).click()
+  await page.getByRole('textbox', { name: 'Поиск по базе игр' }).fill('Neon')
+  const result = page.getByRole('button', { name: 'Открыть игру «Neon Divide»' })
+  await expect(result).toBeVisible()
+  await result.click()
+  await page.getByRole('button', { name: 'Добавить прохождение' }).click()
+  await expect(page.getByRole('heading', { name: 'Прохождение' })).toBeVisible()
+
+  const atmosphere = page.getByRole('spinbutton', { name: 'Атмосфера' })
+  await expect(atmosphere.locator('.rating-wheel__item')).toHaveCount(19)
+  await atmosphere.focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(atmosphere).toHaveAttribute('aria-valuenow', '8.5')
+
+  await page.getByRole('button', { name: 'Сохранить в библиотеку' }).click()
+  await expect(page.getByRole('button', { name: 'Редактировать запись об игре' })).toBeVisible()
+  const fresh = await page.request.get('/api/games/1/community-rating')
+  expect(fresh.status()).toBe(200)
+  const freshData = await fresh.json() as { communityRating: number; communityRatings: number }
+  expect(freshData.communityRatings).toBeGreaterThanOrEqual(1)
+  await expect(page.locator('.detail-rating-panel--community .detail-rating-panel__score'))
+    .toHaveText(freshData.communityRating.toFixed(1))
+
+  // Saving must pop back to the original game entry, not replace the form
+  // with a second copy of the game in browser history.
+  await page.getByRole('button', { name: 'Вернуться назад' }).click()
+  await expect(page.getByRole('heading', { name: 'База игр' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Поиск по базе игр' })).toHaveValue('Neon')
+  await expect(page.getByRole('button', { name: 'Открыть игру «Neon Divide»' })).toBeVisible()
+})
