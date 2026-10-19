@@ -1,6 +1,6 @@
 # Rate APP
 
-Мобильная игровая библиотека и дневник прохождений (React/Vite PWA + FastAPI + PostgreSQL/Neon + IGDB). Production: https://rateapp-delta.vercel.app/
+Мобильная игровая библиотека и дневник прохождений (React/Vite PWA + FastAPI + PostgreSQL/Neon + IGDB). Production: https://rateapp-delta.vercel.app/ Репозиторий: https://github.com/Soulbadguy54/RateApp
 
 ## Документация — источник контекста между чатами
 

@@ -1,12 +1,12 @@
 # Rate APP — единый контекст проекта
 
-**Срез на 19.10.2026 · проверенная основа:** `main` по коммиту `33056bdc` (PR #35). История: [CHANGELOG](../CHANGELOG.md), правила: [AGENTS](../AGENTS.md), решения: [DECISIONS](DECISIONS.md). После этой даты сначала проверить фактический HEAD/production. Проект существует **как работающее приложение**, старый `README.md` ранее отставал от реализации.
+**Срез на 19.10.2026 · проверенная основа:** `main` по коммиту `4205f7e` (PR #37, документация); последнее изменение кода приложения — `33056bdc` (PR #35, 17 октября). История: [CHANGELOG](../CHANGELOG.md), правила: [AGENTS](../AGENTS.md), решения: [DECISIONS](DECISIONS.md). После этой даты сначала проверить фактический HEAD/production. Проект существует **как работающее приложение**, старый `README.md` ранее отставал от реализации.
 
 ## 1. Что мы строим
 
 Rate APP — mobile-first веб-приложение/PWA для поиска игр, персональной библиотеки и дневника прохождений, оценки по четырём критериям, своих коллекций и списка «Хочу пройти». Мобильные Android и iOS — целевые устройства; на десктопе показывается специальная заглушка с блюром. Браузерная навигация (включая Android Back и iOS swipe), экран загрузки, приглашение установить PWA и механизм обновлений — часть продукта.
 
-**Адреса:** production https://rateapp-delta.vercel.app ; GitHub https://github.com/Soulbadguy54/3dprinting ; Vercel project `rate_app`. Код и документация — в одном репозитории. UI русскоязычный.
+**Адреса:** production https://rateapp-delta.vercel.app ; GitHub https://github.com/Soulbadguy54/RateApp ; Vercel project `rate_app`. Код и документация — в одном репозитории. UI русскоязычный.
 
 ## 2. Технологии и карта кода
 
@@ -63,7 +63,8 @@ Rate APP — mobile-first веб-приложение/PWA для поиска и
 ## 8. CI/CD, production и реальный операционный долг
 
 - `.github/workflows/ci.yml`: `npm ci` + TypeScript/Vite build + бюджет основного JS; backend unittest с PostgreSQL16 и Alembic; мобильный Playwright Android Chromium + iPhone WebKit; production smoke после CI на main. `.github/workflows/production-health.yml` — ежедневный публичный smoke.
-- Ветка `main` через Vercel Git integration уходит в production. URL: https://rateapp-delta.vercel.app. Изменения **только документации** (корневые `AGENTS.md`, `CHANGELOG.md`, `README.md` и `docs/*.md`) не должны вызывать **production build**; `vercel.json` → `ignoreCommand` → `scripts/ignore-docs-build.sh`. При изменении кода или сомнительном Git diff скрипт **не пропускает** сборку. Vercel может создать запись `CANCELED`/skipped, и она может считаться в квоте деплоев.
+- Ветка `main` через Vercel Git integration уходит в production. URL: https://rateapp-delta.vercel.app. Изменения **только документации** (корневые `AGENTS.md`, `CHANGELOG.md`, `README.md` и `docs/*.md`) не должны вызывать **production build**; `vercel.json` → `ignoreCommand` → `scripts/ignore-docs-build.sh`. При изменении кода или сомнительном Git diff скрипт **не пропускает** сборку. На PR #37 (`4205f7e`, 19 октября) реальный docs-only production deployment был **CANCELED именно из-за успешного ignored-build шага (exit 0)**; предыдущая READY-версия осталась действующей. Пропущенный deployment может учитываться в квоте.
+- После переименования GitHub-репозиторий имеет адрес `Soulbadguy54/RateApp`, но метаданные и лог клонирования Vercel для PR #37 ещё содержали `Soulbadguy54/3dprinting`. Это операционная оговорка: при следующем релизе проверить настройки Git-интеграции, а не считать старое имя текущим каноническим URL.
 - Для обычного релиза смотреть GitHub CI, Vercel READY/домен, `/api/health`, `docs/DEPLOYMENT.md`. Наличие открытого PR или успешного build job не означает публикацию.
 - Не закрыты автоматически: внешняя настройка Sentry и алертов; backup/PITR Neon с проверкой восстановления; branch protection и gate до автоматического Vercel deploy; подтверждение production Alembic baseline; реальный Core Web Vitals/нагрузочные тесты. См. [stability audit](stability-audit-2026-10-16.md), сверяй актуальность.
 
