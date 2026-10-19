@@ -4,7 +4,7 @@
 
 ## 19 октября 2026 — единая память проекта и docs-only CI/CD
 
-- В репозитории заведены `AGENTS.md`, `CHANGELOG.md`, `docs/PROJECT_CONTEXT.md`, `docs/DECISIONS.md`; восстановлены контекст продукта, основные инженерные решения, хронология по merged PR и аудитам.
+- [PR #36](https://github.com/Soulbadguy54/3dprinting/pull/36): в репозитории заведены `AGENTS.md`, `CHANGELOG.md`, `docs/PROJECT_CONTEXT.md`, `docs/DECISIONS.md`; восстановлены контекст продукта, основные инженерные решения, хронология по merged PR и аудитам. CI (сборка, backend, Android/iPhone e2e) прошёл, первый production с новой конфигурацией READY.
 - В `vercel.json` добавлено правило `ignoreCommand` через `scripts/ignore-docs-build.sh`: коммиты только с Markdown-документацией не пересобирают сайт. При изменениях кода или невозможности достоверно проверить Git diff — сборку не пропускать.
 - `README.md` синхронизирован с фактическим FastAPI/PostgreSQL/PWA состоянием; тесты проверяют разницу docs-only и code+docs.
 - **Статус:** репозиторная конфигурация. Фактический Vercel skip для будущих documentation-only изменений проверяется отдельно; пропуск сборки может всё равно учитываться Vercel в лимитах попыток деплоя.
