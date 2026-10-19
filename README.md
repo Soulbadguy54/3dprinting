@@ -1,44 +1,29 @@
-# RateApp
+# Rate APP
 
-Mobile-first прототип личной игровой библиотеки и игрового дневника.
+Мобильная игровая библиотека и дневник прохождений (React/Vite PWA + FastAPI + PostgreSQL/Neon + IGDB). Production: https://rateapp-delta.vercel.app/
 
-## Идея
+## Документация — источник контекста между чатами
 
-Пользователь собирает собственную публичную коллекцию игр:
+- [AGENTS.md](AGENTS.md) — что должен прочитать новый чат и как безопасно изменять Rate APP.
+- [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) — актуальная архитектура, UX, данные, ограничения, маршруты и риски.
+- [CHANGELOG.md](CHANGELOG.md) — хронология разработки и PR.
+- [docs/DECISIONS.md](docs/DECISIONS.md) — причины архитектурных/продуктовых решений.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — миграции, резервные копии, production smoke.
+- [docs/import-audit-2026-10-15.md](docs/import-audit-2026-10-15.md) — исторические импорты, Stash и пропущенные игры.
+- [docs/stability-audit-2026-10-16.md](docs/stability-audit-2026-10-16.md) — аудит и непроверенные операционные настройки.
 
-- **Пройдено** — с платформой, датой прохождения и личной оценкой.
-- **Прохожу** — текущие игры и платформа.
-- **Хочу пройти** — личный backlog.
-- **Коллекции** — произвольные публичные списки, в которые можно добавлять игры.
-- **Публичный профиль** — статистика, последние прохождения и коллекции.
+**Правило:** после релевантного изменения обновлять контекст и changelog в том же PR. Не считать документацию автоматически актуальной без сравнения с `main` и production.
 
-Информация об играх позже будет приходить из IGDB. Пользовательские статусы, оценки, отзывы, даты и коллекции будут храниться в нашей базе данных.
+## Как устроено
 
-## Frontend
+- `src/` — React 19/TypeScript/Vite, мобильный PWA, коллекции, поиск, карточки, четыре оценочных барабана с шагом 0,5.
+- `api/` — FastAPI, вход по email/nickname/PIN, библиотека/коллекции, IGDB и Push.
+- `api/models.py` — SQLAlchemy с ID, FK, уникальными индексами и проверками.
+- `migrations/` — Alembic для PostgreSQL; не запускать DDL при обработке HTTP.
+- `e2e/` и `tests/` — мобильные Playwright и backend тесты.
 
-- React
-- TypeScript
-- Vite
-- PWA (vite-plugin-pwa)
-- mock-данные без backend
+## Локально
 
-### Локальный запуск
+`npm ci` · `npm run dev` — фронтенд; `npm run build` — production сборка. Для полного API требуется PostgreSQL и настроенный `DATABASE_URL`: применять `python -m alembic upgrade head` в тестовой/разрешённой среде, затем запускать `python -m uvicorn api.index:app --reload`. Тесты: `python -m unittest discover -s tests -v` и `npm run test:e2e` (последние требуют API+БД и браузеров).
 
-    npm install
-    npm run dev
-
-### Production build
-
-    npm run build
-
-Результат сборки находится в `dist/`.
-
-## Test deployment
-
-Production: https://rateapp-delta.vercel.app/
-
-Vercel подключён к ветке `main` и автоматически пересобирает frontend после push.
-
-## Дальше
-
-Backend планируется на Python/FastAPI + PostgreSQL. Для аккаунта: email + nickname + PIN-код, с восстановлением доступа через email.
+Vercel разворачивает прикладные изменения из `main`. Изменения только Markdown-документации пропускают новый build благодаря `ignoreCommand` в `vercel.json`; правила, тесты и оговорки — [PROJECT_CONTEXT](docs/PROJECT_CONTEXT.md).

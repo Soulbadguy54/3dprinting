@@ -10,9 +10,11 @@
 
 **Never** invoke migration code inside the FastAPI app import/startup path.
 Run migrations from a protected CI job with an authorized secret, or a trusted
-DB admin machine. Keep secrets out of commits and logs. The current Vercel Git
-integration deploys on every main push; coordinate migrations *before* commits
-that require new columns. Enable branch protection/deployment checks to enforce
+DB admin machine. Keep secrets out of commits and logs. The Vercel Git integration builds code changes on main; documentation-only
+commits are skipped by `vercel.json` → `scripts/ignore-docs-build.sh` (the
+Vercel Ignored Build Step still creates a canceled/skipped deployment record
+and can count against quota). Coordinate migrations *before* commits that
+require new columns. Enable branch protection/deployment checks to enforce
 this order before future migrations. This first baseline records the existing
 production schema; it is compatible with the already-initialized database.
 

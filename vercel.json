@@ -20,5 +20,6 @@
       "path": "/api/cron/release-alerts",
       "schedule": "0 9 * * *"
     }
-  ]
+  ],
+  "ignoreCommand": "bash scripts/ignore-docs-build.sh"
 }
