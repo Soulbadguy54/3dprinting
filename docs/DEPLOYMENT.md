@@ -13,7 +13,14 @@ Run migrations from a protected CI job with an authorized secret, or a trusted
 DB admin machine. Keep secrets out of commits and logs. The Vercel Git integration builds code changes on main; documentation-only
 commits are skipped by `vercel.json` → `scripts/ignore-docs-build.sh` (the
 Vercel Ignored Build Step still creates a canceled/skipped deployment record
-and can count against quota). Coordinate migrations *before* commits that
+and can count against quota). A docs-only merge (`4205f7e`, PR #37,
+2026-10-19) was verified in Vercel: the ignored-build command exited `0`,
+and the production deployment was `CANCELED` rather than rebuilt.
+Vercel's Git metadata for that run still used the former repository name
+`Soulbadguy54/3dprinting`; the canonical GitHub URL is now
+`https://github.com/Soulbadguy54/RateApp`. Check the Git integration after
+this rename, without mistaking an old alias for a failed deployment.
+Coordinate migrations *before* commits that
 require new columns. Enable branch protection/deployment checks to enforce
 this order before future migrations. This first baseline records the existing
 production schema; it is compatible with the already-initialized database.
