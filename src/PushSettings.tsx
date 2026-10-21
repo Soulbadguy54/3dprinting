@@ -230,12 +230,11 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
           subscribed: next,
           permission: supported ? Notification.permission : 'default',
         }))
-        const latest = await preloadPushState(user, true).catch(() => null)
-        if (latest) setState(latest)
+        // enablePush / disconnectPushForLogout already dispatch PUSH_CHANGED_EVENT.
+        // That refresh runs in the background; don't keep the toggle busy for it.
       } catch (error) {
-        // Roll back the optimistic state on a failed request or denied permission.
-        const latest = await preloadPushState(user, true).catch(() => null)
-        if (latest) setState(latest)
+        // Drop the optimistic state immediately; reconciliation should not block UI.
+        void preloadPushState(user, true).then(setState).catch(() => {})
         setMessage(error instanceof Error ? error.message : 'Не удалось изменить настройки.')
       } finally {
         setOptimisticEnabled(null)
