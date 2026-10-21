@@ -40,3 +40,7 @@ Vercel `vercel.json:ignoreCommand` выполняет `scripts/ignore-docs-build
 
 ## ADR-013 · Не обозначать инфраструктурные рекомендации как реализованные (актуально)
 Sentry DSN, PITR/snapshot, branch protection, production Alembic baseline — остаются операционными пунктами, пока не проверены независимо. Подробнее `docs/stability-audit-2026-10-16.md`.
+
+## ADR-014 · Выделенный VPS, GitHub Actions и offsite pg_dump (план от 21.10.2026)
+
+Целевое окружение: Caddy, FastAPI и PostgreSQL 18 на VPS, Docker-образы с тегом Git SHA собираются в GitHub Actions после успешного CI. Регулярный деплой по ограниченному SSH-ключу не расходует Gateway. Условие активации: отдельно проверенный первый релиз, внешние секреты и защита ветки. Перед миграциями — проверенная резервная копия, без автоматического отката схемы. Резервные копии — независимый systemd timer + pg_dump + зашифрованный rclone crypt remote Google Drive и проверка восстановления. Вход по SSH-паролю остаётся разрешённым по желанию владельца с дополнительной защитой. **Статус:** подготовка, не работающий production. См. [VPS_MIGRATION](VPS_MIGRATION.md).

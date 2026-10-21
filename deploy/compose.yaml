@@ -1,0 +1,57 @@
+name: rateapp
+services:
+  db:
+    image: postgres:18-bookworm
+    container_name: rateapp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rateapp
+      POSTGRES_DB: rateapp
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - rateapp_pg18_data:/var/lib/postgresql
+      - /srv/rateapp/secrets/postgres_password:/run/secrets/postgres_password:ro
+    mem_limit: 768m
+    shm_size: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rateapp -d rateapp"]
+      interval: 10s
+      retries: 12
+    networks: [internal]
+
+  api:
+    image: ghcr.io/soulbadguy54/rateapp-api:${RATEAPP_RELEASE:?set RATEAPP_RELEASE}
+    restart: unless-stopped
+    env_file:
+      - /srv/rateapp/secrets/app.env
+    environment:
+      VERCEL_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 512m
+    pids_limit: 256
+    networks: [internal]
+
+  web:
+    image: ghcr.io/soulbadguy54/rateapp-web:${RATEAPP_RELEASE:?set RATEAPP_RELEASE}
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 192m
+    networks: [internal]
+
+networks:
+  internal:
+
+volumes:
+  rateapp_pg18_data:
+    external: true
+  caddy_data:
+  caddy_config:

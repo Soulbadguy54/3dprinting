@@ -1,0 +1,9 @@
+[Unit]
+Description=Rate APP release notifications
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/srv/rateapp/source/deploy/scripts/release-alerts.sh

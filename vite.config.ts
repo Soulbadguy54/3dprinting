@@ -47,7 +47,7 @@ export default defineConfig({
         scope: '/',
         prefer_related_applications: false,
         related_applications: [
-          { platform: 'webapp', url: 'https://rateapp-delta.vercel.app/manifest.webmanifest' },
+          { platform: 'webapp', url: 'https://r-app.ru/manifest.webmanifest' },
         ],
         description: 'Личная коллекция, оценки и игровой дневник',
         theme_color: '#0b0d12',

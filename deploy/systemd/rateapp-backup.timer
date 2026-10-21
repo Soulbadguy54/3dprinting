@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Rate APP backup to encrypted Google Drive
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+Unit=rateapp-backup.service
+
+[Install]
+WantedBy=timers.target

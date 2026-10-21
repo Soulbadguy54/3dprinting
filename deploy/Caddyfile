@@ -1,0 +1,20 @@
+(rateapp_common) {
+    encode gzip zstd
+    @api path /api/*
+    handle @api {
+        reverse_proxy api:8000
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+r-app.ru, www.r-app.ru {
+    import rateapp_common
+}
+
+:8080 {
+    import rateapp_common
+}

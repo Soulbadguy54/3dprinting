@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Rate APP release notifications
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 UTC
+Persistent=true
+Unit=rateapp-release-alerts.service
+
+[Install]
+WantedBy=timers.target

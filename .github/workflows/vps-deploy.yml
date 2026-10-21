@@ -1,0 +1,86 @@
+name: VPS production deployment
+
+on:
+  workflow_run:
+    workflows: ["Frontend CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: rateapp-vps-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      ${{ vars.RATEAPP_VPS_DEPLOY_ENABLED == 'true' &&
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' ||
+           github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - name: Select tested revision
+        id: revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          DIRECT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then echo "sha=$WORKFLOW_SHA" >> "$GITHUB_OUTPUT"; else echo "sha=$DIRECT_SHA" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.revision.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: ghcr.io/soulbadguy54/rateapp-api:${{ steps.revision.outputs.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          push: true
+          build-args: |
+            GITHUB_SHA=${{ steps.revision.outputs.sha }}
+          tags: ghcr.io/soulbadguy54/rateapp-web:${{ steps.revision.outputs.sha }}
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: vps-production
+    steps:
+      - name: Install pinned SSH identity and known_hosts
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          test -s ~/.ssh/id_ed25519 && test -s ~/.ssh/known_hosts
+      - name: Deploy tested images over SSH
+        env:
+          DEPLOY_SHA: ${{ needs.publish.outputs.sha }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_SSH_USER }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VPS_HOST" =~ ^[A-Za-z0-9.:-]+$ ]]
+          [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          printf '%s\n' "$GH_TOKEN" | ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "$VPS_USER@$VPS_HOST" "set -e; cd /srv/rateapp/source; git fetch -q origin $DEPLOY_SHA; git checkout -q --detach $DEPLOY_SHA; bash deploy/scripts/deploy.sh $DEPLOY_SHA"

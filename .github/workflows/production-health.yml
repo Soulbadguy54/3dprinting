@@ -18,4 +18,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Production database and authentication smoke
+        env:
+          RATEAPP_SMOKE_BASE: ${{ vars.RATEAPP_PRODUCTION_URL || 'https://rateapp-delta.vercel.app' }}
         run: python scripts/smoke_production.py

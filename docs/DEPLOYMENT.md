@@ -52,3 +52,7 @@ mobile browser jobs on main. It never sends real user credentials.
   Default personal information and request-body uploads are disabled.
 - Release gating: protect main and configure Vercel Deployment Checks on
   the CI jobs; Vercel Git integration can otherwise deploy before CI finishes.
+
+## VPS environment and rollback — not active yet (2026-10-21)
+
+The pending VPS migration is described in [VPS_MIGRATION.md](VPS_MIGRATION.md). GitHub Actions deploy is intentionally disabled with repository variable `RATEAPP_VPS_DEPLOY_ENABLED` until all prerequisites have been manually validated. A Neon snapshot and local pg_dump restore to staging exist, but production is still on Vercel/Neon. Never treat a local dump as the sole disaster-recovery copy, drop the persistent PostgreSQL volume, or automatically downgrade a DB schema during image rollback.

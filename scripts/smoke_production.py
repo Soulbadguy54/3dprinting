@@ -1,12 +1,13 @@
 """Safe read-only production smoke; invalid username never touches a real account."""
 import json
+import os
 import re
 import secrets
 import time
 import urllib.error
 import urllib.request
 
-BASE = "https://rateapp-delta.vercel.app"
+BASE = os.getenv("RATEAPP_SMOKE_BASE", "https://rateapp-delta.vercel.app").rstrip("/")
 
 
 def probe(method, path, body=None):

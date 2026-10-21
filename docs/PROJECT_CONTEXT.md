@@ -73,3 +73,7 @@ Rate APP — mobile-first веб-приложение/PWA для поиска и
 2. Сверить `main` и Vercel с датой этого документа; проверить, не появились ли новые PR или расхождения.
 3. Перед изменениями найти реальную точку входа в коде, понять UI/API/DB последствия и добавлять регрессионный тест.
 4. После изменения записать факт в `CHANGELOG.md`, обновить изменившиеся разделы контекста/решений в том же PR. Не загружать secrets и персональные данные в Git.
+
+## 10. Перенос на VPS (подготовка, 21.10.2026)
+
+Цель — `https://r-app.ru` (React/Vite+Caddy, FastAPI, PostgreSQL 18.6) на Ubuntu24 VPS, GitHub Actions вместо Vercel. **На момент записи production остаётся Vercel + Neon.** На VPS (2 vCPU, 2 GiB RAM, 40 GB) установлены Docker 29, Compose 2.40, swap 2 ГиБ, парольный SSH остаётся разрешённым. DNS r-app.ru и www.r-app.ru разрешается в VPS. Neon snapshot `pre-vps-migration-2026-10-21`; архив pg_dump восстановлен в `rateapp_stage` (3 пользователя, 1165 игр, 251 user_games, 10 collections, 112 collection_games, 6 auth_sessions, 3 push_subscriptions). Production БД не переключена. Перед релизом проверить Alembic baseline (нет таблицы `alembic_version` в Neon), реальный restore с Google Drive, мобильную PWA и Push. Подробнее: [VPS_MIGRATION](VPS_MIGRATION.md).

@@ -1,0 +1,12 @@
+[Unit]
+Description=Rate APP encrypted PostgreSQL backup to Google Drive
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/srv/rateapp/source/deploy/scripts/backup-to-gdrive.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

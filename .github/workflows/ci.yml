@@ -105,4 +105,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify production database, API and login responses
+        env:
+          RATEAPP_SMOKE_BASE: ${{ vars.RATEAPP_PRODUCTION_URL || 'https://rateapp-delta.vercel.app' }}
         run: python scripts/smoke_production.py
