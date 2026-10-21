@@ -1,24 +1,34 @@
 # VPS migration: Rate APP
 
-**2026-10-21 status: PREPARATION ONLY.** Vercel + Neon remain production. The new deployment job is disabled until explicitly enabled, and no DNS cutover or production database switch has been performed.
+**2026-10-21 status: VPS PRODUCTION LIVE.** Public domain https://r-app.ru with HTTPS and local PostgreSQL. Old Vercel paused; Neon no longer serves requests. CI-based autonomous deployment enabled in source on main merge.
+
+### Verified final cutover
+- Old Vercel project `rate_app` paused (`live=false`), old /api/health returned 503 before final source dump. Neon main remains available only as archive/rollback (no more production traffic).
+- The final Neon pg_dump custom archive was verified, SHA-256 checked in Google Drive and restored to the local production `rateapp` database: 3 users, 1165 games, 251 user_games, 10 collections, 112 memberships, 6 auth_sessions and 3 push_subscriptions. Initial Neon snapshot remains; extra snapshot request failed due account limit. Alembic revision `20261016_01` applied to new production copy.
+- The formerly manual PostgreSQL container was stopped and removed **without deleting** `rateapp_pg18_data`, then Docker Compose took over PostgreSQL, API and web. Old staging containers were removed; staging database and backup archives remain intact for audit.
+- `https://r-app.ru` and `https://www.r-app.ru` returned HTTP 200, TLS certificate verification succeeded. Public smoke PASS for SPA, JS, DB health, anonymous 401, private export 401, invalid login 401.
+- Automated `rateapp-backup.timer` (03:40 UTC) and `rateapp-release-alerts.timer` (09:00 UTC) enabled on systemd. Manual release alert service call completed successfully.
+- A production DB backup was uploaded to `rateapp-drive:RateApp/backups/` (no rclone crypt), verified by SHA-256, downloaded, pg_restored into an independent validation database, key row counts matched; validation DB was dropped.
+- Device cookies and previous Web Push subscriptions cannot be transported across origin. Users will sign in again and resubscribe on the new domain.
+
 
 ## Verified inventory
 - VPS `FN_ztv_server`: Ubuntu 24.04, 2 vCPU, ~2 GiB RAM, 40 GB disk, Docker 29, Compose 2.40, 2 GiB swap. SSH password login is deliberately retained by owner request.
-- Domain `r-app.ru` and `www.r-app.ru` both resolved to `111.88.215.215` on 2026-10-21. HTTPS and serving the site are not yet active.
-- Neon main / neondb PostgreSQL 18.6 is currently production. Pre-migration manual snapshot: `pre-vps-migration-2026-10-21`.
+- Domain `r-app.ru` and `www.r-app.ru` both resolved to `111.88.215.215` on 2026-10-21. HTTPS and serving the site have since been activated, as recorded above.
+- Neon main / neondb PostgreSQL 18.6 was production until cutover; now archived and inactive on the request path. Pre-migration manual snapshot: `pre-vps-migration-2026-10-21`.
 - A custom-format initial archive is saved privately on VPS at `/srv/rateapp/backups/initial/neon-initial.dump`. Validated and restored in **staging** database `rateapp_stage` on container `rateapp-postgres`. Source/restored table counts: 3 users, 1165 games, 251 user_games, 10 collections, 112 collection_games, 6 auth_sessions, 3 push_subscriptions. The active production database was not modified.
-- Manual PostgreSQL container stores data in persistent volume `rateapp_pg18_data`; port 5432 is NOT host-published. Initial `rateapp` database is not yet restored from final source.
+- Docker Compose-managed PostgreSQL now stores data in persistent volume `rateapp_pg18_data`; port 5432 is NOT host-published. Local `rateapp` database has been restored from the final Neon dump.
 - Neon production lacked `alembic_version` on audit. Test the legacy Alembic baseline on a restored copy, not by directly altering Neon.
 
 ## Local staging validation (2026-10-21)
 - Docker images for API and web built successfully from feature branch; Caddy configuration validated.
 - Containers `rateapp-api-stage` and `rateapp-web-stage` run on internal Docker network; stage web is exposed **only** on loopback `127.0.0.1:18080`. API connects to `rateapp_stage`. HTTP main page 200, /api/health 200 with DB reachable, anonymous /api/bootstrap 401, export 401, invalid login 401. Full read-only/invalid-login smoke PASS.
 - Alembic revision `20261016_01` applied **only to restored `rateapp_stage`**, with row counts unchanged and healthy API afterwards. Neon production remains untouched.
-- Docker Compose production is not enabled. On October 21, the owner placed IGDB ID and refreshed secret into the protected Gateway value `rateapp-app-env`. They were merged into root-owned `/srv/rateapp/secrets/app.env` with an independently generated matching VAPID P-256 key pair and a random CRON_SECRET; the temporary Gateway-import file was removed. All five keys are present without being logged. The staging API was restarted with this environment: /api/health HTTP 200, database reachable, IGDB configured; Twitch OAuth `client_credentials` returned HTTP 200 and the local VAPID public/private match was checked cryptographically. No IGDB/VAPID/cron secrets are in GitHub. Signed-in browser and real push delivery remain to be verified.
+- Docker Compose production was enabled after the restored staging preflight. On October 21, the owner placed IGDB ID and refreshed secret into the protected Gateway value `rateapp-app-env`. They were merged into root-owned `/srv/rateapp/secrets/app.env` with an independently generated matching VAPID P-256 key pair and a random CRON_SECRET; the temporary Gateway-import file was removed. All five keys are present without being logged. The staging API was restarted with this environment: /api/health HTTP 200, database reachable, IGDB configured; Twitch OAuth `client_credentials` returned HTTP 200 and the local VAPID public/private match was checked cryptographically. No IGDB/VAPID/cron secrets are in GitHub. Signed-in browser and real push delivery remain to be verified.
 - `rclone` and `fail2ban` installed; sshd jail reported enabled. Dedicated `rateapp-deploy` service account created, with an SSH key and forced-command auth verified over localhost. Root-owned dispatch scripts installed, restricted sudoers validated, account removed from the Docker group. The owner's GitHub Actions secret `VPS_DEPLOY_SSH_KEY` was verified on an actual GitHub-hosted runner (success: https://github.com/Soulbadguy54/RateApp/actions/runs/39576778292). The temporary private key file `/srv/rateapp/secrets/gh_actions_deploy_key` was **deleted from the VPS** after verification; the public key remains authorized. No private keys were displayed in chat or stored in the repository. Owner's existing password SSH remains enabled.
 - PR #39: https://github.com/Soulbadguy54/RateApp/pull/39 ; original CI jobs build, backend tests and mobile E2E passed. Vercel preview deployment had a provisioning error, probably connected to the limit of 10 Neon branches; this does not prove a code failure and no old Neon branches have been deleted.
 
-## First deployment prerequisites
+## First deployment prerequisites (historic checklist; completed during cutover)
 1. Complete VPS security without disabling SSH password login. Set host firewall allowing required 22/80/443, configure SSH rate limiting; add separate deploy SSH key/account and pin host key for Actions. The dedicated deploy account uses a forced SSH command that validates the release SHA, and sudoers permits only the installed root deployment dispatcher. Docker group access is effectively root.
 2. Prepare `/srv/rateapp/source` Git checkout and protected `/srv/rateapp/secrets/app.env` with IGDB, VAPID and CRON settings. The API entrypoint creates the local `DATABASE_URL` inside its container using `/run/secrets/postgres_password`; do not copy the Neon URL into `app.env`. Keep secrets out of source control and logs.
 3. The current manually created `rateapp-postgres` container must be **stopped/removed by explicit migration procedure** before Compose can own a container of the same name; the named volume must NOT be removed. Preserve the verified `rateapp_stage`.
@@ -35,7 +45,7 @@ The rclone Drive remote `rateapp-drive:` was authorized through personal Google 
 Version-pin API/web GHCR images by tested Git commit. Deploy takes local pre-migration archive and health-checks new release, and may roll back app images if health fails. Database schema is **not** automatically downgraded, because some migration changes are irreversible. Keep prior Vercel and Neon intact until the new site passes user acceptance; session cookies and PWA/push registrations are origin-bound.
 
 ## Further verified server preparation
-- The systemd unit files for backup and release notifications have been copied to `/etc/systemd/system/` and `daemon-reload` completed. Both timers are **disabled** until Drive OAuth, backup recovery drill, and the production cutover have been verified. VAPID/CRON secret material exists on the VPS; release notifications must not run alongside the old Vercel cron.
+- The systemd unit files for backup and release notifications have been copied to `/etc/systemd/system/`; both timers were enabled only after Drive OAuth, verified cloud backup recovery, and successful production cutover. VAPID/CRON secret material exists on the VPS; release notifications must not run alongside the old Vercel cron.
 - The forced SSH command was tested twice. An invalid command failed with exit code 64. A SHA outside the current `main` lineage was rejected with exit code 3, **without deploying**.
 - The latest local resource check while all three staging containers ran showed ~1.3 GiB RAM available, 11 MiB swap used, and ~32 GiB disk free. Both the old Vercel endpoint and local staging `/api/health` returned HTTP 200.
 

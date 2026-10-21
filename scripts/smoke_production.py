@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 
-BASE = os.getenv("RATEAPP_SMOKE_BASE", "https://rateapp-delta.vercel.app").rstrip("/")
+BASE = os.getenv("RATEAPP_SMOKE_BASE", "https://r-app.ru").rstrip("/")
 
 
 def probe(method, path, body=None):

@@ -18,8 +18,7 @@ concurrency:
 jobs:
   publish:
     if: >-
-      ${{ vars.RATEAPP_VPS_DEPLOY_ENABLED == 'true' &&
-          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' ||
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' ||
            github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     outputs:

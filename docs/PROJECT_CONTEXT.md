@@ -6,7 +6,7 @@
 
 Rate APP — mobile-first веб-приложение/PWA для поиска игр, персональной библиотеки и дневника прохождений, оценки по четырём критериям, своих коллекций и списка «Хочу пройти». Мобильные Android и iOS — целевые устройства; на десктопе показывается специальная заглушка с блюром. Браузерная навигация (включая Android Back и iOS swipe), экран загрузки, приглашение установить PWA и механизм обновлений — часть продукта.
 
-**Адреса:** production https://rateapp-delta.vercel.app ; GitHub https://github.com/Soulbadguy54/3dprinting ; Vercel project `rate_app`. Код и документация — в одном репозитории. UI русскоязычный.
+**Адреса (актуально на 21.10.2026):** production https://r-app.ru ; GitHub https://github.com/Soulbadguy54/RateApp ; старый Vercel project `rate_app` поставлен на паузу. Код и документация — в одном репозитории. UI русскоязычный.
 
 ## 2. Технологии и карта кода
 
@@ -63,8 +63,8 @@ Rate APP — mobile-first веб-приложение/PWA для поиска и
 ## 8. CI/CD, production и реальный операционный долг
 
 - `.github/workflows/ci.yml`: `npm ci` + TypeScript/Vite build + бюджет основного JS; backend unittest с PostgreSQL16 и Alembic; мобильный Playwright Android Chromium + iPhone WebKit; production smoke после CI на main. `.github/workflows/production-health.yml` — ежедневный публичный smoke.
-- Ветка `main` через Vercel Git integration уходит в production. URL: https://rateapp-delta.vercel.app. Изменения **только документации** (корневые `AGENTS.md`, `CHANGELOG.md`, `README.md` и `docs/*.md`) не должны вызывать **production build**; `vercel.json` → `ignoreCommand` → `scripts/ignore-docs-build.sh`. При изменении кода или сомнительном Git diff скрипт **не пропускает** сборку. Vercel может создать запись `CANCELED`/skipped, и она может считаться в квоте деплоев.
-- Для обычного релиза смотреть GitHub CI, Vercel READY/домен, `/api/health`, `docs/DEPLOYMENT.md`. Наличие открытого PR или успешного build job не означает публикацию.
+- До 21.10.2026 ветка `main` деплоилась через Vercel; теперь production — https://r-app.ru на VPS, GitHub Actions выпускает Docker-образы после CI. Изменения **только документации** (корневые `AGENTS.md`, `CHANGELOG.md`, `README.md` и `docs/*.md`) не должны вызывать **production build**; `vercel.json` → `ignoreCommand` → `scripts/ignore-docs-build.sh`. При изменении кода или сомнительном Git diff скрипт **не пропускает** сборку. Vercel может создать запись `CANCELED`/skipped, и она может считаться в квоте деплоев.
+- Для обычного релиза смотреть GitHub CI и VPS deployment, TLS/домен `r-app.ru`, `/api/health`, `docs/DEPLOYMENT.md`. Наличие открытого PR или успешного build job не означает публикацию.
 - Не закрыты автоматически: внешняя настройка Sentry и алертов; backup/PITR Neon с проверкой восстановления; branch protection и gate до автоматического Vercel deploy; подтверждение production Alembic baseline; реальный Core Web Vitals/нагрузочные тесты. См. [stability audit](stability-audit-2026-10-16.md), сверяй актуальность.
 
 ## 9. Что делать новому чату
@@ -87,3 +87,10 @@ Rate APP — mobile-first веб-приложение/PWA для поиска и
 21.10.2026: закрытый SSH-ключ из GitHub Actions успешно проверен на реальном GitHub runner с разрешённой только принудительной командой. Временная копия приватного ключа на VPS удалена, публичный авторизованный ключ остался. Локальный цикл pg_dump/pg_restore из тестовой БД независимо перепроверен. rclone обновлён до 1.75.2 с проверкой подписи производителя; Google Drive OAuth/crypt и таймер бэкапов пока не активированы.
 
 21.10.2026: по решению владельца отдельное шифрование Google Drive backup исключено; root-owned rclone remote `rateapp-drive:` работает с OAuth `drive.file`. Бэкапы будут доступны в личном Google Drive без `rclone crypt`; в дампах есть email, хэши PIN и метаданные сессий. Автобэкап 03:40 UTC подключается только после реального теста upload/download/restore. См. [VPS_MIGRATION](VPS_MIGRATION.md) и ADR-015.
+
+## 11. VPS как текущий production (21.10.2026, PR #39)
+- `https://r-app.ru` и `https://www.r-app.ru` обслуживаются Caddy/React + FastAPI + PostgreSQL 18 в Docker Compose на VPS `111.88.215.215`. HTTPS подтверждён `TLS verify 0`, фронтенд и /api/health HTTP 200, полный smoke PASS.
+- Vercel project `rate_app` поставлен на паузу (`live=false`, прежний /api/health 503); Neon больше не используется в работающем API. Финальный Neon dump создан после паузы Vercel, проверен и сохранён в Google Drive. Схема `alembic_version=20261016_01`; восстановлены 3 users, 1165 games, 251 user_games, 10 collections, 112 memberships, 6 auth_sessions, 3 push_subscriptions.
+- Автономные systemd таймеры на VPS: бэкап 03:40 UTC с рандомизацией до 10 минут и release push 09:00 UTC. Бэкапы `pg_dump -Fc` записываются без дополнительного шифрования в личный Google Drive через `rclone` remote `rateapp-drive:`; проверены облачная загрузка SHA-256 и реальный download/restore.
+- GitHub Actions VPS workflow активируется на успешном CI main, использует проверенный SSH secret и временный GHCR токен. Первую полную автоматическую доставку проверить после merge PR #39.
+- Сессии и Web Push-подписки старого origin не переносятся автоматически в новый origin; требуется повторный вход/согласие на Push. Устаревшие заметки о Vercel и Neon выше сохраняются как историческая справка, а не актуальное production-состояние.
