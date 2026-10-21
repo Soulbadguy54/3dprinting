@@ -1,5 +1,5 @@
 [Unit]
-Description=Rate APP encrypted PostgreSQL backup to Google Drive
+Description=Rate APP PostgreSQL backup to Google Drive
 Requires=docker.service
 After=docker.service
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Rate APP backup to encrypted Google Drive
+Description=Daily Rate APP backup to Google Drive
 
 [Timer]
 OnCalendar=*-*-* 03:40:00 UTC
