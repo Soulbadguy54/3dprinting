@@ -56,3 +56,6 @@ Version-pin API/web GHCR images by tested Git commit. Deploy takes local pre-mig
 
 ## Automated deployment correction (2026-10-21, PR #40)
 The first main-branch CI succeeded and the GHCR publish job succeeded. The separate `deploy` GitHub Actions job failed before SSH because it lacked an `actions/checkout` step, so the pinned `deploy/ssh_known_hosts` file was absent from the runner. PR #40 adds checkout at the tested SHA to the deploy job, without changing the running VPS application or PostgreSQL. Retest the complete CI → GHCR → SSH → health chain before declaring continuous delivery verified.
+
+## SSH ancestry refspec correction (2026-10-21, PR #41)
+The deploy job in PR #40 reached the VPS successfully, but the root forced-command dispatcher refused the tested SHA: the initial server checkout only tracked `origin/infra/vps-migration-20261021`, so `git fetch origin main` updated `FETCH_HEAD` without creating `origin/main`. The dispatcher on the VPS was patched to explicitly fetch `+refs/heads/main:refs/remotes/origin/main` and a main SHA ancestry check passed. PR #41 makes the same correction in the versioned installer script. The failed GitHub deployment job was rerun. The production application remained available throughout.

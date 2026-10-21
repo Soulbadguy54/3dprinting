@@ -4,7 +4,7 @@ set -euo pipefail
 sha="${1:?commit required}"
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 2
 cd /srv/rateapp/source
-git fetch -q origin main
+git fetch -q origin +refs/heads/main:refs/remotes/origin/main
 git fetch -q origin "$sha"
 git merge-base --is-ancestor "$sha" origin/main || { echo "Refusing commit outside main" >&2; exit 3; }
 git checkout -q --detach "$sha"

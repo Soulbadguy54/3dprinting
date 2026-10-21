@@ -1,5 +1,8 @@
 # Rate APP — история разработки
 
+## 21 октября 2026 — hotfix SSH ancestry guard (PR #41)
+- После исправления runner checkout GitHub Actions достиг VPS, но принудительный root dispatcher отклонил коммит из main: ограниченный fetch refspec первоначального клона не содержал `origin/main`. На работающем VPS dispatcher исправлен на явный fetch `+refs/heads/main:refs/remotes/origin/main`; проверка ancestry для текущего main прошла. Исходный dispatcher в репозитории исправлен тем же PR. Деплой перезапущен через rerun failed jobs.
+
 ## 21 октября 2026 — hotfix автоматического деплоя (PR #40)
 - Первый main CI и публикация обоих контейнеров в GHCR успешно прошли, но deploy job остановился до SSH: runner не содержал `deploy/ssh_known_hosts` (не было `actions/checkout` в отдельном job). Добавлен checkout проверенного SHA в deploy job; после merge повторно проверить полный GitHub → GHCR → SSH → VPS. Сайт на VPS оставался работоспособным без прерывания.
 
