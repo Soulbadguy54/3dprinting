@@ -74,6 +74,18 @@ class PushTests(unittest.TestCase):
         denial = self.subscribe()
         self.assertEqual(denial.status_code, 401)
 
+    def test_retrying_same_subscription_does_not_duplicate_device(self):
+        """A timed-out browser/API attempt can safely repeat the PUT."""
+        first = self.subscribe()
+        self.assertEqual(first.status_code, 200, first.text)
+        second = self.subscribe()
+        self.assertEqual(second.status_code, 200, second.text)
+        with SessionLocal() as session:
+            devices = session.scalars(
+                select(PushSubscription).where(PushSubscription.endpoint == self.endpoint)
+            ).all()
+            self.assertEqual(len(devices), 1)
+
     def test_test_push_only_for_users_own_wishlist_game(self):
         self.assertEqual(self.subscribe().status_code, 200)
         with patch("api.push_routes.send_push", return_value=(True, False)) as sender:
