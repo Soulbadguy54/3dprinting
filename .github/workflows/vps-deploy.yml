@@ -62,6 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: vps-production
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+          persist-credentials: false
       - name: Install pinned SSH identity and known_hosts
         env:
           SSH_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}

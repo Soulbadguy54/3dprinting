@@ -53,3 +53,6 @@ Version-pin API/web GHCR images by tested Git commit. Deploy takes local pre-mig
 1. **Completed:** the owner added repository secret `VPS_DEPLOY_SSH_KEY` to GitHub Actions. An authenticated probe from GitHub's runner succeeded, and the temporary private SSH key file on the VPS was removed. The public key remains in `authorized_keys`.
 2. Server host key is pinned in `deploy/ssh_known_hosts` (fingerprint `SHA256:JS86gvQKTulRmLSQ1AMp0+OQHcZMxinHnHirk8ryb3k`). Dedicated account accepts only restricted deploy commands.
 3. Leave `RATEAPP_VPS_DEPLOY_ENABLED` unset/false until the supervised production cutover. A successful authentication probe does **not** certify the full deployment procedure. On any key loss, generate and enroll a **new** key pair; do not expect to recover the deleted VPS private key.
+
+## Automated deployment correction (2026-10-21, PR #40)
+The first main-branch CI succeeded and the GHCR publish job succeeded. The separate `deploy` GitHub Actions job failed before SSH because it lacked an `actions/checkout` step, so the pinned `deploy/ssh_known_hosts` file was absent from the runner. PR #40 adds checkout at the tested SHA to the deploy job, without changing the running VPS application or PostgreSQL. Retest the complete CI → GHCR → SSH → health chain before declaring continuous delivery verified.
