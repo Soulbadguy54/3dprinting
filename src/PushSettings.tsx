@@ -4,6 +4,27 @@ import { motion, useReducedMotion } from 'motion/react'
 type PushConfig = { enabled: boolean; publicKey: string; devices: number }
 type PushState = { config: PushConfig; subscribed: boolean; permission: NotificationPermission }
 const PUSH_CHANGED_EVENT = 'rateapp:push-changed'
+type PushPhase = 'permission' | 'worker' | 'service' | 'server'
+const PUSH_PHASE_LABELS: Record<PushPhase, string> = {
+  permission: 'Ожидаем разрешение браузера…',
+  worker: 'Подготавливаем уведомления…',
+  service: 'Подключаем Push-службу устройства…',
+  server: 'Сохраняем подписку…',
+}
+
+async function withTimeout<T>(task: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: number | undefined
+  try {
+    return await Promise.race([
+      task,
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer)
+  }
+}
 
 function supportsWebPush(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
@@ -80,8 +101,10 @@ export function clearPushStateCache(user: string): void {
 }
 
 /** Must be called directly from a click handler before any other await. */
-async function enablePush(publicKey: string): Promise<void> {
+async function enablePush(publicKey: string, onPhase?: (phase: PushPhase) => void): Promise<void> {
   if (!supportsWebPush()) throw new Error('Браузер не поддерживает push-уведомления.')
+  // The permission request needs the original user activation.
+  onPhase?.('permission')
   const permission = Notification.permission === 'granted'
     ? 'granted'
     : await Notification.requestPermission()
@@ -89,17 +112,43 @@ async function enablePush(publicKey: string): Promise<void> {
     throw new Error('Разреши уведомления для RateApp в настройках браузера и телефона.')
   }
 
-  const registration = await navigator.serviceWorker.ready
-  const subscription = await registration.pushManager.getSubscription()
-    ?? await registration.pushManager.subscribe({
+  onPhase?.('worker')
+  const registration = await withTimeout(
+    navigator.serviceWorker.ready,
+    8000,
+    'Служба уведомлений приложения не запустилась. Перезапусти RateApp и повтори попытку.',
+  )
+  onPhase?.('service')
+  // PushManager talks to the browser/OS push provider, not to the RateApp API.
+  // Some devices leave subscribe() unresolved when the provider is unreachable.
+  // If it resolves late, the next attempt can reuse getSubscription().
+  const subscription = await withTimeout((async () => {
+    const current = await registration.pushManager.getSubscription()
+    return current ?? registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: decodeVapidKey(publicKey),
     })
-  const response = await fetch('/api/push/subscription', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: requestBody(subscription),
-  })
+  })(), 20000, 'Push-служба устройства не ответила за 20 секунд. Проверь подключение и попробуй снова.')
+
+  onPhase?.('server')
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 10000)
+  let response: Response
+  try {
+    response = await fetch('/api/push/subscription', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: requestBody(subscription),
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('Сервер не ответил за 10 секунд. Повтори подключение уведомлений.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timer)
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
     throw new Error(payload?.detail || 'Не удалось подключить уведомления.')
@@ -127,6 +176,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
   const [state, setState] = useState<PushState | null>(() => cachedPushState(user))
   const [busy, setBusy] = useState(false)
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
+  const [phase, setPhase] = useState<PushPhase | null>(null)
   const pendingRef = useRef(false)
   const shouldReduceMotion = useReducedMotion()
   const [message, setMessage] = useState('')
@@ -170,7 +220,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
 
     void (async () => {
       try {
-        if (next) await enablePush(state.config.publicKey)
+        if (next) await enablePush(state.config.publicKey, setPhase)
         else await disconnectPushForLogout()
 
         rememberChoice(user)
@@ -189,6 +239,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
         setMessage(error instanceof Error ? error.message : 'Не удалось изменить настройки.')
       } finally {
         setOptimisticEnabled(null)
+        setPhase(null)
         pendingRef.current = false
         setBusy(false)
       }
@@ -245,6 +296,7 @@ export default function PushSettings({ user, onOpenWishlist }: { user: string; o
       {supported && state && !state.config.enabled && <p className="push-settings__note">Уведомления временно недоступны.</p>}
       {supported && state?.permission === 'denied' && !enabled &&
         <p className="push-settings__note">Разреши уведомления в настройках браузера или телефона.</p>}
+      {busy && optimisticEnabled && phase && <p className="push-settings__note" role="status">{PUSH_PHASE_LABELS[phase]}</p>}
       {message && <p className="push-settings__note" role="status">{message}</p>}
     </section>
   )
@@ -255,6 +307,7 @@ export function PushOnboarding({ user }: { user: string }) {
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [phase, setPhase] = useState<PushPhase | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -291,12 +344,13 @@ export function PushOnboarding({ user }: { user: string }) {
     setBusy(true)
     setMessage('')
     try {
-      await enablePush(config.publicKey)
+      await enablePush(config.publicKey, setPhase)
       dismiss()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Не удалось подключить уведомления.')
       if (supportsWebPush() && Notification.permission === 'denied') rememberChoice(user)
     } finally {
+      setPhase(null)
       setBusy(false)
     }
   }
@@ -321,6 +375,7 @@ export function PushOnboarding({ user }: { user: string }) {
         <button type="button" className="push-invite__later" disabled={busy} onClick={dismiss}>
           Не сейчас
         </button>
+        {busy && phase && <p className="push-settings__note" role="status">{PUSH_PHASE_LABELS[phase]}</p>}
         {message && <p className="push-settings__note" role="status">{message}</p>}
       </section>
     </div>
