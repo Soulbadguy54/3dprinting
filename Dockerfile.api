@@ -6,5 +6,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api/ ./api/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
+COPY deploy/api-entrypoint.sh /usr/local/bin/rateapp-api-entrypoint
+RUN chmod 755 /usr/local/bin/rateapp-api-entrypoint
+ENTRYPOINT ["/usr/local/bin/rateapp-api-entrypoint"]
 EXPOSE 8000
 CMD ["uvicorn", "api.index:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

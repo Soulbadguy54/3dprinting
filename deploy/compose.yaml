@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     env_file:
       - /srv/rateapp/secrets/app.env
+    volumes:
+      - /srv/rateapp/secrets/postgres_password:/run/secrets/postgres_password:ro
     environment:
       VERCEL_ENV: production
     depends_on:
