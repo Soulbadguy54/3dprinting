@@ -83,4 +83,4 @@ jobs:
           [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$VPS_HOST" =~ ^[A-Za-z0-9.:-]+$ ]]
           [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
-          printf '%s\n' "$GH_TOKEN" | ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "$VPS_USER@$VPS_HOST" "set -e; cd /srv/rateapp/source; git fetch -q origin $DEPLOY_SHA; git checkout -q --detach $DEPLOY_SHA; bash deploy/scripts/deploy.sh $DEPLOY_SHA"
+          printf '%s\n' "$GH_TOKEN" | ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "$VPS_USER@$VPS_HOST" "deploy $DEPLOY_SHA"
