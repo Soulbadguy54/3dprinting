@@ -10,11 +10,16 @@ test('first opt-in recovers when device push provider does not respond', async (
   test.skip(browserName === 'webkit', 'Web Push on iOS requires an installed Home Screen PWA.')
   await page.context().grantPermissions(['notifications'])
   await page.addInitScript(() => {
-    Object.defineProperty(PushManager.prototype, 'getSubscription', {
-      configurable: true, value: () => Promise.resolve(null),
-    })
-    Object.defineProperty(PushManager.prototype, 'subscribe', {
-      configurable: true, value: () => new Promise(() => {}),
+    // CI preview does not guarantee an active real SW before the first login.
+    // Keep native SW registration intact, but make ready deterministic here.
+    const fakeRegistration = {
+      pushManager: {
+        getSubscription: () => Promise.resolve(null),
+        subscribe: () => new Promise(() => {}),
+      },
+    }
+    Object.defineProperty(navigator.serviceWorker, 'ready', {
+      configurable: true, value: Promise.resolve(fakeRegistration),
     })
   })
   await page.route('**/api/push/config', route => route.fulfill({
