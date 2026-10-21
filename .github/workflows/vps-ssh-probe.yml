@@ -1,0 +1,49 @@
+name: VPS SSH authentication probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/vps-ssh-probe.yml
+
+permissions: {}
+
+jobs:
+  verify-ssh:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'infra/vps-migration-20261021'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify GitHub-hosted runner can authenticate to VPS
+        env:
+          VPS_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${VPS_PRIVATE_KEY:-}" ]]; then
+            echo "VPS_DEPLOY_SSH_KEY is missing" >&2
+            exit 1
+          fi
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          cp deploy/ssh_known_hosts "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          unset VPS_PRIVATE_KEY
+          set +e
+          ssh -T -i "$HOME/.ssh/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=12 \
+            rateapp-deploy@111.88.215.215 'invalid-test' \
+            > "$RUNNER_TEMP/rateapp-probe.out" 2>&1
+          status=$?
+          set -e
+          if [[ "$status" -ne 64 ]] || ! grep -Fq 'Only the deploy command' "$RUNNER_TEMP/rateapp-probe.out"; then
+            echo "SSH authentication probe failed with exit $status" >&2
+            exit 1
+          fi
+          echo "VPS SSH authentication, pinned host key, and forced-command restriction verified."
