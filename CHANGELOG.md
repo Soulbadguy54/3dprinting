@@ -7,6 +7,7 @@
 - В Neon создан snapshot `pre-vps-migration-2026-10-21`; полный архив `pg_dump` успешно восстановлен на VPS в **тестовую** БД `rateapp_stage`, контрольные количества таблиц совпали. Neon и Vercel продолжают обслуживать production.
 - DNS `r-app.ru` и `www.r-app.ru` разрешается в IP VPS. Локальные тестовые контейнеры web/API запущены; HTTPS и production ещё не переключены. Alembic baseline применён только на восстановленной staging-БД, smoke пройден.
 - Безопасный запуск локальной БД в API через монтирование файла секрета, без сохранения пароля в Git; установлен `rclone` и `fail2ban`. Отдельный SSH-деплой с принудительно ограниченной командой подтверждён; SSH host key закреплён в workflow, для Actions нужен один закрытый ключ в GitHub Secrets.
+- В VPS добавлены IGDB-параметры через Gateway и локально сгенерированы совпадающие VAPID-ключи и `CRON_SECRET`; подтверждены получение Twitch OAuth token (HTTP 200), работоспособность staging API и права root-only на `app.env`. Работающий Vercel и Neon не переключались.
 - PWA-ссылка установки берётся с текущего домена; VAPID subject нового хоста задаётся отдельно, сохраняя прежний URL по умолчанию для Vercel. Финальная синхронизация и Google OAuth ещё не выполнены. Инструкция: [VPS_MIGRATION](docs/VPS_MIGRATION.md).
 
 
