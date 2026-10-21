@@ -91,7 +91,7 @@ export default function InstallPage() {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText('https://rateapp-delta.vercel.app/install')
+      await navigator.clipboard.writeText(`${window.location.origin}/install`)
       setCopied(true)
     } catch { setCopied(false) }
   }

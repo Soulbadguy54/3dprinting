@@ -28,6 +28,7 @@ services:
       - /srv/rateapp/secrets/postgres_password:/run/secrets/postgres_password:ro
     environment:
       VERCEL_ENV: production
+      VAPID_SUBJECT: https://r-app.ru
     depends_on:
       db:
         condition: service_healthy

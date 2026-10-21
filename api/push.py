@@ -89,7 +89,7 @@ def send_push(subscription: PushSubscription, *, title: str, body: str,
             },
             data=payload,
             vapid_private_key=os.environ["VAPID_PRIVATE_KEY"],
-            vapid_claims={"sub": "https://rateapp-delta.vercel.app"},
+            vapid_claims={"sub": os.getenv("VAPID_SUBJECT", "https://rateapp-delta.vercel.app")},
             ttl=24 * 3600,
             timeout=8,
         )
