@@ -32,6 +32,11 @@ The VPS executes `deploy/scripts/backup-to-gdrive.sh` using PostgreSQL `pg_dump 
 ## Rollback
 Version-pin API/web GHCR images by tested Git commit. Deploy takes local pre-migration archive and health-checks new release, and may roll back app images if health fails. Database schema is **not** automatically downgraded, because some migration changes are irreversible. Keep prior Vercel and Neon intact until the new site passes user acceptance; session cookies and PWA/push registrations are origin-bound.
 
+## Further verified server preparation
+- The systemd unit files for backup and release notifications have been copied to `/etc/systemd/system/` and `daemon-reload` completed. Both timers are **disabled** until Drive OAuth and VAPID/CRON configuration and a recovery drill have been verified.
+- The forced SSH command was tested twice. An invalid command failed with exit code 64. A SHA outside the current `main` lineage was rejected with exit code 3, **without deploying**.
+- The latest local resource check while all three staging containers ran showed ~1.3 GiB RAM available, 11 MiB swap used, and ~32 GiB disk free. Both the old Vercel endpoint and local staging `/api/health` returned HTTP 200.
+
 ## One-time GitHub Actions secret enrollment
 1. The owner opens the GitHub repository **Settings → Secrets and variables → Actions** and adds `VPS_DEPLOY_SSH_KEY` containing the complete ED25519 private key from root-only file `/srv/rateapp/secrets/gh_actions_deploy_key`. Retrieve it directly using the owner's private SSH session, not through a chat response or repository file.
 2. Verify the action can authenticate with the forced SSH command to `rateapp-deploy@111.88.215.215`. The public server host key is already pinned in `deploy/ssh_known_hosts` (verified server fingerprint `SHA256:JS86gvQKTulRmLSQ1AMp0+OQHcZMxinHnHirk8ryb3k`).
