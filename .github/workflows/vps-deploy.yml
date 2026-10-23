@@ -82,3 +82,10 @@ jobs:
         run: |
           [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
           printf '%s\n' "$GH_TOKEN" | ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "rateapp-deploy@111.88.215.215" "deploy $DEPLOY_SHA"
+      - name: Initialize separate staging database without changing production
+        env:
+          DEPLOY_SHA: ${{ needs.publish.outputs.sha }}
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+        run: |
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          ssh -T -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o BatchMode=yes "rateapp-deploy@111.88.215.215" "bootstrap-stage $DEPLOY_SHA"
