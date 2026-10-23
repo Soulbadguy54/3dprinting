@@ -4,7 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 ARG GITHUB_SHA=local
-RUN npm run build
+RUN npm run build && node -e "const fs=require('fs'); const p='dist/index.html'; const s=fs.readFileSync(p,'utf8'); fs.writeFileSync(p,s.replace('</body>','<div aria-label=\\\"Тестовая версия\\\" style=\\\"position:fixed;z-index:2147483647;left:12px;bottom:12px;pointer-events:none;background:#a42345;color:white;border-radius:7px;padding:6px 9px;font:700 11px system-ui\\\">TEST · DEV</div></body>'))"
 
 FROM caddy:2-alpine
 COPY deploy/Caddyfile.stage /etc/caddy/Caddyfile
