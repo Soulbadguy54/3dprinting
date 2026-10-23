@@ -10,6 +10,7 @@ export type AuthUser = {
 }
 
 type Mode = 'login' | 'register'
+const registrationDisabled = import.meta.env.VITE_DISABLE_REGISTRATION === '1'
 
 const apiErrorDetail = (data: unknown): string | null => {
   if (!data || typeof data !== 'object' || !('detail' in data)) return null
@@ -149,14 +150,16 @@ export default function AuthScreen({
           >
             Вход
           </button>
-          <button
+          {!registrationDisabled && <button
             className={mode === 'register' ? 'auth-tab auth-tab--active' : 'auth-tab'}
             onClick={() => switchMode('register')}
             type="button"
           >
             Регистрация
-          </button>
+          </button>}
         </div>
+
+        {registrationDisabled && <p className="auth-security">Тестовая версия. Регистрация отключена — войди под существующим аккаунтом.</p>}
 
         <form className="auth-form" onSubmit={submit}>
           {mode === 'register' ? (

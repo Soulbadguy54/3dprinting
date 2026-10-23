@@ -65,3 +65,19 @@ The VPS migration and cutover are described in [VPS_MIGRATION.md](VPS_MIGRATION.
 
 Только завершённую и подтверждённую доставку можно называть опубликованной. Если необходимы внешний ручной шаг, отдельное разрешение на опасную операцию, проверка реального устройства либо недоступен инструмент — это явно отмечается как блокер/ограничение, а не маскируется под готовый релиз.
 
+## Staging release flow (`dev.r-app.ru`)
+
+1. Merge reviewed, green PR #44 into `main`, wait for main CI and normal VPS production deployment and smoke. The main deploy installs the audited staging dispatcher only after production health passes.
+2. A distinct post-deploy `bootstrap-stage` command runs **once**. It validates the exact deployed `main` SHA, dumps production without modifying it, backs up any existing `rateapp_stage`, creates a limited `rateapp_stage` DB user, restores the snapshot into `rateapp_stage`, removes other users/sessions/push subscriptions *inside stage only*, and writes the initialization marker. Abnormal exit stops the staging rollout; it must never fall back to production DB credentials.
+3. Create `develop` based on deployed main and trigger a commit/push. Its full CI runs frontend, backend PostgreSQL and mobile E2E. Successful runs build two new stage-only GHCR images tagged with the exact tested SHA; no stage image is used by production.
+4. The restricted SSH command `deploy-stage <40-hex-sha>` accepts only the *current* `develop` HEAD. It deploys via the reviewed Compose file from `main`, makes a stage-only pre-migration dump, migrates only `rateapp_stage`, and verifies API health.
+5. Smoke `https://dev.r-app.ru`: valid HTTPS; SPA/mobile; test banner; `/api/health` 200 + DB reachable; anonymous `/api/auth/me` 401; POST `/api/auth/register` 404; login with known owner PIN (requires owner device, do not collect PIN); library/collections; no stage push or cron traffic. Reconfirm `https://r-app.ru` and its API, compare production release SHA with `main`.
+6. Further changes: PR into `develop` → CI → staging deploy → acceptance → PR into `main` → full production CI, backup, migration/deploy and smoke. Do not auto-promote a staging feature without acceptance.
+
+### Cautions
+
+- Same VPS/postgres service but **separate databases and roles**. Do not point stage API at the production superuser credentials. Never run stage migrations against `rateapp`.
+- Stage data are a *snapshot*, not live-synced. A reset is a destructive operation and requires a fresh approval and stage backup.
+- Staging login sessions are new, scoped to `dev.r-app.ru`; no real cookies/tokens move from production. UI/JS can be fetched without login, but private API requires authorization.
+- If stage migrations fail, rolling back images cannot revert the schema. Restore the staging backup only after diagnosis and explicit approval.
+- DNS A `dev.r-app.ru → 111.88.215.215`, TLS managed by existing Caddy. Staging does not start merely because DNS exists.

@@ -49,4 +49,10 @@ if [[ "$healthy" != 1 ]]; then
   exit 1
 fi
 printf '%s\n' "$sha" > /srv/rateapp/current-release
+# Install the independently constrained staging dispatcher only from reviewed main.
+install -o root -g root -m 0755 deploy/scripts/ssh-deploy-dispatch.sh /usr/local/sbin/rateapp-deploy-dispatch
+install -o root -g root -m 0755 deploy/scripts/ssh-stage-deploy-root.sh /usr/local/sbin/rateapp-stage-deploy-root
+printf '%s\n' 'rateapp-deploy ALL=(root) NOPASSWD: /usr/local/sbin/rateapp-stage-deploy-root *' > /etc/sudoers.d/rateapp-stage-deploy
+chmod 0440 /etc/sudoers.d/rateapp-stage-deploy
+visudo -cf /etc/sudoers.d/rateapp-stage-deploy >/dev/null
 echo "Rate APP healthy at $sha"

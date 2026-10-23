@@ -1,0 +1,39 @@
+name: rateapp-stage
+services:
+  api:
+    image: ghcr.io/soulbadguy54/rateapp-api-stage:${RATEAPP_STAGE_RELEASE:?set RATEAPP_STAGE_RELEASE}
+    container_name: rateapp-stage-api
+    restart: unless-stopped
+    env_file:
+      - /srv/rateapp/secrets/app.env
+    environment:
+      VERCEL_ENV: staging
+      RATEAPP_DISABLE_REGISTRATION: "1"
+      RATEAPP_DB_HOST: rateapp-postgres
+      RATEAPP_DB_NAME: rateapp_stage
+      RATEAPP_DB_USER: rateapp_stage
+      RATEAPP_DB_PASSWORD_FILE: /run/secrets/stage_postgres_password
+      VAPID_PUBLIC_KEY: ""
+      VAPID_PRIVATE_KEY: ""
+      CRON_SECRET: ""
+    volumes:
+      - /srv/rateapp/secrets/stage_postgres_password:/run/secrets/stage_postgres_password:ro
+    ports:
+      - "127.0.0.1:18081:8000"
+    mem_limit: 320m
+    pids_limit: 128
+    networks: [shared]
+
+  web:
+    image: ghcr.io/soulbadguy54/rateapp-web-stage:${RATEAPP_STAGE_RELEASE:?set RATEAPP_STAGE_RELEASE}
+    container_name: rateapp-stage-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18082:8080"
+    mem_limit: 128m
+    networks: [shared]
+
+networks:
+  shared:
+    external: true
+    name: rateapp_internal
