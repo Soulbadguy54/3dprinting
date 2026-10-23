@@ -1,0 +1,7 @@
+:8080 {
+    encode gzip zstd
+    header X-Robots-Tag "noindex, nofollow, noarchive"
+    root * /srv
+    try_files {path} /index.html
+    file_server
+}
