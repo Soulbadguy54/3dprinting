@@ -18,3 +18,15 @@ r-app.ru, www.r-app.ru {
 :8080 {
     import rateapp_common
 }
+
+dev.r-app.ru {
+    encode gzip zstd
+    header X-Robots-Tag "noindex, nofollow, noarchive"
+    @api path /api/*
+    handle @api {
+        reverse_proxy rateapp-stage-api:8000
+    }
+    handle {
+        reverse_proxy rateapp-stage-web:8080
+    }
+}
