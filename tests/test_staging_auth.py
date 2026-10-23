@@ -11,7 +11,7 @@ from api import index
 class StagingRegistrationTests(unittest.TestCase):
     def test_registration_disabled_on_staging(self):
         payload = {
-            "email": "test-registration@example.invalid",
+            "email": "test-registration@example.com",
             "nickname": "register_probe",
             "pin": "123456",
         }
