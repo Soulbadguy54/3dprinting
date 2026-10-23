@@ -87,7 +87,7 @@ jobs:
           curl -fsS --retry 8 --retry-delay 5 https://dev.r-app.ru/api/health |
             python3 -c 'import json,sys;assert json.load(sys.stdin)["database"]["reachable"] is True'
           result="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-            --data '{"email":"not-a-user@example.invalid","nickname":"no_signup","pin":"123456"}' \
+            --data '{"email":"not-a-user@example.com","nickname":"no_signup","pin":"123456"}' \
             https://dev.r-app.ru/api/auth/register)"
           test "$result" = 404
           result="$(curl -sS -o /dev/null -w '%{http_code}' https://dev.r-app.ru/api/auth/me)"
