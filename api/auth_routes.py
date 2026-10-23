@@ -1,4 +1,5 @@
 """Auth/profile HTTP routes, separate from games and collections routes."""
+import os
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -27,6 +28,8 @@ class LoginPayload(BaseModel):
 
 @router.post("/api/auth/register", status_code=201)
 def register(payload: RegisterPayload, response: Response) -> dict[str, object]:
+    if os.getenv("RATEAPP_DISABLE_REGISTRATION") == "1":
+        raise HTTPException(status_code=404, detail="Registration is disabled.")
     email = str(payload.email).strip().lower()
     nickname = payload.nickname.strip().lower()
     pin = payload.pin.strip()
