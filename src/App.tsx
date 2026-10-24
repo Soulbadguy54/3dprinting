@@ -3218,7 +3218,7 @@ function App() {
                       }}
                     />
                   </Suspense>
-                )
+                )}
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'profile' && renderProfile()}
               </>
