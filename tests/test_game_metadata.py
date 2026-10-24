@@ -1,4 +1,4 @@
-"""Regression tests for immediate store-link caching and IGDB detail enrichment."""
+"""IGDB metadata is saved at ingestion and read locally without per-card calls."""
 import json
 import secrets
 import unittest
@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from api import index
 from api.database import SessionLocal
+from api.games_routes import IGDB_GAME_FIELDS, _igdb_search_body
 from api.models import Game
 
 
@@ -31,6 +32,13 @@ class GameMetadataCacheTests(unittest.TestCase):
         return index._cache_igdb_games([{
             "id": self.game_id,
             "name": "Starfall Horizon",
+            "summary": "A journey across the stars.",
+            "storyline": "The colony must survive.",
+            "category": 0,
+            "themes": [{"id": 17, "name": "Sci-Fi"}],
+            "keywords": [8, 15, 26],
+            "screenshots": [{"id": 77, "image_id": "sce8"}],
+            "cover": {"image_id": "co123"},
             "websites": [
                 {"url": "https://store.steampowered.com/app/1234"},
                 {"url": "https://www.epicgames.com/store/en-US/p/starfall"},
@@ -39,73 +47,75 @@ class GameMetadataCacheTests(unittest.TestCase):
             "videos": [{"name": "Trailer", "video_id": "abcdefghijk"}],
         }])
 
-    def test_igdb_search_details_saved_and_exposed_immediately(self):
+    def test_complete_snapshot_description_stores_immediately_and_offline(self):
         items = self._cache_igdb_result()
+        self.assertEqual(items[0]["summary"], "A journey across the stars.")
+        self.assertEqual(items[0]["storyline"], "The colony must survive.")
         self.assertEqual([s["provider"] for s in items[0]["storeLinks"]], ["steam", "epic"])
         self.assertEqual(items[0]["trailerUrl"], "https://www.youtube.com/watch?v=abcdefghijk")
         with SessionLocal() as session:
             game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
+            self.assertEqual(game.igdb_payload["keywords"], [8, 15, 26])
+            self.assertEqual(game.igdb_payload["themes"][0]["name"], "Sci-Fi")
+            self.assertEqual(game.igdb_payload["screenshots"][0]["image_id"], "sce8")
             details = json.loads(game.details_json)
-            self.assertTrue(details["_linksOnly"])
+            self.assertEqual(details["summary"], "A journey across the stars.")
+            self.assertNotIn("_linksOnly", details)
             self.assertIsNotNone(game.details_cached_at)
 
-        def detail_request(endpoint, *_args, **_kwargs):
-            if endpoint == "game_time_to_beats":
-                return [{"hastily": 3600 * 14, "completely": 3600 * 61}]
-            if endpoint == "games":
-                return [{
-                    "summary": "A journey across the stars.",
-                    "websites": [
-                        {"url": "https://store.steampowered.com/app/1234"},
-                        {"url": "https://www.epicgames.com/store/en-US/p/starfall"},
-                    ],
-                    "videos": [{"name": "Trailer", "video_id": "abcdefghijk"}],
-                }]
-            self.fail(f"Unexpected IGDB endpoint: {endpoint}")
-
-        with patch("api.igdb_client.igdb_client._access_token", return_value=("client", "token")), \
-             patch("api.games_routes._igdb_details_request", side_effect=detail_request) as req:
+        with patch("api.igdb_client.igdb_client.request",
+                   side_effect=AssertionError("Details must be fetched only from PostgreSQL")):
             response = self.client.get(f"/api/games/{self.game_id}/details")
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(req.call_count, 2)
-        self.assertEqual({call.args[0] for call in req.call_args_list}, {"games", "game_time_to_beats"})
         self.assertEqual(response.json()["summary"], "A journey across the stars.")
-        self.assertEqual(response.json()["storyHours"], 14)
         self.assertEqual(response.json()["storeLinks"][0]["provider"], "steam")
-
-        with patch("api.igdb_client.igdb_client._access_token", side_effect=AssertionError("Cached data must be local")):
-            again = self.client.get(f"/api/games/{self.game_id}/details")
-        self.assertEqual(again.status_code, 200, again.text)
-        self.assertEqual(again.json()["completionHours"], 61)
 
     def test_bootstrap_embeds_existing_cached_store_links(self):
         self._cache_igdb_result()
-        self.assertEqual(
-            self.client.put(f"/api/library/{self.game_id}/wishlist").status_code,
-            200,
-        )
+        self.assertEqual(self.client.put(f"/api/library/{self.game_id}/wishlist").status_code, 200)
         bootstrap = self.client.get("/api/bootstrap")
         self.assertEqual(bootstrap.status_code, 200, bootstrap.text)
         game = next(item["game"] for item in bootstrap.json()["library"] if item["gameId"] == self.game_id)
         self.assertEqual(game["storeLinks"][0]["provider"], "steam")
+        self.assertEqual(game["summary"], "A journey across the stars.")
         self.assertIn("youtube.com", game["trailerUrl"])
 
-    def test_existing_full_cache_preserved_on_repeat_search(self):
+    def test_existing_cache_preserved_on_partial_refresh(self):
         self._cache_igdb_result()
         with SessionLocal() as session:
             game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
-            full = json.loads(game.details_json)
-            full["storyHours"] = 18
-            full["summary"] = "Preserved full description."
-            full["_linksOnly"] = False
-            game.details_json = json.dumps(full)
+            existing = json.loads(game.details_json)
+            existing["storyHours"] = 18
+            game.details_json = json.dumps(existing)
             session.commit()
-        result = self._cache_igdb_result()
-        self.assertEqual(result[0]["storeLinks"][0]["provider"], "steam")
-        with patch("api.igdb_client.igdb_client._access_token", side_effect=AssertionError("Should not call IGDB")):
-            response = self.client.get(f"/api/games/{self.game_id}/details")
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["storyHours"], 18)
+
+        result = index._cache_igdb_games([{"id": self.game_id, "name": "Starfall Horizon"}])
+        self.assertEqual(result[0]["summary"], "A journey across the stars.")
+        with SessionLocal() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
+            self.assertEqual(game.igdb_payload["keywords"], [8, 15, 26])
+            self.assertEqual(json.loads(game.details_json)["storyHours"], 18)
+
+    def test_igdb_search_requests_all_game_fields(self):
+        self.assertTrue(IGDB_GAME_FIELDS.startswith("*,"))
+        query = _igdb_search_body("Starfall", 0)
+        self.assertIn("fields *,", query)
+        self.assertIn("cover.image_id", query)
+        self.assertIn("websites.url", query)
+        self.assertIn("videos.video_id", query)
+
+    def test_legacy_game_details_return_cached_subset_without_fetch(self):
+        with SessionLocal() as session:
+            session.add(Game(
+                igdb_id=self.game_id, title="Old Legacy Game",
+                details_json='{"storeLinks":[],"_linksOnly":true}',
+            ))
+            session.commit()
+        with patch("api.igdb_client.igdb_client.request",
+                   side_effect=AssertionError("Legacy details must never call IGDB")):
+            result = self.client.get(f"/api/games/{self.game_id}/details")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["storeLinks"], [])
 
 
 if __name__ == "__main__":
