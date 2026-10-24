@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+// Service workers can intercept fetch before Playwright route mocks on mobile.
+test.use({ serviceWorkers: 'block' })
+
 test('discovery onboarding, swipe, undo and animated details', async ({ page }) => {
   page.on('pageerror', error => console.log('DISCOVERY PAGEERROR', error.message))
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
