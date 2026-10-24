@@ -100,27 +100,36 @@ export default function DiscoverView({
     event.stopPropagation()
     sheetAnimationRef.current?.stop()
     pullRef.current = { pointerId: event.pointerId, startY: event.clientY, initial: reveal.get() }
-    event.currentTarget.setPointerCapture(event.pointerId)
+    // Captured pointers can be lost when a transformed handle moves in WebKit.
+    // Window listeners below also follow the gesture until it ends.
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* Window fallback */ }
   }
-  const onPullMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (pullRef.current?.pointerId !== event.pointerId) return
-    event.stopPropagation()
-    reveal.set(clamp(pullRef.current.initial + (pullRef.current.startY - event.clientY) / Math.max(1, travel)))
-  }
-  const onPullEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (pullRef.current?.pointerId !== event.pointerId) return
-    event.stopPropagation()
+  const updatePull = (pointerId: number, clientY: number) => {
     const pointer = pullRef.current
+    if (!pointer || pointer.pointerId !== pointerId) return
+    reveal.set(clamp(pointer.initial + (pointer.startY - clientY) / Math.max(1, travel)))
+  }
+  const finishPull = (pointerId: number, clientY: number) => {
+    const pointer = pullRef.current
+    if (!pointer || pointer.pointerId !== pointerId) return
+    updatePull(pointerId, clientY)
     pullRef.current = null
-    const moved = Math.abs(event.clientY - pointer.startY)
+    const moved = Math.abs(clientY - pointer.startY)
     if (moved < 7) {
       if (!expanded) void showDetails()
       else settleSheet(false)
       return
     }
-    const shouldOpen = reveal.get() >= .48
-    if (shouldOpen) void showDetails()
+    if (reveal.get() >= .48) void showDetails()
     else settleSheet(false)
+  }
+  const onPullMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    updatePull(event.pointerId, event.clientY)
+  }
+  const onPullEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    finishPull(event.pointerId, event.clientY)
   }
 
   const loadFeed = useCallback(async (initial = false) => {
@@ -233,6 +242,30 @@ export default function DiscoverView({
     }
   }
 
+  useEffect(() => {
+    // WebKit/iOS may stop delivering events to a handle that moves under the
+    // pointer. Receive the same gesture on window, even outside the handle.
+    const move = (event: PointerEvent) => {
+      if (pullRef.current?.pointerId !== event.pointerId) return
+      if (event.cancelable) event.preventDefault()
+      updatePull(event.pointerId, event.clientY)
+    }
+    const up = (event: PointerEvent) => finishPull(event.pointerId, event.clientY)
+    const cancel = (event: PointerEvent) => {
+      if (pullRef.current?.pointerId !== event.pointerId) return
+      pullRef.current = null
+      settleSheet(expanded)
+    }
+    window.addEventListener('pointermove', move, { passive: false })
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+    }
+  })
+
   const dismissHelp = () => {
     setHelpOpen(false)
     try { localStorage.setItem(getHelpKey(nickname), '1') } catch { /* Private browsing */ }
@@ -283,7 +316,7 @@ export default function DiscoverView({
               }}
               exit="departure"
               transition={{ type: 'spring', stiffness: 305, damping: 30 }}
-              drag={!busy && !helpOpen && !expanded && reveal.get() < .01}
+              drag={!busy && !helpOpen && !expanded}
               dragConstraints={{ left: -150, right: 150, top: -150, bottom: 95 }}
               dragElastic={.5}
               dragSnapToOrigin
