@@ -49,7 +49,7 @@ class GameMetadataCacheTests(unittest.TestCase):
             self.assertTrue(details["_linksOnly"])
             self.assertIsNotNone(game.details_cached_at)
 
-        with patch("api.games_routes._igdb_access_token", return_value=("client", "token")), \
+        with patch("api.igdb_client.igdb_client._access_token", return_value=("client", "token")), \
              patch("api.games_routes._igdb_details_request", return_value=[{
                  "hastily": 3600 * 14,
                  "completely": 3600 * 61,
@@ -61,7 +61,7 @@ class GameMetadataCacheTests(unittest.TestCase):
         self.assertEqual(response.json()["storyHours"], 14)
         self.assertEqual(response.json()["storeLinks"][0]["provider"], "steam")
 
-        with patch("api.games_routes._igdb_access_token", side_effect=AssertionError("Cached data must be local")):
+        with patch("api.igdb_client.igdb_client._access_token", side_effect=AssertionError("Cached data must be local")):
             again = self.client.get(f"/api/games/{self.game_id}/details")
         self.assertEqual(again.status_code, 200, again.text)
         self.assertEqual(again.json()["completionHours"], 61)
@@ -89,7 +89,7 @@ class GameMetadataCacheTests(unittest.TestCase):
             session.commit()
         result = self._cache_igdb_result()
         self.assertEqual(result[0]["storeLinks"][0]["provider"], "steam")
-        with patch("api.games_routes._igdb_access_token", side_effect=AssertionError("Should not call IGDB")):
+        with patch("api.igdb_client.igdb_client._access_token", side_effect=AssertionError("Should not call IGDB")):
             response = self.client.get(f"/api/games/{self.game_id}/details")
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["storyHours"], 18)
