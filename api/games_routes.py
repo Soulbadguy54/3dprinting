@@ -493,7 +493,7 @@ def game_details(game_id: int, request: Request, background_tasks: BackgroundTas
             isinstance(cached_details, dict)
             and game.details_cached_at is not None
             and game.details_cached_at.replace(tzinfo=game.details_cached_at.tzinfo or timezone.utc)
-                > _now() - timedelta(days=GAME_DETAILS_CACHE_DAYS)
+                > _now() - timedelta(days=_game_details_cache_days(game.release_date))
         ):
             if not cached_details.get("_linksOnly"):
                 return _detail_response(session, game, cached_details)
