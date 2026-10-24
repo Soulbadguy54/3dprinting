@@ -509,9 +509,9 @@ export default function DiscoverView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }} transition={{ duration: .32 }}>
               <motion.div className="discover-guide__backdrop"
-                initial={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
-                animate={{ backdropFilter: 'blur(7px)', WebkitBackdropFilter: 'blur(7px)', backgroundColor: 'rgba(6,10,23,.32)' }}
-                exit={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
+                initial={{ backdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
+                animate={{ backdropFilter: 'blur(7px)', backgroundColor: 'rgba(6,10,23,.32)' }}
+                exit={{ backdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
                 transition={{ duration: .52, ease: [0.22, 1, 0.36, 1] }} />
               {/* Full-screen invisible dismissal target: no framed card or visible
                   action button. First poster stays in place behind the blur. */}
