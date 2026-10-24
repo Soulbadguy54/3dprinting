@@ -182,7 +182,10 @@ test('discovery: natural-size rounded artwork, theme gap and bottom-anchored gla
   expect(sheetStyle.backdrop).toContain('blur(10px)')
   const glassAtRest = await page.locator('.discover-sheet').boundingBox()
   if (!glassAtRest) throw new Error('Glass absent')
-  expect(Math.abs(stageRect.y + stageRect.height - (glassAtRest.y + glassAtRest.height))).toBeLessThan(2)
+  // Collapsed glass is intentionally translated down outside the stage;
+  // only its content-height peek must remain visible at the bottom edge.
+  expect(glassAtRest.y).toBeLessThan(stageRect.y + stageRect.height)
+  expect(stageRect.y + stageRect.height - glassAtRest.y).toBeLessThan(220)
   // Artwork never gets an ambient clone / artificial full-height dark backdrop.
   await expect(page.locator('.discover-cover')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   // Collapsed height is derived from text + rating chips + chevron, not a fixed band.
