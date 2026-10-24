@@ -8,17 +8,19 @@ import type { Game } from '../data'
 
 type DiscoveryAction = 'like' | 'dislike' | 'wishlist'
 type Direction = 'left' | 'right' | 'up'
-type Details = {
-  summary?: string | null
-  storeLinks?: { provider: string; label: string; url: string }[]
-  trailerUrl?: string | null
-}
 type Feed = { items: Game[]; remaining: number }
-type Pull = { pointerId: number; startY: number; startReveal: number }
+type Pull = { pointerId: number; startY: number; startReveal: number; allowTap: boolean }
 
 const HELP_KEY = 'rateapp-discovery-integrated-v3'
 const getHelpKey = (nickname: string) => HELP_KEY + ':' + nickname.toLowerCase()
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
+
+function heroCoverUrl(url?: string): string | undefined {
+  // Keep all thumbnail/catalog artwork unchanged. Request a larger IGDB asset
+  // only for the one active Discovery poster, including its background layer.
+  if (!url?.startsWith('https://images.igdb.com/igdb/image/upload/')) return url
+  return url.replace(/\/t_cover_big_2x\//, '/t_1080p/')
+}
 
 function releaseLabel(game: Game) {
   if (!game.releaseDate) return game.year ? String(game.year) : 'Дата неизвестна'
@@ -45,8 +47,6 @@ export default function DiscoverView({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(false)
-  const [details, setDetails] = useState<Record<number, Details>>({})
-  const [detailLoading, setDetailLoading] = useState(false)
   const [departure, setDeparture] = useState<Direction>('right')
   const [helpOpen, setHelpOpen] = useState(() => {
     try { return !localStorage.getItem(getHelpKey(nickname)) } catch { return true }
@@ -64,6 +64,8 @@ export default function DiscoverView({
   const reveal = useMotionValue(0)
   const cardShift = useMotionValue(0)
   const cardTilt = useMotionValue(0)
+  const cardLift = useMotionValue(0)
+  const cardScale = useMotionValue(1)
 
   useEffect(() => {
     const stage = stageRef.current
@@ -95,10 +97,16 @@ export default function DiscoverView({
       : { duration: .38, ease: [0.22, 1, 0.36, 1] })
   }
 
-  const startPull = (id: number, y: number) => {
+  const startPull = (id: number, y: number, target: EventTarget | null) => {
     if (busy || helpOpen || pullRef.current) return
+    // Links must remain tappable in expanded details.
+    const element = target instanceof Element ? target : null
+    if (element?.closest('a')) return
     sheetAnimationRef.current?.stop()
-    pullRef.current = { pointerId: id, startY: y, startReveal: reveal.get() }
+    pullRef.current = {
+      pointerId: id, startY: y, startReveal: reveal.get(),
+      allowTap: !!element?.closest('.discover-sheet__handle'),
+    }
   }
   const movePull = (id: number, y: number) => {
     const pull = pullRef.current
@@ -114,24 +122,27 @@ export default function DiscoverView({
     movePull(id, y)
     pullRef.current = null
     if (Math.abs(y - pull.startY) < 9) {
-      if (expanded) settleSheet(false)
-      else void showDetails()
+      // Tapping the chevron toggles; tapping text does not accidentally close.
+      if (pull.allowTap) {
+        if (expanded) settleSheet(false)
+        else showDetails()
+      }
       return
     }
     if (reveal.get() >= .46) void showDetails()
     else settleSheet(false)
   }
-  const onPointerStart = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const onPointerStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.stopPropagation()
-    startPull(event.pointerId, event.clientY)
+    startPull(event.pointerId, event.clientY, event.target)
   }
-  const onMouseStart = (event: ReactMouseEvent<HTMLButtonElement>) => {
+  const onMouseStart = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.stopPropagation()
-    startPull(-1, event.clientY)
+    startPull(-1, event.clientY, event.target)
   }
-  const onTouchStart = (event: ReactTouchEvent<HTMLButtonElement>) => {
+  const onTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
     event.stopPropagation()
-    if (event.touches.length) startPull(-2, event.touches[0].clientY)
+    if (event.touches.length) startPull(-2, event.touches[0].clientY, event.target)
   }
 
   useEffect(() => {
@@ -245,26 +256,18 @@ export default function DiscoverView({
     }
   }, [cards.length, index, remaining, loading, loadingMore, error, loadFeed])
 
-  const showDetails = async () => {
+  const showDetails = () => {
     if (!game || busy || helpOpen) return
+    // Everything already arrived with the local feed. No network request.
     settleSheet(true)
-    if (details[game.id]) return
-    setDetailLoading(true)
-    try {
-      const response = await fetch('/api/games/' + game.id + '/details')
-      if (!response.ok) throw new Error('Ошибка загрузки')
-      const payload = await response.json() as Details
-      if (mountedRef.current) setDetails(current => ({ ...current, [game.id]: payload }))
-    } catch {
-      if (mountedRef.current) setDetails(current => ({ ...current, [game.id]: { summary: null } }))
-    } finally {
-      if (mountedRef.current) setDetailLoading(false)
-    }
   }
 
   const resetTilt = () => {
-    animate(cardShift, 0, reducedMotion ? { duration: 0 } : { duration: .22, ease: 'easeOut' })
-    animate(cardTilt, 0, reducedMotion ? { duration: 0 } : { duration: .22, ease: 'easeOut' })
+    const transition = reducedMotion ? { duration: 0 } : { duration: .22, ease: 'easeOut' as const }
+    animate(cardShift, 0, transition)
+    animate(cardTilt, 0, transition)
+    animate(cardLift, 0, transition)
+    animate(cardScale, 1, transition)
   }
   const decide = async (action: DiscoveryAction) => {
     if (!game || busy || helpOpen || expanded || pullRef.current || reveal.get() > .03) return
@@ -310,9 +313,16 @@ export default function DiscoverView({
   const onPosterPan = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (busy || expanded || helpOpen || pullRef.current) return
     const { x, y } = info.offset
-    if (Math.abs(x) > Math.abs(y) * 1.15) {
+    if (y < -10 && Math.abs(y) > Math.abs(x) * 1.15) {
+      cardLift.set(clamp(y * .12, -18, 0))
+      cardScale.set(clamp(1 + y * .00012, .981, 1))
+      cardShift.set(0)
+      cardTilt.set(0)
+    } else if (Math.abs(x) > Math.abs(y) * 1.15) {
       cardShift.set(clamp(x * .1, -13, 13))
       cardTilt.set(clamp(x * .016, -2.3, 2.3))
+      cardLift.set(0)
+      cardScale.set(1)
     }
   }
   const onPosterPanEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -329,7 +339,7 @@ export default function DiscoverView({
     setHelpOpen(false)
     try { localStorage.setItem(getHelpKey(nickname), '1') } catch { /* Storage blocked */ }
   }
-  const currentDetails = game ? details[game.id] : undefined
+  const currentDetails = game
 
   return (
     <section className="discover-screen" aria-label="Персональные рекомендации игр">
@@ -370,10 +380,12 @@ export default function DiscoverView({
               }}
               exit="exit"
               transition={{ duration: .36, ease: [0.22, 1, 0.36, 1] }}>
-              <motion.div className="discover-card" style={{ x: cardShift, rotate: cardTilt }}>
+              <motion.div className="discover-card"
+                style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt }}>
                 <div className="discover-cover" aria-hidden="true">
+                  {game.coverUrl && <img className="discover-cover__ambient" src={heroCoverUrl(game.coverUrl)} alt="" loading="eager" />}
                   <div className="discover-cover__poster">
-                    <Cover game={game} priority />
+                    <Cover game={{ ...game, coverUrl: heroCoverUrl(game.coverUrl) }} priority />
                   </div>
                   <div className="discover-cover__fade" />
                 </div>
@@ -392,13 +404,24 @@ export default function DiscoverView({
                 )}
 
                 <motion.div className={expanded ? 'discover-sheet discover-sheet--expanded' : 'discover-sheet'}
-                  style={{ height: fullSheetHeight, y: sheetY }}>
+                  style={{ height: fullSheetHeight, y: sheetY }}
+                  onPointerDown={onPointerStart}
+                  onMouseDown={onMouseStart}
+                  onTouchStart={onTouchStart}
+                  onPanEnd={(_event, info) => {
+                    // Motion sees continuous pointer gestures even when native
+                    // scrolling or a transformed panel interrupts the pointer-up
+                    // fallback. Keep the same deliberate distance threshold.
+                    const distance = info.offset.y
+                    if (Math.abs(distance) < Math.max(125, travel * .42) ||
+                        Math.abs(distance) < Math.abs(info.offset.x) * 1.15) return
+                    pullRef.current = null
+                    if (distance > 0 && expanded) settleSheet(false)
+                    else if (distance < 0 && !expanded) showDetails()
+                  }}>
                   <button type="button" className="discover-sheet__handle"
                     aria-label={expanded ? 'Свернуть подробности' : 'Развернуть подробности'}
-                    aria-expanded={expanded}
-                    onPointerDown={onPointerStart}
-                    onMouseDown={onMouseStart}
-                    onTouchStart={onTouchStart}>
+                    aria-expanded={expanded}>
                     <span className={expanded ? 'discover-sheet__chevron discover-sheet__chevron--down' : 'discover-sheet__chevron'} />
                   </button>
                   <div className="discover-sheet__body">
@@ -418,8 +441,7 @@ export default function DiscoverView({
                       aria-hidden={!expanded}>
                       {!!game.platforms.length && <p className="discover-sheet__platforms">{game.platforms.slice(0, 4).join(' · ')}</p>}
                       <p className="discover-sheet__description">
-                        {detailLoading ? 'Загружаем описание…'
-                          : currentDetails?.summary || 'Описание пока недоступно. Можно посмотреть страницу игры в магазине.'}
+                        {currentDetails?.summary || currentDetails?.storyline || 'Описание пока не загружено в каталог.'}
                       </p>
                       {(!!currentDetails?.storeLinks?.length || !!currentDetails?.trailerUrl) && (
                         <div className="discover-sheet__links">

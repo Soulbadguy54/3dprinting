@@ -62,6 +62,9 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
     communityRating: 8.6, communityRatings: 3,
     accent: '#9976ec', accent2: '#32275c', glyph: 'DS',
     coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big_2x/co123.jpg',
+    summary: 'A great story about stars.',
+    storeLinks: [{ provider: 'steam', label: 'Steam', url: 'https://store.steampowered.com/app/1234' }],
+    trailerUrl: null,
   })
   const actions: string[] = []
   await page.route('**/api/discover/feed', route => route.fulfill({
@@ -76,14 +79,11 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   await page.route('**/api/discover/feedback/*', route => route.fulfill({
     status: 200, contentType: 'application/json', body: '{"ok":true}',
   }))
-  await page.route('**/api/games/900000001/details', route => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({
-      summary: 'A great story about stars.',
-      storeLinks: [{ provider: 'steam', label: 'Steam', url: 'https://store.steampowered.com/app/1234' }],
-      trailerUrl: null,
-    }),
-  }))
+  let detailRequests = 0
+  await page.route('**/api/games/*/details', route => {
+    detailRequests += 1
+    return route.abort()
+  })
   await page.goto('/')
   await page.getByRole('button', { name: 'Регистрация' }).click()
   await page.locator('input[type=email]').fill(nickname + '@example.com')
@@ -109,10 +109,12 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(0)
   await expect(page.getByText('Discovery One')).toBeVisible()
   await expect(page.locator('.discover-cover__poster .cover')).toBeVisible()
-  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-fit', 'cover')
+  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-fit', 'contain')
+  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveAttribute('src', /\/t_1080p\//)
   await expect(page.locator('.discover-stage')).toHaveCSS('border-top-left-radius', '22px')
   await expect(page.locator('.discover-stage')).toHaveCSS('border-top-right-radius', '22px')
-  await expect(page.locator('.discover-cover__ambient')).toHaveCount(0)
+  await expect(page.locator('.discover-cover__ambient')).toHaveCount(1)
+  await expect(page.locator('.discover-hint--up')).toHaveCSS('top', '10px')
   const stageRect = await page.locator('.discover-stage').boundingBox()
   const coverRect = await page.locator('.discover-cover__poster').boundingBox()
   const sheetRect = await page.locator('.discover-sheet').boundingBox()
@@ -183,11 +185,30 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   expect(posterExpanded?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
   await expect(page.getByText('A great story about stars.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Steam/ })).toBeVisible()
+  expect(detailRequests).toBe(0)
   // While details are expanded, swiping the poster must not submit a like/dislike.
   await dragCover(page, 'right')
   expect(actions).toHaveLength(0)
-  // Reverse drag collapses the sheet.
-  await dragHandle(page, 270, onIPhone)
+  // Pull down from the actual metadata row rather than just the chevron.
+  // This is the native large touch surface the user requested.
+  if (onIPhone) {
+    await page.evaluate(() => {
+      const row = document.querySelector<HTMLElement>('.discover-sheet__summary-row')
+      if (!row) throw new Error('Missing summary row')
+      const rect = row.getBoundingClientRect()
+      const x = rect.left + Math.min(rect.width * .3, 65)
+      const y = rect.top + rect.height / 2
+      row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, buttons: 1 }))
+      for (let i = 1; i <= 16; i++) window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, clientX: x, clientY: y + 340 * i / 16, buttons: 1,
+      }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y + 340 }))
+    })
+  } else {
+    const row = await page.locator('.discover-sheet__summary-row').boundingBox()
+    if (!row) throw new Error('Missing summary row')
+    await movePointer(page, row.x + 30, row.y + row.height / 2, row.x + 30, row.y + row.height / 2 + 340)
+  }
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   // The sheet finishes its deliberate, non-jelly snap before a new gesture.
   await page.waitForTimeout(420)
