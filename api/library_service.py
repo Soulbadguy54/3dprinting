@@ -41,9 +41,16 @@ def _game_payload(
 
     saved = json.loads(game.details_json) if game.details_json else None
     extras = saved if isinstance(saved, dict) else {}
+    # Some legacy records predate the UI-ready details cache, but may already
+    # have the entire raw IGDB snapshot. Use that locally without a network hop.
+    raw = game.igdb_payload if isinstance(game.igdb_payload, dict) else {}
     return {
         "storeLinks": extras.get("storeLinks", []),
         "trailerUrl": extras.get("trailerUrl"),
+        "summary": extras.get("summary") or raw.get("summary") or raw.get("storyline") or "",
+        "storyline": extras.get("storyline") or raw.get("storyline") or "",
+        "storyHours": extras.get("storyHours"),
+        "completionHours": extras.get("completionHours"),
         "id": game.igdb_id,
         "title": game.title,
         "genres": genres,
