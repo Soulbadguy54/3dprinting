@@ -1,4 +1,7 @@
 /* Discovery deck: visually isolated from the game database and mobile navigation. */
+.game-database-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.game-database-heading__row{min-width:0}
+.game-database-heading h1{font-size:clamp(25px,7vw,34px)}
 .discover-screen{position:relative;display:flex;flex-direction:column;min-height:calc(100dvh - 162px);padding:2px 1px 8px;color:#f8f9ff;isolation:isolate}
 .discover-topbar{display:flex;align-items:center;gap:12px;margin:0 0 12px}
 .discover-icon-button{display:grid;place-items:center;width:42px;height:42px;border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(255,255,255,.055);color:#fff;flex-shrink:0}
