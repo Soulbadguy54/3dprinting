@@ -281,6 +281,10 @@ test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur',
   expect(actions).toEqual(['like'])
   await page.getByRole('button', { name: 'Шаг назад' }).click()
   await expect(page.getByText('Discovery One')).toBeVisible()
+  // The persistent glass updates before AnimatePresence mounts the returned
+  // poster. Wait for the actual swipe target, not just the new sheet title.
+  await expect(page.locator('.discover-cover__gesture')).toHaveAttribute('aria-label', 'Свайпы для игры Discovery One')
+  await expect(page.locator('.discover-deck')).toHaveCSS('opacity', '1')
   await dragCover(page, 'left')
   await expect(page.getByText('Discovery Two')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike'])
