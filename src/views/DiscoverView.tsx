@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react'
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
 import type { PanInfo } from 'motion/react'
 import { Cover } from '../components/GameCard'
@@ -122,6 +122,12 @@ export default function DiscoverView({
     }
     if (reveal.get() >= .48) void showDetails()
     else settleSheet(false)
+  }
+  const onPullTouchStart = (event: ReactTouchEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (pullRef.current || busy || helpOpen || !event.touches.length) return
+    sheetAnimationRef.current?.stop()
+    pullRef.current = { pointerId: -2, startY: event.touches[0].clientY, initial: reveal.get() }
   }
   const onPullMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -372,6 +378,7 @@ export default function DiscoverView({
                   aria-label={expanded ? 'Свернуть подробности' : 'Развернуть подробности'}
                   aria-expanded={expanded}
                   onPointerDown={onPullStart}
+                  onTouchStart={onPullTouchStart}
                   onPointerMove={onPullMove}
                   onPointerUp={onPullEnd}
                   onPointerCancel={(event) => {
