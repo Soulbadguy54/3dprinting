@@ -56,6 +56,31 @@ export default function DiscoverView({
   const summaryRef = useRef<HTMLDivElement>(null)
   const [stageHeight, setStageHeight] = useState(550)
   const [summaryHeight, setSummaryHeight] = useState(74)
+  // Keep the sheet independent of the keyed artwork: its top edge springs to
+  // the actual bottom of each fitted poster, while its foot stays at the nav.
+  const [posterBottom, setPosterBottom] = useState<number | null>(null)
+  const posterNodeRef = useRef<HTMLElement | null>(null)
+  const posterObserverRef = useRef<ResizeObserver | null>(null)
+  const measurePoster = useCallback(() => {
+    const poster = posterNodeRef.current
+    const stage = stageRef.current
+    if (!poster || !stage) return
+    const art = poster.getBoundingClientRect()
+    if (art.width < 1 || art.height < 1) return
+    const bottom = art.bottom - stage.getBoundingClientRect().top
+    setPosterBottom(previous => previous === null || Math.abs(previous - bottom) > .5 ? bottom : previous)
+  }, [])
+  const attachPoster = useCallback((node: HTMLElement | null) => {
+    posterObserverRef.current?.disconnect()
+    posterObserverRef.current = null
+    posterNodeRef.current = node
+    if (!node) return
+    const observer = new ResizeObserver(measurePoster)
+    posterObserverRef.current = observer
+    observer.observe(node)
+    measurePoster()
+  }, [measurePoster])
+  useEffect(() => () => posterObserverRef.current?.disconnect(), [])
   const mountedRef = useRef(true)
   const loadingRef = useRef(false)
   const pullRef = useRef<Pull | null>(null)
@@ -77,14 +102,27 @@ export default function DiscoverView({
     return () => observer.disconnect()
   }, [])
 
-  // The sheet belongs to the bottom of the viewport; the natural-sized,
-  // rounded poster belongs to the top. The two may overlap when expanded.
-  const fullSheetHeight = Math.min(stageHeight * .8, stageHeight - 8)
-  // The collapsed glass wraps the visible metadata: handle + measured text/ratings + 8px.
-  // No fixed 125–149px strip and no unused blank space on compact titles.
-  const peekHeight = Math.min(fullSheetHeight - 16, 33 + summaryHeight + 8)
-  const travel = Math.max(1, fullSheetHeight - peekHeight)
-  const sheetY = useTransform(reveal, n => travel * (1 - n))
+  // A full-stage-height sheet sits offscreen below its visible edge. When
+  // closed, its top meets the poster's bottom; very tall posters retain enough
+  // visible glass for the title, ratings and handle.
+  const fullSheetHeight = stageHeight
+  const minimumPeek = Math.min(stageHeight - 8, 33 + summaryHeight + 8)
+  const peekHeight = Math.min(stageHeight - 8, Math.max(minimumPeek,
+    posterBottom === null ? minimumPeek : stageHeight - posterBottom))
+  const collapsedTop = stageHeight - peekHeight
+  // Opening still reveals at least 80% of the viewport, or more when the
+  // poster is unusually short and the closed glass already fills most of it.
+  const expandedTop = Math.min(stageHeight * .2, Math.max(0, collapsedTop - 72))
+  const travel = Math.max(1, collapsedTop - expandedTop)
+  const restingTop = useMotionValue(stageHeight - (33 + 74 + 8))
+  const sheetY = useTransform(() => restingTop.get() * (1 - reveal.get()) + expandedTop * reveal.get())
+  useEffect(() => {
+    const movement = animate(restingTop, collapsedTop, reducedMotion
+      ? { duration: 0 }
+      : { type: 'spring', stiffness: 250, damping: 24, mass: .9 })
+    return () => movement.stop()
+  }, [collapsedTop, reducedMotion, restingTop])
+  useEffect(() => { measurePoster() }, [stageHeight, measurePoster])
   const detailOpacity = useTransform(reveal, [0, .32, .98], [0, 0, 1])
   const detailRise = useTransform(reveal, [0, 1], [16, 0])
 
@@ -365,6 +403,7 @@ export default function DiscoverView({
             <button type="button" onClick={() => { setCards([]); setIndex(0); void loadFeed(true) }}>Обновить ленту</button>
           </div>
         ) : (
+          <>
           <AnimatePresence mode="wait" initial={false} custom={departure}>
             <motion.div key={game.id} className="discover-deck"
               initial={reducedMotion ? false : { opacity: 0, scale: .993 }}
@@ -383,10 +422,10 @@ export default function DiscoverView({
                 style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt }}>
                 <div className="discover-cover" aria-hidden="true">
                   {game.coverUrl ? (
-                    <img className="discover-cover__image" src={heroCoverUrl(game.coverUrl)}
+                    <img ref={attachPoster} onLoad={measurePoster} className="discover-cover__image" src={heroCoverUrl(game.coverUrl)}
                       alt="" loading="eager" fetchPriority="high" decoding="async" />
                   ) : (
-                    <div className="discover-cover__fallback"><Cover game={game} priority /></div>
+                    <div ref={attachPoster} className="discover-cover__fallback"><Cover game={game} priority /></div>
                   )}
                 </div>
                 <motion.div
@@ -404,6 +443,8 @@ export default function DiscoverView({
                 )}
               </motion.div>
 
+            </motion.div>
+          </AnimatePresence>
               <motion.div className={expanded ? 'discover-sheet discover-sheet--expanded' : 'discover-sheet'}
                   style={{ height: fullSheetHeight, y: sheetY }}
                   onPointerDown={onPointerStart}
@@ -458,8 +499,7 @@ export default function DiscoverView({
                     </motion.div>
                   </div>
                 </motion.div>
-            </motion.div>
-          </AnimatePresence>
+          </>
         )}
         {error && <div className="discover-error" role="alert">{error}</div>}
         <AnimatePresence>
@@ -468,7 +508,11 @@ export default function DiscoverView({
               initial={reducedMotion ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }} transition={{ duration: .32 }}>
-              <div className="discover-guide__backdrop" />
+              <motion.div className="discover-guide__backdrop"
+                initial={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
+                animate={{ backdropFilter: 'blur(7px)', WebkitBackdropFilter: 'blur(7px)', backgroundColor: 'rgba(6,10,23,.32)' }}
+                exit={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)', backgroundColor: 'rgba(6,10,23,0)' }}
+                transition={{ duration: .52, ease: [0.22, 1, 0.36, 1] }} />
               {/* Full-screen invisible dismissal target: no framed card or visible
                   action button. First poster stays in place behind the blur. */}
               <button type="button" className="discover-guide__dismiss"
