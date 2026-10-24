@@ -3180,18 +3180,14 @@ function App() {
   }
 
   return (
-    <div className={activeTab === 'discovery' && selectedGameId == null
-      ? 'app-shell app-shell--viewport app-shell--discovery'
-      : activeTab !== 'library' || selectedGameId != null
-        ? 'app-shell app-shell--viewport'
-        : 'app-shell'}>
+    <div className={activeTab !== 'library' || selectedGameId != null
+      ? 'app-shell app-shell--viewport'
+      : 'app-shell'}>
       <main
         ref={viewportPageRef}
-        className={activeTab === 'discovery' && selectedGameId == null
-          ? 'page page--viewport page--discovery'
-          : activeTab === 'library' && selectedGameId == null
-            ? 'page page--library'
-            : 'page page--viewport'}
+        className={activeTab === 'library' && selectedGameId == null
+          ? 'page page--library'
+          : 'page page--viewport'}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
@@ -3285,7 +3281,7 @@ function App() {
         </div>
       )}
 
-      {activeTab !== 'discovery' && <nav className="bottom-nav" aria-label="Основная навигация">
+      <nav className="bottom-nav" aria-label="Основная навигация">
           {nav.map((item) => (
             <motion.button
               layout
@@ -3317,7 +3313,7 @@ function App() {
               </span>
             </motion.button>
           ))}
-      </nav>}
+      </nav>
     </div>
   )
 }
