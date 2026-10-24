@@ -2,6 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.database import Base
@@ -56,6 +57,9 @@ class Game(Base):
     developer: Mapped[str | None] = mapped_column(String(255))
     genres_json: Mapped[str | None] = mapped_column(Text)
     platforms_json: Mapped[str | None] = mapped_column(Text)
+    # Lossless IGDB games payload (all top-level fields plus expanded references).
+    # Keep for future recommender signals; details_json remains UI-ready metadata.
+    igdb_payload: Mapped[dict | None] = mapped_column(JSONB)
     details_json: Mapped[str | None] = mapped_column(Text)
     details_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
