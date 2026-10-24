@@ -12,12 +12,14 @@ async function movePointer(page: Page, fromX: number, fromY: number, toX: number
 }
 
 async function dragCover(page: Page, direction: 'left' | 'right' | 'up') {
-  const stage = await page.locator('.discover-stage').boundingBox()
-  if (!stage) throw new Error('Discovery stage absent')
-  const x = stage.x + stage.width * .5
-  const y = stage.y + (direction === 'up' ? stage.height * .48 : Math.min(stage.height * .27, 180))
+  // With a short/wide poster the glass fills the lower stage: always begin
+  // on the visible cover itself, never at an arbitrary viewport percentage.
+  const art = await page.locator('.discover-cover__image, .discover-cover__fallback').boundingBox()
+  if (!art) throw new Error('Discovery cover absent')
+  const x = art.x + art.width * .5
+  const y = art.y + Math.min(art.height * (direction === 'up' ? .78 : .28), 220)
   await movePointer(page, x, y, x + (direction === 'left' ? -160 : direction === 'right' ? 160 : 0),
-    y + (direction === 'up' ? -190 : 0))
+    y + (direction === 'up' ? -155 : 0))
 }
 
 async function dragHandle(page: Page, delta: number, simulateTouch = false) {
