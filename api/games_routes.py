@@ -7,11 +7,12 @@ import json
 import math
 import os
 import re
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -21,6 +22,8 @@ from api.models import Game, GameAlias, GameGenre, Genre, GenreCatalogSync
 from api.igdb_client import igdb_client, Priority
 
 router = APIRouter()
+_catalog_refresh_lock = threading.Lock()
+_catalog_refresh_inflight: set[int] = set()
 
 def _game_details_cache_days(release_date, *, today=None) -> int:
     """Refresh recently released/unreleased games more often than older titles.
@@ -371,6 +374,45 @@ def _igdb_details_request(
     return igdb_client.request(endpoint, body, priority=priority)
 
 
+def _refresh_game_catalog_entry(game_id: int) -> None:
+    """Best-effort, low-priority, on-demand refresh of stale game metadata.
+
+    Never blocks the rendered details response and never changes user ratings.
+    Dedupe concurrent detail views; the recheck prevents redundant fetches.
+    """
+    with _catalog_refresh_lock:
+        if game_id in _catalog_refresh_inflight:
+            return
+        _catalog_refresh_inflight.add(game_id)
+    try:
+        with _session() as session:
+            game = session.scalar(select(Game).where(Game.igdb_id == game_id))
+            if game is None:
+                return
+            stamp = game.cached_at
+            if stamp and stamp.replace(tzinfo=stamp.tzinfo or timezone.utc) > (
+                _now() - timedelta(days=_game_details_cache_days(game.release_date))
+            ):
+                return
+        rows = _igdb_details_request(
+            "games",
+            "fields id,name,first_release_date,rating,rating_count,"
+            "total_rating_count,hypes,cover.image_id,alternative_names.name,"
+            "genres.id,genres.name,platforms.name,involved_companies.developer,"
+            "involved_companies.company.name,websites.url,videos.name,videos.video_id; "
+            f"where id = {game_id} & version_parent = null; limit 1;",
+            priority=Priority.BACKGROUND,
+        )
+        if rows:
+            _cache_igdb_games(rows)
+    except (HTTPException, SQLAlchemyError):
+        # Cached catalog metadata remains usable even when IGDB is unavailable.
+        pass
+    finally:
+        with _catalog_refresh_lock:
+            _catalog_refresh_inflight.discard(game_id)
+
+
 def _safe_store_links(websites: object) -> list[dict[str, str]]:
     if not isinstance(websites, list):
         return []
@@ -431,12 +473,18 @@ def _detail_response(session, game: Game, details: dict[str, object]) -> dict[st
 
 
 @router.get("/api/games/{game_id}/details")
-def game_details(game_id: int, request: Request) -> dict[str, object]:
+def game_details(game_id: int, request: Request, background_tasks: BackgroundTasks) -> dict[str, object]:
     with _session() as session:
         _current_user(request, session)
         game = session.scalar(select(Game).where(Game.igdb_id == game_id))
         if game is None:
             raise HTTPException(status_code=404, detail="Игра не найдена в нашей базе.")
+
+        stamp = game.cached_at
+        if stamp is None or stamp.replace(tzinfo=stamp.tzinfo or timezone.utc) <= (
+            _now() - timedelta(days=_game_details_cache_days(game.release_date))
+        ):
+            background_tasks.add_task(_refresh_game_catalog_entry, game_id)
 
         cached_details = (
             json.loads(game.details_json) if game.details_json else None
