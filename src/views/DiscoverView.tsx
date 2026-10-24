@@ -206,11 +206,16 @@ export default function DiscoverView({
               className={expanded ? 'discover-card discover-card--expanded' : 'discover-card'}
               initial={reducedMotion ? false : { opacity: 0, scale: .96, y: 18 }}
               animate={{ opacity: 1, scale: 1, x: 0, y: 0, rotate: 0 }}
-              exit={reducedMotion ? { opacity: 0 } : departure === 'left'
-                ? { x: -380, rotate: -16, opacity: 0 }
-                : departure === 'right'
-                  ? { x: 380, rotate: 16, opacity: 0 }
-                  : { y: -480, scale: .86, opacity: 0 }}
+              variants={{
+                departure: (direction: 'left' | 'right' | 'up') => reducedMotion
+                  ? { opacity: 0 }
+                  : direction === 'left'
+                    ? { x: -380, rotate: -16, opacity: 0 }
+                    : direction === 'right'
+                      ? { x: 380, rotate: 16, opacity: 0 }
+                      : { y: -480, scale: .86, opacity: 0 },
+              }}
+              exit="departure"
               transition={{ type: 'spring', stiffness: 290, damping: 27 }}
               drag={helpStep === null && !busy && !expanded ? true : false}
               dragConstraints={{ left: -145, right: 145, top: -140, bottom: 130 }}
