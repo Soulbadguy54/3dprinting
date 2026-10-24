@@ -1,20 +1,35 @@
-/* Discovery is part of the existing catalog view — normal page padding and nav stay intact. */
+/* Discovery is a full-bleed replacement of the catalog CONTENT, between its existing top and bottom navigation. */
 .game-database-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .game-database-heading__row{min-width:0}
 .game-database-heading h1{font-size:clamp(25px,7vw,34px)}
 .game-database-discovery-button{display:flex;align-items:center;justify-content:center;gap:6px;margin-left:auto;padding:10px 13px;border-radius:14px;border:1px solid rgba(178,139,241,.4);background:linear-gradient(120deg,rgba(104,68,166,.27),rgba(98,55,137,.14));color:#e6d3ff;font-weight:800;font-size:12px;white-space:nowrap}
 
+/* No inherited .page side padding, bottom gap, max-width or scroll: these
+   caused the previous inset “picture in picture” poster. Navigation remains
+   the ordinary fixed .bottom-nav from App, completely unchanged. */
+.page.page--discovery{
+  width:100%;max-width:none;height:100dvh;min-height:0;margin:0;
+  padding:0 0 calc(var(--bottom-nav-height) + var(--safe-bottom));
+  overflow:hidden;overscroll-behavior:none;
+}
+.page--discovery>.page-motion{
+  display:flex;flex-direction:column;width:100%;height:100%;min-height:0;
+}
 .discover-screen{
   position:relative;isolation:isolate;display:flex;flex-direction:column;
-  width:100%;height:calc(100dvh - var(--bottom-nav-height) - var(--safe-bottom) - var(--page-bottom-gap) - max(12px, calc(var(--safe-top) + 6px)) - 10px);
-  min-height:0;overflow:hidden;color:#f6f7ff;
+  flex:1;min-height:0;width:100%;height:100%;
+  overflow:hidden;color:#f6f7ff;
 }
-.discover-topbar{display:flex;align-items:center;gap:9px;flex:0 0 52px;margin-bottom:9px}
+.discover-topbar{
+  display:flex;align-items:center;gap:9px;flex:0 0 calc(54px + var(--safe-top));
+  margin:0;padding:var(--safe-top) max(12px,var(--safe-right)) 0 max(12px,var(--safe-left));
+  background:var(--bg);z-index:11;
+}
 .discover-icon-button{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:13px;background:linear-gradient(145deg,#242936,#11141c);color:#fff}
 .discover-icon-button--info{margin-left:auto;font:italic 700 19px Georgia,serif}
 .discover-icon-button--undo{font-size:26px;line-height:1;color:#d2cbff}
 .discover-icon-button:disabled{opacity:.4}
-.discover-stage{position:relative;flex:1;min-height:0;overflow:hidden;border-radius:17px;background:#111827}
+.discover-stage{position:relative;flex:1;min-height:0;width:100%;overflow:hidden;border-radius:0;background:#111827}
 .discover-deck{position:absolute;inset:0;overflow:hidden}
 .discover-card{position:absolute;inset:0;overflow:hidden;will-change:transform;transform-origin:center center}
 .discover-cover{position:absolute;inset:0;overflow:hidden;pointer-events:none;background:#111522}
@@ -27,11 +42,18 @@
 .discover-cover__gesture{position:absolute;inset:0;z-index:1;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
 .discover-cover__gesture:active{cursor:grabbing}
 
-/* Gentle glass, not a solid grey half-screen. Only 125–149px peeks out. */
+/* Glass lays ON TOP of the full-height poster; a small metadata strip is visible until the separate handle is pulled. */
 .discover-sheet{position:absolute;z-index:3;left:0;right:0;bottom:0;overflow:hidden;border-top:1px solid rgba(255,255,255,.54);border-left:1px solid rgba(255,255,255,.26);border-right:1px solid rgba(255,255,255,.26);border-radius:23px 23px 0 0;background:linear-gradient(145deg,rgba(219,232,255,.16),rgba(182,203,240,.11) 48%,rgba(58,78,111,.18));-webkit-backdrop-filter:blur(30px) saturate(165%) brightness(1.15);backdrop-filter:blur(30px) saturate(165%) brightness(1.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 -7px 32px rgba(3,8,20,.09);will-change:transform}
 .discover-sheet::before{position:absolute;inset:0;pointer-events:none;content:'';background:linear-gradient(125deg,rgba(255,255,255,.17) 0%,transparent 33%,rgba(255,255,255,.045) 63%,transparent 100%)}
 .discover-sheet__handle{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:center;width:100%;height:33px;padding:7px 0 0;border:0;background:transparent;touch-action:none;cursor:grab}
 .discover-sheet__handle:active{cursor:grabbing}
+.discover-sheet:not(.discover-sheet--expanded) .discover-sheet__chevron{
+  animation:discover-chevron-guide 2.6s ease-in-out infinite;
+}
+@keyframes discover-chevron-guide{
+  0%,100%{transform:translateY(5px) rotate(45deg);opacity:.72}
+  50%{transform:translateY(0) rotate(45deg);opacity:1}
+}
 .discover-sheet__chevron{display:block;width:13px;height:13px;border-top:2.5px solid rgba(255,255,255,.94);border-left:2.5px solid rgba(255,255,255,.94);border-radius:2px;transform:translateY(4px) rotate(45deg);filter:drop-shadow(0 1px 3px rgba(5,8,18,.5));transition:transform .3s cubic-bezier(.22,1,.36,1)}
 .discover-sheet__chevron--down{transform:translateY(-3px) rotate(225deg)}
 .discover-sheet__body{position:relative;z-index:1;height:calc(100% - 33px);min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 13px 18px}
@@ -87,4 +109,4 @@
 @keyframes discover-spin{to{transform:rotate(360deg)}}
 .discover-error{position:absolute;z-index:9;top:8px;left:9px;right:9px;padding:10px;border:1px solid rgba(255,160,180,.42);border-radius:10px;background:rgba(48,18,28,.91);color:#ffc8cc;text-align:center;font-size:11px}
 @media(max-width:365px){.game-database-discovery-button{padding:9px;font-size:11px}.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__panel{width:90%;gap:8px;padding:15px 12px}.discover-guide__panel h2{font-size:19px}.discover-guide__panel p{font-size:11px}.discover-guide__direction{padding:6px}.discover-guide__direction strong{font-size:10px}}
-@media(prefers-reduced-motion:reduce){.discover-hint{animation:none;opacity:.75}.discover-guide__direction{animation:none}.discover-loader{animation:none}.discover-sheet__chevron{transition:none}}
+@media(prefers-reduced-motion:reduce){.discover-sheet__chevron{animation:none!important}.discover-hint{animation:none;opacity:.75}.discover-guide__direction{animation:none}.discover-loader{animation:none}.discover-sheet__chevron{transition:none}}

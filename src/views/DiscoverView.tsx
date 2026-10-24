@@ -75,7 +75,8 @@ export default function DiscoverView({
   }, [])
 
   // Only a short strip of the sheet is visible before the chevron is pulled.
-  const fullSheetHeight = Math.max(200, Math.min(stageHeight * .78, stageHeight - 16))
+  // The expanded glass occludes 80% of the SAME full-bleed poster.
+  const fullSheetHeight = Math.min(stageHeight * .8, stageHeight - 8)
   const peekHeight = Math.min(149, Math.max(125, stageHeight * .25))
   const travel = Math.max(1, fullSheetHeight - peekHeight)
   const sheetY = useTransform(reveal, n => travel * (1 - n))

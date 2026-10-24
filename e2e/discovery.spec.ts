@@ -98,8 +98,8 @@ test('integrated discovery: fitted poster, calm glass, tutorial, directions and 
   await page.getByRole('button', { name: 'Открыть рекомендации игр' }).click()
   await expect(page.locator('.discover-screen')).toBeVisible()
   await expect(page.locator('.bottom-nav')).toBeVisible()
-  await expect(page.locator('.page')).not.toHaveClass(/page--discovery/)
-  await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--discovery/)
+  await expect(page.locator('.page')).toHaveClass(/page--discovery/)
+  await expect(page.locator('.bottom-nav')).toBeVisible()
   await expect(page.getByText('Discovery One')).toBeVisible()
   await expect(page.getByText('Новые игры для тебя')).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Обучение рекомендациям' })).toBeVisible()
@@ -113,9 +113,22 @@ test('integrated discovery: fitted poster, calm glass, tutorial, directions and 
   const stageRect = await page.locator('.discover-stage').boundingBox()
   const coverRect = await page.locator('.discover-cover__poster').boundingBox()
   const sheetRect = await page.locator('.discover-sheet').boundingBox()
-  if (!stageRect || !coverRect || !sheetRect) throw new Error('Discovery geometry missing')
+  const topbarRect = await page.locator('.discover-topbar').boundingBox()
+  const navbarRect = await page.locator('.bottom-nav').boundingBox()
+  const viewport = page.viewportSize()
+  if (!stageRect || !coverRect || !sheetRect || !topbarRect || !navbarRect || !viewport)
+    throw new Error('Discovery geometry missing')
+  // Exactly one poster between the real top and bottom navigation: edge-to-edge,
+  // with no inherited .page left/right padding, margin or bottom gap.
+  expect(Math.abs(stageRect.x)).toBeLessThan(2)
+  expect(Math.abs(stageRect.width - viewport.width)).toBeLessThan(2)
+  expect(Math.abs(stageRect.y - (topbarRect.y + topbarRect.height))).toBeLessThan(2)
+  expect(Math.abs((stageRect.y + stageRect.height) - navbarRect.y)).toBeLessThan(2)
   expect(Math.abs(coverRect.width - stageRect.width)).toBeLessThan(2)
-  expect(sheetRect.height).toBeLessThan(stageRect.height * .85)
+  expect(Math.abs(coverRect.height - stageRect.height)).toBeLessThan(2)
+  expect(Math.abs(coverRect.x - stageRect.x)).toBeLessThan(2)
+  expect(sheetRect.height / stageRect.height).toBeGreaterThan(.78)
+  expect(sheetRect.height / stageRect.height).toBeLessThan(.82)
   // Collapsed glass occupies only a short portion of the visible poster.
   const visibleGlass = stageRect.y + stageRect.height - sheetRect.y
   expect(visibleGlass).toBeLessThan(170)
@@ -138,6 +151,15 @@ test('integrated discovery: fitted poster, calm glass, tutorial, directions and 
   // Long pull expands and reveals actual details.
   await dragHandle(page, -245, onIPhone)
   await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
+  // The glass, not the cover, moves upward and occludes 80% of the art.
+  await expect.poll(async () => {
+    const glass = await page.locator('.discover-sheet').boundingBox()
+    const stage = await page.locator('.discover-stage').boundingBox()
+    if (!glass || !stage) return -1
+    return (stage.y + stage.height - glass.y) / stage.height
+  }, { timeout: 3500 }).toBeGreaterThan(.77)
+  const posterExpanded = await page.locator('.discover-cover__poster').boundingBox()
+  expect(posterExpanded?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
   await expect(page.getByText('A great story about stars.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Steam/ })).toBeVisible()
   // While details are expanded, swiping the poster must not submit a like/dislike.
