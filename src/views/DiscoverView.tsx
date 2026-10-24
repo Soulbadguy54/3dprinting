@@ -53,11 +53,7 @@ export default function DiscoverView({
   })
   const [departure, setDeparture] = useState<'left' | 'right' | 'up'>('left')
   const mountedRef = useRef(true)
-  const cardsRef = useRef<Game[]>([])
-  const indexRef = useRef(0)
   const loadingRef = useRef(false)
-  cardsRef.current = cards
-  indexRef.current = index
 
   const loadFeed = useCallback(async (initial = false) => {
     if (loadingRef.current) return
@@ -216,12 +212,12 @@ export default function DiscoverView({
                   ? { x: 380, rotate: 16, opacity: 0 }
                   : { y: -480, scale: .86, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 290, damping: 27 }}
-              drag={helpStep === null && !busy ? true : false}
+              drag={helpStep === null && !busy && !expanded ? true : false}
               dragConstraints={{ left: -145, right: 145, top: -140, bottom: 130 }}
               dragSnapToOrigin
               dragMomentum={false}
               onDragEnd={onDragEnd}
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: expanded ? 'pan-y' : 'none' }}
               aria-label={`Рекомендована игра ${game.title}`}
             >
               <motion.div className="discover-card__layout" layout transition={{ type: 'spring', stiffness: 330, damping: 30 }}>
