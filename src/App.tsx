@@ -31,8 +31,9 @@ import {
 } from './data'
 
 const ProfileView = lazy(() => import('./views/ProfileView'))
+const DiscoverView = lazy(() => import('./views/DiscoverView'))
 
-type Tab = 'library' | 'add' | 'collections' | 'profile'
+type Tab = 'library' | 'add' | 'collections' | 'profile' | 'discovery'
 
 type AppView = {
   tab: Tab
@@ -56,7 +57,7 @@ type AppHistoryEntry = {
   }
 }
 
-const validTabs: Tab[] = ['library', 'add', 'collections', 'profile']
+const validTabs: Tab[] = ['library', 'add', 'collections', 'profile', 'discovery']
 
 function readAppHistoryEntry(value: unknown): AppHistoryEntry | null {
   if (!value || typeof value !== 'object') return null
@@ -2591,6 +2592,12 @@ function App() {
             <h1>База игр</h1>
             <p className="game-database-powered">powered by <strong>IGDB</strong></p>
           </div>
+          <button
+            className="game-database-discovery-button"
+            type="button"
+            aria-label="Открыть рекомендации игр"
+            onClick={() => navigateTo({ tab: 'discovery', gameId: null, collectionId: null, formGameId: null })}
+          ><Icon name="sparkles" size={17} /> Для тебя</button>
         </header>
 
         <p className="game-database-input-hint">Введи хотя бы 3 символа для поиска</p>
@@ -3195,6 +3202,23 @@ function App() {
               <>
                 {activeTab === 'library' && renderLibrary()}
                 {activeTab === 'add' && renderAdd()}
+                {activeTab === 'discovery' && (
+                  <Suspense fallback={<div className="game-database-loading">Загружаем рекомендации…</div>}>
+                    <DiscoverView
+                      nickname={authUser.nickname}
+                      onExit={() => goBackOr({ tab: 'add', gameId: null, collectionId: null, formGameId: null })}
+                      onWishlistChange={() => {
+                        void fetch('/api/bootstrap').then(response => response.ok ? response.json() : null)
+                          .then((payload: BootstrapPayload | null) => {
+                            if (!payload) return
+                            setEntries(payload.library.map(normalizeEntry))
+                            setCollections(payload.collections)
+                            rememberCatalogResults(payload.library.flatMap(entry => entry.game ? [entry.game] : []))
+                          }).catch(() => {})
+                      }}
+                    />
+                  </Suspense>
+                )
                 {activeTab === 'collections' && renderCollections()}
                 {activeTab === 'profile' && renderProfile()}
               </>
