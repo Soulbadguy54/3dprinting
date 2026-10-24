@@ -35,7 +35,7 @@
 /* The poster has its OWN natural bounding rectangle, not a full-height image
    layer. Fit without stretching or cropping, and anchor it just below the header.
    On short/wide covers the gap to the bottom glass is the normal app background. */
-.discover-cover{position:absolute;inset:0;display:flex;justify-content:center;align-items:flex-start;pointer-events:none;background:transparent}
+.discover-cover{position:absolute;inset:12px 0 0;display:flex;justify-content:center;align-items:flex-start;pointer-events:none;background:transparent}
 .discover-cover__image{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center top;border-radius:22px;box-shadow:0 4px 18px rgba(0,0,0,.16)}
 .discover-cover__fallback{width:min(100%,390px);aspect-ratio:3/4;max-height:100%;overflow:hidden;border-radius:22px}
 .discover-cover__fallback .cover{width:100%;height:100%;min-height:0}
@@ -44,7 +44,7 @@
 
 /* Bottom-anchored glass is independent of the top poster. It can overlay a
    tall poster; with a shorter poster, the gap stays the regular app background. */
-.discover-sheet{position:absolute;z-index:3;left:0;right:0;bottom:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:linear-gradient(150deg,rgba(235,247,255,.055),rgba(154,190,231,.035) 52%,rgba(20,37,61,.045));-webkit-backdrop-filter:blur(10px) saturate(125%);backdrop-filter:blur(10px) saturate(125%);box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 -4px 20px rgba(3,8,20,.06);will-change:transform}
+.discover-sheet{position:absolute;z-index:3;left:0;right:0;top:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;border-top:1px solid rgba(255,255,255,.29);border-left:1px solid rgba(255,255,255,.13);border-right:1px solid rgba(255,255,255,.13);border-radius:22px 22px 0 0;background:linear-gradient(150deg,rgba(14,19,32,.74),rgba(16,24,41,.70) 52%,rgba(10,17,31,.80));-webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 -4px 20px rgba(3,8,20,.16);will-change:transform}
 .discover-sheet::before{position:absolute;inset:0;pointer-events:none;content:'';background:linear-gradient(125deg,rgba(255,255,255,.055) 0%,transparent 32%,rgba(255,255,255,.016) 65%,transparent 100%)}
 .discover-sheet__handle{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:center;width:100%;height:33px;padding:7px 0 0;border:0;background:transparent;touch-action:none;cursor:grab}
 .discover-sheet__handle:active{cursor:grabbing}
@@ -86,7 +86,7 @@
 /* The first poster remains behind one blurred, unframed onboarding layer.
    All labels are plain text — no panels, chips, borders or visible buttons. */
 .discover-guide{position:absolute;z-index:10;inset:0;overflow:hidden;color:#fff;text-align:center}
-.discover-guide__backdrop{position:absolute;inset:0;background:rgba(6,10,23,.43);-webkit-backdrop-filter:blur(17px) saturate(80%);backdrop-filter:blur(17px) saturate(80%);pointer-events:none}
+.discover-guide__backdrop{position:absolute;inset:0;background:rgba(6,10,23,.32);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);pointer-events:none}
 .discover-guide__dismiss{position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;padding:0;margin:0;border:0;border-radius:0;background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .discover-guide__dismiss:focus-visible{outline:2px solid rgba(255,255,255,.75);outline-offset:-4px}
 .discover-guide__intro{position:absolute;z-index:2;top:51%;left:50%;transform:translate(-50%,-50%);width:min(83%,350px);pointer-events:none}

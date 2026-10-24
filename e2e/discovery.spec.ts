@@ -12,12 +12,14 @@ async function movePointer(page: Page, fromX: number, fromY: number, toX: number
 }
 
 async function dragCover(page: Page, direction: 'left' | 'right' | 'up') {
-  const stage = await page.locator('.discover-stage').boundingBox()
-  if (!stage) throw new Error('Discovery stage absent')
-  const x = stage.x + stage.width * .5
-  const y = stage.y + (direction === 'up' ? stage.height * .48 : Math.min(stage.height * .27, 180))
+  // With a short/wide poster the glass fills the lower stage: always begin
+  // on the visible cover itself, never at an arbitrary viewport percentage.
+  const art = await page.locator('.discover-cover__image, .discover-cover__fallback').boundingBox()
+  if (!art) throw new Error('Discovery cover absent')
+  const x = art.x + art.width * .5
+  const y = art.y + Math.min(art.height * (direction === 'up' ? .78 : .28), 220)
   await movePointer(page, x, y, x + (direction === 'left' ? -160 : direction === 'right' ? 160 : 0),
-    y + (direction === 'up' ? -190 : 0))
+    y + (direction === 'up' ? -155 : 0))
 }
 
 async function dragHandle(page: Page, delta: number, simulateTouch = false) {
@@ -52,7 +54,7 @@ async function dragHandle(page: Page, delta: number, simulateTouch = false) {
   await movePointer(page, x, y, x, y + delta)
 }
 
-test('discovery: natural-size rounded artwork, theme gap and bottom-anchored glass', async ({ page }) => {
+test('discovery: rounded art, spring-fitted tinted glass and gentle guide blur', async ({ page }) => {
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const onIPhone = test.info().project.name.includes('WebKit')
   const game = (id: number, title: string) => ({
@@ -125,7 +127,8 @@ test('discovery: natural-size rounded artwork, theme gap and bottom-anchored gla
   await expect(page.locator('.discover-guide__direction--up')).toContainText('В список желаемого')
   await expect(page.locator('.discover-guide__direction--left')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-guide__intro')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('backdrop-filter', /blur\(17px\)/)
+  await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('backdrop-filter', /blur\(7px\)/)
+  await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('background-color', 'rgba(6, 10, 23, 0.32)')
   await expect(page.getByText('Хочу поиграть').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(1)
   // The invisible full-surface hit target accepts a tap away from all text.
@@ -158,11 +161,10 @@ test('discovery: natural-size rounded artwork, theme gap and bottom-anchored gla
   expect(Math.abs(stageRect.width - viewport.width)).toBeLessThan(2)
   expect(Math.abs(stageRect.y - (topbarRect.y + topbarRect.height))).toBeLessThan(2)
   expect(Math.abs((stageRect.y + stageRect.height) - navbarRect.y)).toBeLessThan(2)
-  // The visible image, not a stretched stage-sized image layer, uses its own
-  // proportions and touches the top edge; the remaining area is the app color.
+  // Image keeps its aspect ratio, with a deliberate 12px separation from the topbar.
   expect(coverRect.width).toBeLessThanOrEqual(stageRect.width + 1)
   expect(coverRect.height).toBeLessThanOrEqual(stageRect.height + 1)
-  expect(Math.abs(coverRect.y - stageRect.y)).toBeLessThan(2)
+  expect(Math.abs(coverRect.y - stageRect.y - 12)).toBeLessThan(2)
   expect(Math.abs(coverRect.width / coverRect.height - 600 / 900)).toBeLessThan(.025)
   const background = await page.locator('.discover-stage').evaluate(stage => ({
     stage: getComputedStyle(stage).backgroundColor,
@@ -171,32 +173,35 @@ test('discovery: natural-size rounded artwork, theme gap and bottom-anchored gla
   }))
   expect(background.stage).toBe(background.body)
   expect(background.deck).toBe(background.body)
-  expect(sheetRect.height / stageRect.height).toBeGreaterThan(.78)
-  expect(sheetRect.height / stageRect.height).toBeLessThan(.82)
+  expect(sheetRect.height / stageRect.height).toBeGreaterThan(.98)
+  expect(sheetRect.height / stageRect.height).toBeLessThan(1.02)
   // The translucent glass is anchored to the BOTTOM, independent of cover size.
   const sheetStyle = await page.locator('.discover-sheet').evaluate(element => {
     const style = getComputedStyle(element)
     return { background: style.backgroundImage, backdrop: style.backdropFilter }
   })
-  expect(sheetStyle.background).toContain('0.055')
-  expect(sheetStyle.backdrop).toContain('blur(10px)')
+  expect(sheetStyle.background).toContain('0.74')
+  expect(sheetStyle.backdrop).toContain('blur(12px)')
   const glassAtRest = await page.locator('.discover-sheet').boundingBox()
   if (!glassAtRest) throw new Error('Glass absent')
-  // Collapsed glass is intentionally translated down outside the stage;
-  // only its content-height peek must remain visible at the bottom edge.
-  expect(glassAtRest.y).toBeLessThan(stageRect.y + stageRect.height)
-  expect(stageRect.y + stageRect.height - glassAtRest.y).toBeLessThan(220)
-  // Artwork never gets an ambient clone / artificial full-height dark backdrop.
-  await expect(page.locator('.discover-cover')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  // Collapsed height is derived from text + rating chips + chevron, not a fixed band.
+  // With a tall poster the minimum visible metadata may overlap the image;
+  // in all cases the glass edge meets or covers its bottom, leaving no gap.
   await expect.poll(async () => {
+    const art = await image.boundingBox()
     const stage = await page.locator('.discover-stage').boundingBox()
     const glass = await page.locator('.discover-sheet').boundingBox()
     const summary = await page.locator('.discover-sheet__summary-row').boundingBox()
-    if (!stage || !glass || !summary) return 100
-    const actualPeek = stage.y + stage.height - glass.y
-    return Math.abs(actualPeek - (summary.height + 33 + 8))
-  }, { timeout: 4000 }).toBeLessThan(3)
+    if (!art || !stage || !glass || !summary) return 999
+    const limit = stage.y + stage.height - (33 + summary.height + 8)
+    return Math.abs(glass.y - Math.min(art.y + art.height, limit))
+  }, { timeout: 6500 }).toBeLessThan(4)
+  // Artwork never gets an ambient clone / artificial full-height dark backdrop.
+  await expect(page.locator('.discover-cover')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  // The panel's fallback minimum still exposes its metadata on tall posters.
+  const minRow = await page.locator('.discover-sheet__summary-row').boundingBox()
+  const restGlass = await page.locator('.discover-sheet').boundingBox()
+  if (!minRow || !restGlass) throw new Error('Missing panel metadata')
+  expect(stageRect.y + stageRect.height - restGlass.y).toBeGreaterThanOrEqual(minRow.height + 33)
   // Hints share one synchronized 7.5-second fade cycle, not a blinking garland.
   for (const hint of await page.locator('.discover-hint').all()) {
     await expect(hint).toHaveCSS('animation-duration', '7.5s')
@@ -266,12 +271,22 @@ test('discovery: natural-size rounded artwork, theme gap and bottom-anchored gla
   const wideRect = await wideImage.boundingBox()
   const wideStage = await page.locator('.discover-stage').boundingBox()
   if (!wideRect || !wideStage) throw new Error('Wide poster geometry missing')
-  expect(Math.abs(wideRect.y - wideStage.y)).toBeLessThan(2)
+  expect(Math.abs(wideRect.y - wideStage.y - 12)).toBeLessThan(2)
   expect(Math.abs(wideRect.width / wideRect.height - 2)).toBeLessThan(.025)
   expect(wideStage.y + wideStage.height - (wideRect.y + wideRect.height)).toBeGreaterThan(30)
+  // When the next poster is wide, the same glass springs upward to its bottom.
+  await expect.poll(async () => {
+    const art = await wideImage.boundingBox()
+    const glass = await page.locator('.discover-sheet').boundingBox()
+    return !art || !glass ? 999 : Math.abs(glass.y - (art.y + art.height))
+  }, { timeout: 6500 }).toBeLessThan(4)
   expect(actions).toEqual(['like'])
   await page.getByRole('button', { name: 'Шаг назад' }).click()
   await expect(page.getByText('Discovery One')).toBeVisible()
+  // The persistent glass updates before AnimatePresence mounts the returned
+  // poster. Wait for the actual swipe target, not just the new sheet title.
+  await expect(page.locator('.discover-cover__gesture')).toHaveAttribute('aria-label', 'Свайпы для игры Discovery One')
+  await expect(page.locator('.discover-deck')).toHaveCSS('opacity', '1')
   await dragCover(page, 'left')
   await expect(page.getByText('Discovery Two')).toBeVisible()
   expect(actions).toEqual(['like', 'dislike'])
