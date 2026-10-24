@@ -52,7 +52,7 @@ async function dragHandle(page: Page, delta: number, simulateTouch = false) {
   await movePointer(page, x, y, x, y + delta)
 }
 
-test('discovery: continuous poster beneath content-sized transparent glass and independent gestures', async ({ page }) => {
+test('discovery: natural-size rounded artwork, theme gap and bottom-anchored glass', async ({ page }) => {
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const onIPhone = test.info().project.name.includes('WebKit')
   const game = (id: number, title: string) => ({
@@ -61,10 +61,21 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
     platforms: ['PC', 'PlayStation 5'], igdbRating: 89,
     communityRating: 8.6, communityRatings: 3,
     accent: '#9976ec', accent2: '#32275c', glyph: 'DS',
-    coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big_2x/co123.jpg',
+    coverUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big_2x/${id === 900000001 ? 'co123' : 'co456'}.jpg`,
     summary: 'A great story about stars.',
     storeLinks: [{ provider: 'steam', label: 'Steam', url: 'https://store.steampowered.com/app/1234' }],
     trailerUrl: null,
+  })
+  // Deterministic poster dimensions test portrait and wide-format art without
+  // relying on IGDB CDN availability during CI or on the simulator.
+  await page.route('https://images.igdb.com/igdb/image/upload/**', route => {
+    const wide = route.request().url().includes('co456')
+    const width = wide ? 1000 : 600
+    const height = wide ? 500 : 900
+    return route.fulfill({
+      status: 200, contentType: 'image/svg+xml',
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#7652ac"/></svg>`,
+    })
   })
   const actions: string[] = []
   await page.route('**/api/discover/feed', route => route.fulfill({
@@ -121,17 +132,20 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   await page.locator('.discover-guide__dismiss').click({ position: { x: 18, y: 90 } })
   await expect(page.getByRole('dialog', { name: 'Обучение рекомендациям' })).toHaveCount(0)
   await expect(page.getByText('Discovery One')).toBeVisible()
-  await expect(page.locator('.discover-cover__poster .cover')).toBeVisible()
-  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-fit', 'contain')
-  // Portrait/landscape mismatch leaves the blurred filler BELOW the fitted cover.
-  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-position', /(?:50%|center) (?:0%|top)/)
-  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveAttribute('src', /\/t_1080p\//)
-  await expect(page.locator('.discover-stage')).toHaveCSS('border-top-left-radius', '22px')
-  await expect(page.locator('.discover-stage')).toHaveCSS('border-top-right-radius', '22px')
-  await expect(page.locator('.discover-cover__ambient')).toHaveCount(1)
+  const image = page.locator('.discover-cover__image')
+  await expect(image).toBeVisible()
+  await expect(image).toHaveCSS('object-fit', 'contain')
+  await expect(image).toHaveAttribute('src', /\/t_1080p\//)
+  for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+    await expect(image).toHaveCSS(`border-${corner}-radius`, '22px')
+  }
+  await expect(page.locator('.discover-cover__ambient')).toHaveCount(0)
+  await expect(page.locator('.discover-cover__fade')).toHaveCount(0)
+  await expect(page.locator('.discover-stage')).toHaveCSS('border-top-left-radius', '0px')
   await expect(page.locator('.discover-hint--up')).toHaveCSS('top', '10px')
   const stageRect = await page.locator('.discover-stage').boundingBox()
-  const coverRect = await page.locator('.discover-cover__poster').boundingBox()
+  await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(600)
+  const coverRect = await image.boundingBox()
   const sheetRect = await page.locator('.discover-sheet').boundingBox()
   const topbarRect = await page.locator('.discover-topbar').boundingBox()
   const navbarRect = await page.locator('.bottom-nav').boundingBox()
@@ -144,22 +158,36 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   expect(Math.abs(stageRect.width - viewport.width)).toBeLessThan(2)
   expect(Math.abs(stageRect.y - (topbarRect.y + topbarRect.height))).toBeLessThan(2)
   expect(Math.abs((stageRect.y + stageRect.height) - navbarRect.y)).toBeLessThan(2)
-  expect(Math.abs(coverRect.width - stageRect.width)).toBeLessThan(2)
-  expect(Math.abs(coverRect.height - stageRect.height)).toBeLessThan(2)
-  expect(Math.abs(coverRect.x - stageRect.x)).toBeLessThan(2)
+  // The visible image, not a stretched stage-sized image layer, uses its own
+  // proportions and touches the top edge; the remaining area is the app color.
+  expect(coverRect.width).toBeLessThanOrEqual(stageRect.width + 1)
+  expect(coverRect.height).toBeLessThanOrEqual(stageRect.height + 1)
+  expect(Math.abs(coverRect.y - stageRect.y)).toBeLessThan(2)
+  expect(Math.abs(coverRect.width / coverRect.height - 600 / 900)).toBeLessThan(.025)
+  const background = await page.locator('.discover-stage').evaluate(stage => ({
+    stage: getComputedStyle(stage).backgroundColor,
+    deck: getComputedStyle(stage.querySelector('.discover-deck')!).backgroundColor,
+    body: getComputedStyle(document.body).backgroundColor,
+  }))
+  expect(background.stage).toBe(background.body)
+  expect(background.deck).toBe(background.body)
   expect(sheetRect.height / stageRect.height).toBeGreaterThan(.78)
   expect(sheetRect.height / stageRect.height).toBeLessThan(.82)
-  // Glass is a real translucent overlay over one continuous poster.
+  // The translucent glass is anchored to the BOTTOM, independent of cover size.
   const sheetStyle = await page.locator('.discover-sheet').evaluate(element => {
     const style = getComputedStyle(element)
     return { background: style.backgroundImage, backdrop: style.backdropFilter }
   })
   expect(sheetStyle.background).toContain('0.055')
   expect(sheetStyle.backdrop).toContain('blur(10px)')
-  const coverImage = await page.locator('.discover-cover__poster .cover__image').boundingBox()
-  if (!coverImage) throw new Error('Poster image absent')
-  expect(Math.abs(coverImage.height - stageRect.height)).toBeLessThan(2)
-  expect(Math.abs((coverImage.y + coverImage.height) - (stageRect.y + stageRect.height))).toBeLessThan(2)
+  const glassAtRest = await page.locator('.discover-sheet').boundingBox()
+  if (!glassAtRest) throw new Error('Glass absent')
+  // Collapsed glass is intentionally translated down outside the stage;
+  // only its content-height peek must remain visible at the bottom edge.
+  expect(glassAtRest.y).toBeLessThan(stageRect.y + stageRect.height)
+  expect(stageRect.y + stageRect.height - glassAtRest.y).toBeLessThan(220)
+  // Artwork never gets an ambient clone / artificial full-height dark backdrop.
+  await expect(page.locator('.discover-cover')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   // Collapsed height is derived from text + rating chips + chevron, not a fixed band.
   await expect.poll(async () => {
     const stage = await page.locator('.discover-stage').boundingBox()
@@ -180,10 +208,10 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
 
   // Short pull returns to the initial sheet position.
-  const posterBeforePull = await page.locator('.discover-cover__poster').boundingBox()
+  const posterBeforePull = await image.boundingBox()
   await dragHandle(page, -30, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
-  const posterAfterPull = await page.locator('.discover-cover__poster').boundingBox()
+  const posterAfterPull = await image.boundingBox()
   expect(posterAfterPull?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
   // Long pull expands and reveals actual details.
   // A smaller content-wrapped peek means a longer deliberate pull is required.
@@ -196,7 +224,7 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
     if (!glass || !stage) return -1
     return (stage.y + stage.height - glass.y) / stage.height
   }, { timeout: 3500 }).toBeGreaterThan(.77)
-  const posterExpanded = await page.locator('.discover-cover__poster').boundingBox()
+  const posterExpanded = await image.boundingBox()
   expect(posterExpanded?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
   await expect(page.getByText('A great story about stars.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Steam/ })).toBeVisible()
@@ -231,6 +259,16 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   // Right means LIKE, left means DISLIKE; not the reversed direction from v1.
   await dragCover(page, 'right')
   await expect(page.getByText('Discovery Two')).toBeVisible()
+  // Game Two is a wide poster: it must be shorter than the portrait poster
+  // rather than filling the remaining screen with a fake blurred extension.
+  const wideImage = page.locator('.discover-cover__image')
+  await expect.poll(() => wideImage.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(1000)
+  const wideRect = await wideImage.boundingBox()
+  const wideStage = await page.locator('.discover-stage').boundingBox()
+  if (!wideRect || !wideStage) throw new Error('Wide poster geometry missing')
+  expect(Math.abs(wideRect.y - wideStage.y)).toBeLessThan(2)
+  expect(Math.abs(wideRect.width / wideRect.height - 2)).toBeLessThan(.025)
+  expect(wideStage.y + wideStage.height - (wideRect.y + wideRect.height)).toBeGreaterThan(30)
   expect(actions).toEqual(['like'])
   await page.getByRole('button', { name: 'Шаг назад' }).click()
   await expect(page.getByText('Discovery One')).toBeVisible()
