@@ -495,9 +495,9 @@ def game_details(game_id: int, request: Request, background_tasks: BackgroundTas
             and game.details_cached_at.replace(tzinfo=game.details_cached_at.tzinfo or timezone.utc)
                 > _now() - timedelta(days=_game_details_cache_days(game.release_date))
         ):
-            if not cached_details.get("_linksOnly"):
+            if not cached_details.get("_linksOnly") and "summary" in cached_details:
                 return _detail_response(session, game, cached_details)
-            cached_links_fresh = True
+            cached_links_fresh = "summary" in cached_details
         else:
             cached_links_fresh = False
 
@@ -524,7 +524,7 @@ def game_details(game_id: int, request: Request, background_tasks: BackgroundTas
             try:
                 game_rows = _igdb_details_request(
                     "games",
-                    f"fields websites.url,videos.name,videos.video_id; where id = {game_id}; limit 1;",
+                    f"fields summary,websites.url,videos.name,videos.video_id; where id = {game_id}; limit 1;",
                 )
             except HTTPException:
                 if isinstance(cached_details, dict):
@@ -537,6 +537,7 @@ def game_details(game_id: int, request: Request, background_tasks: BackgroundTas
             details = {
                 "storeLinks": _safe_store_links(game_row.get("websites")),
                 "trailerUrl": _safe_trailer_url(game_row.get("videos")),
+                "summary": str(game_row.get("summary") or "")[:3200],
                 "storyHours": None,
                 "completionHours": None,
             }

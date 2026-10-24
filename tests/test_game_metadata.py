@@ -49,15 +49,27 @@ class GameMetadataCacheTests(unittest.TestCase):
             self.assertTrue(details["_linksOnly"])
             self.assertIsNotNone(game.details_cached_at)
 
+        def detail_request(endpoint, *_args, **_kwargs):
+            if endpoint == "game_time_to_beats":
+                return [{"hastily": 3600 * 14, "completely": 3600 * 61}]
+            if endpoint == "games":
+                return [{
+                    "summary": "A journey across the stars.",
+                    "websites": [
+                        {"url": "https://store.steampowered.com/app/1234"},
+                        {"url": "https://www.epicgames.com/store/en-US/p/starfall"},
+                    ],
+                    "videos": [{"name": "Trailer", "video_id": "abcdefghijk"}],
+                }]
+            self.fail(f"Unexpected IGDB endpoint: {endpoint}")
+
         with patch("api.igdb_client.igdb_client._access_token", return_value=("client", "token")), \
-             patch("api.games_routes._igdb_details_request", return_value=[{
-                 "hastily": 3600 * 14,
-                 "completely": 3600 * 61,
-             }]) as req:
+             patch("api.games_routes._igdb_details_request", side_effect=detail_request) as req:
             response = self.client.get(f"/api/games/{self.game_id}/details")
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(req.call_count, 1)
-        self.assertEqual(req.call_args.args[0], "game_time_to_beats")
+        self.assertEqual(req.call_count, 2)
+        self.assertEqual({call.args[0] for call in req.call_args_list}, {"games", "game_time_to_beats"})
+        self.assertEqual(response.json()["summary"], "A journey across the stars.")
         self.assertEqual(response.json()["storyHours"], 14)
         self.assertEqual(response.json()["storeLinks"][0]["provider"], "steam")
 
@@ -84,6 +96,7 @@ class GameMetadataCacheTests(unittest.TestCase):
             game = session.scalar(select(Game).where(Game.igdb_id == self.game_id))
             full = json.loads(game.details_json)
             full["storyHours"] = 18
+            full["summary"] = "Preserved full description."
             full["_linksOnly"] = False
             game.details_json = json.dumps(full)
             session.commit()

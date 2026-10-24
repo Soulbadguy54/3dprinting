@@ -1,0 +1,77 @@
+/* Discovery deck: visually isolated from the game database and mobile navigation. */
+.game-database-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.game-database-heading__row{min-width:0}
+.game-database-heading h1{font-size:clamp(25px,7vw,34px)}
+.discover-screen{position:relative;display:flex;flex-direction:column;min-height:calc(100dvh - 162px);padding:2px 1px 8px;color:#f8f9ff;isolation:isolate}
+.discover-topbar{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+.discover-icon-button{display:grid;place-items:center;width:42px;height:42px;border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(255,255,255,.055);color:#fff;flex-shrink:0}
+.discover-icon-button--info{margin-left:auto;font:700 19px Georgia,serif;font-style:italic}
+.discover-topbar__text{display:flex;flex-direction:column;gap:3px}
+.discover-topbar__text span{font-size:10px;font-weight:800;letter-spacing:.22em;color:#bba9f6}
+.discover-topbar__text strong{font-size:23px;line-height:1.2;letter-spacing:-.04em}
+.discover-stage{position:relative;flex:1;min-height:340px;max-height:min(69dvh,690px);display:flex;align-items:stretch;justify-content:center}
+.discover-card{position:relative;display:flex;flex-direction:column;width:100%;max-width:470px;max-height:100%;overflow:hidden;border:1px solid rgba(255,255,255,.16);border-radius:27px;background:linear-gradient(148deg,#222538,#121420 68%);box-shadow:0 22px 50px rgba(0,0,0,.36);user-select:none;-webkit-user-select:none;cursor:grab;will-change:transform}
+.discover-card:active{cursor:grabbing}
+.discover-card__layout{position:relative;display:flex;flex:1;min-height:0;flex-direction:column}
+.discover-card__cover{position:relative;flex:1;min-height:200px;overflow:hidden;background:#232538}
+.discover-card__cover .cover{width:100%;height:100%;aspect-ratio:auto;border-radius:0}
+.discover-card__cover .cover__image{width:100%;height:100%;object-fit:cover;object-position:center 31%}
+.discover-card__cover-fade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(10,11,20,.86) 100%);pointer-events:none}
+.discover-card__intro{position:absolute;left:0;right:0;bottom:0;padding:40px 22px 48px;z-index:1;background:linear-gradient(0deg,rgba(9,11,21,.94),transparent)}
+.discover-card__eyebrow{display:block;color:#ddccff;font-size:10px;font-weight:800;letter-spacing:.18em;margin-bottom:8px}
+.discover-card__intro h2{font-size:clamp(25px,7vw,38px);letter-spacing:-.045em;line-height:1.06;margin:0 0 8px;text-wrap:balance}
+.discover-card__intro p{margin:0;color:#d4d7e1;font-size:13px;line-height:1.4}
+.discover-card__developer{display:block;color:#a9aabc;font-size:12px;margin-top:7px}
+.discover-card__expand{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:7px;align-items:center;white-space:nowrap;border:0;border-radius:18px;padding:8px 13px;background:rgba(25,28,44,.72);backdrop-filter:blur(14px);color:#f7f4ff;font-size:11px;font-weight:700;letter-spacing:.015em}
+.discover-card__expand span{font-size:18px;line-height:.6}
+.discover-card--expanded{overflow-y:auto;overscroll-behavior:contain}
+.discover-card--expanded .discover-card__layout{flex:0 0 auto;flex-direction:row;align-items:center;gap:16px;min-height:0;padding:18px 17px 14px}
+.discover-card--expanded .discover-card__cover{flex:0 0 112px;width:112px;height:156px;min-height:0;border-radius:13px;box-shadow:0 8px 20px rgba(0,0,0,.32)}
+.discover-card--expanded .discover-card__cover .cover{border-radius:13px}
+.discover-card--expanded .discover-card__intro{position:static;flex:1;min-width:0;padding:0;background:none}
+.discover-card--expanded .discover-card__intro h2{font-size:21px;line-height:1.13;overflow-wrap:anywhere}
+.discover-card--expanded .discover-card__intro p{font-size:12px;line-height:1.45}
+.discover-card__details{flex:1;overflow-y:auto;border-top:1px solid rgba(255,255,255,.07);padding:17px 18px 24px;color:#d3d5e3;touch-action:pan-y}
+.discover-card__stats{display:grid;grid-template-columns:.8fr .9fr 1.4fr;gap:8px;margin-bottom:18px}
+.discover-card__stats span{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px 8px;border-radius:12px;background:rgba(255,255,255,.055)}
+.discover-card__stats b{font-size:17px;color:#fff;overflow-wrap:anywhere}
+.discover-card__stats small{font-size:9px;color:#a6a7b8}
+.discover-card__details h3{font-size:15px;letter-spacing:-.02em;color:#fff;margin:0 0 9px}
+.discover-card__summary{line-height:1.62;font-size:13px;white-space:pre-wrap;margin:0}
+.discover-card__links{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.discover-card__links a,.discover-card__trailer{color:#f1eaff;text-decoration:none;background:#3a3055;border:1px solid rgba(216,190,255,.22);border-radius:11px;padding:9px 12px;font-size:12px}
+.discover-card__trailer{display:inline-block;margin-top:10px}
+.discover-card__collapse{display:block;margin:20px auto 0;padding:9px 14px;color:#ded6ff;border:0;background:rgba(255,255,255,.075);border-radius:12px;font-weight:700;font-size:12px}
+.discover-actions{display:grid;grid-template-columns:1fr .9fr 1fr;gap:10px;width:100%;max-width:470px;margin:14px auto 0}
+.discover-actions__choice{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:15px;border:1px solid rgba(255,255,255,.12);color:#f9f6ff;font-size:20px;font-weight:700;background:#242739}
+.discover-actions__choice span{font-size:11px;letter-spacing:.02em}
+.discover-actions__choice--like{border-color:rgba(110,235,191,.36);background:linear-gradient(145deg,#23483f,#1b3032)}
+.discover-actions__choice--wishlist{border-color:rgba(255,131,178,.4);background:linear-gradient(145deg,#51283f,#332436)}
+.discover-actions__choice--dislike{border-color:rgba(255,161,147,.32);background:linear-gradient(145deg,#492d3b,#2d2839)}
+.discover-actions__choice:disabled{opacity:.45}
+.discover-footnote{display:flex;align-items:center;justify-content:space-between;max-width:470px;width:100%;margin:13px auto 0;color:#9fa3b7;font-size:11px}
+.discover-footnote button{border:none;color:#cbb9f4;background:none;padding:7px 3px;font-size:12px;font-weight:750}
+.discover-footnote button:disabled{opacity:.35}
+.discover-footnote button span{font-size:19px;vertical-align:middle}
+.discover-error{margin:5px 0 0;color:#ffb0ae;font-size:12px;text-align:center}
+.discover-state{width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;text-align:center;padding:32px 24px;border-radius:25px;background:linear-gradient(140deg,#212337,#141723);color:#e4e0f1}
+.discover-state__icon{font-size:46px;color:#c8a8ff}
+.discover-state h2{font-size:23px;letter-spacing:-.03em;margin:0}
+.discover-state p{margin:0;font-size:13px;line-height:1.6;color:#a7adbe}
+.discover-state button{padding:11px 20px;border:0;border-radius:12px;background:#9a74e5;color:#fff;font-weight:700}
+.discover-loader{width:28px;height:28px;border:2px solid #6d597c;border-top-color:white;border-radius:100%;animation:discover-spin .85s linear infinite}
+@keyframes discover-spin{to{transform:rotate(360deg)}}
+.discover-help{position:fixed;z-index:200;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;border:0;text-align:center;color:#fff;background:rgba(3,4,12,.82);backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px)}
+.discover-help__glow{position:absolute;width:270px;height:300px;border-radius:50%;background:radial-gradient(ellipse,rgba(135,77,231,.24),transparent 72%);pointer-events:none}
+.discover-help__panel{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;max-width:310px}
+.discover-help__counter{font-size:11px;letter-spacing:.23em;color:#ad9acb;font-weight:800}
+.discover-help__icon{font-size:90px;line-height:1.2;color:#d5b2ff;text-shadow:0 15px 50px #8f56dc}
+.discover-help__panel strong{font-size:27px;letter-spacing:-.045em;line-height:1.1}
+.discover-help__copy{font-size:14px;line-height:1.65;color:#c8c3d7}
+.discover-help__continue{margin-top:14px;font-size:12px;letter-spacing:.02em;color:#e2c7ff}
+.discover-help__dots{display:flex;gap:6px;margin-top:4px}
+.discover-help__dots i{width:6px;height:6px;border-radius:7px;background:#6f637e;transition:width .18s}
+.discover-help__dots i.active{width:24px;background:#d9bbff}
+.game-database-discovery-button{display:flex;align-items:center;justify-content:center;gap:6px;margin-left:auto;padding:10px 13px;border-radius:14px;border:1px solid rgba(178,139,241,.4);background:linear-gradient(120deg,rgba(104,68,166,.27),rgba(98,55,137,.14));color:#e6d3ff;font-weight:800;font-size:12px;letter-spacing:.015em;white-space:nowrap}
+@media(max-width:380px){.game-database-discovery-button{font-size:11px;padding:9px 11px}.discover-card--expanded .discover-card__cover{flex-basis:95px;width:95px;height:136px}.discover-stage{min-height:300px}}
+@media(prefers-reduced-motion:reduce){.discover-loader{animation:none}.discover-help__dots i{transition:none}}
