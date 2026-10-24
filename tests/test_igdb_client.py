@@ -81,9 +81,11 @@ class GatewayQueueTests(unittest.TestCase):
                 return Response(429, [])
             return Response(200, [{"id": 1}, "bad", {"id": 2}])
 
-        with patch.object(client, "_access_token", return_value=("client", "token")), \\
-             patch("api.igdb_client.httpx.post", side_effect=fake_post), \\
-             patch("api.igdb_client.time.sleep"):
+        with (
+            patch.object(client, "_access_token", return_value=("client", "token")),
+            patch("api.igdb_client.httpx.post", side_effect=fake_post),
+            patch("api.igdb_client.time.sleep"),
+        ):
             result = client.request("games", "fields id;", priority=Priority.SEARCH)
         self.assertEqual(result, [{"id": 1}, {"id": 2}])
         self.assertEqual(len(calls), 2)
