@@ -407,7 +407,18 @@ export default function DiscoverView({
                   style={{ height: fullSheetHeight, y: sheetY }}
                   onPointerDown={onPointerStart}
                   onMouseDown={onMouseStart}
-                  onTouchStart={onTouchStart}>
+                  onTouchStart={onTouchStart}
+                  onPanEnd={(_event, info) => {
+                    // Motion sees continuous pointer gestures even when native
+                    // scrolling or a transformed panel interrupts the pointer-up
+                    // fallback. Keep the same deliberate distance threshold.
+                    const distance = info.offset.y
+                    if (Math.abs(distance) < Math.max(125, travel * .42) ||
+                        Math.abs(distance) < Math.abs(info.offset.x) * 1.15) return
+                    pullRef.current = null
+                    if (distance > 0 && expanded) settleSheet(false)
+                    else if (distance < 0 && !expanded) showDetails()
+                  }}>
                   <button type="button" className="discover-sheet__handle"
                     aria-label={expanded ? 'Свернуть подробности' : 'Развернуть подробности'}
                     aria-expanded={expanded}>
