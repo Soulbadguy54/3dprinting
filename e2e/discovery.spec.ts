@@ -52,7 +52,7 @@ async function dragHandle(page: Page, delta: number, simulateTouch = false) {
   await movePointer(page, x, y, x, y + delta)
 }
 
-test('full screen discovery: one tutorial, draggable sheet, swipe direction and undo', async ({ page }) => {
+test('integrated discovery: fitted poster, calm glass, tutorial, directions and undo', async ({ page }) => {
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const onIPhone = test.info().project.name.includes('WebKit')
   const game = (id: number, title: string) => ({
@@ -97,22 +97,44 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   await page.locator('.bottom-nav__item').filter({ hasText: 'База игр' }).click()
   await page.getByRole('button', { name: 'Открыть рекомендации игр' }).click()
   await expect(page.locator('.discover-screen')).toBeVisible()
-  await expect(page.locator('.bottom-nav')).toHaveCount(0)
+  await expect(page.locator('.bottom-nav')).toBeVisible()
+  await expect(page.locator('.page')).not.toHaveClass(/page--discovery/)
+  await expect(page.locator('.app-shell')).not.toHaveClass(/app-shell--discovery/)
+  await expect(page.getByText('Discovery One')).toBeVisible()
   await expect(page.getByText('Новые игры для тебя')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Обучение рекомендациям' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(1)
   await expect(page.getByText('Хочу поиграть').first()).toBeVisible()
   await page.getByRole('button', { name: 'Закрыть обучение' }).click()
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(0)
   await expect(page.getByText('Discovery One')).toBeVisible()
-  await expect(page.locator('.discover-cover .cover')).toBeVisible()
+  await expect(page.locator('.discover-cover__poster .cover')).toBeVisible()
+  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-fit', 'contain')
+  const stageRect = await page.locator('.discover-stage').boundingBox()
+  const coverRect = await page.locator('.discover-cover__poster').boundingBox()
+  const sheetRect = await page.locator('.discover-sheet').boundingBox()
+  if (!stageRect || !coverRect || !sheetRect) throw new Error('Discovery geometry missing')
+  expect(Math.abs(coverRect.width - stageRect.width)).toBeLessThan(2)
+  expect(sheetRect.height).toBeLessThan(stageRect.height * .85)
+  // Collapsed glass occupies only a short portion of the visible poster.
+  const visibleGlass = stageRect.y + stageRect.height - sheetRect.y
+  expect(visibleGlass).toBeLessThan(170)
+  // Hints share one synchronized 7.5-second fade cycle, not a blinking garland.
+  for (const hint of await page.locator('.discover-hint').all()) {
+    await expect(hint).toHaveCSS('animation-duration', '7.5s')
+    await expect(hint).toHaveCSS('animation-delay', '0s')
+  }
   await expect(page.locator('.discover-sheet__ratings')).toContainText('IGDB')
   await expect(page.locator('.discover-sheet__ratings')).toContainText('Rate APP')
   await expect(page.locator('.discover-actions')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
 
   // Short pull returns to the initial sheet position.
+  const posterBeforePull = await page.locator('.discover-cover__poster').boundingBox()
   await dragHandle(page, -30, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
+  const posterAfterPull = await page.locator('.discover-cover__poster').boundingBox()
+  expect(posterAfterPull?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
   // Long pull expands and reveals actual details.
   await dragHandle(page, -245, onIPhone)
   await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
@@ -124,8 +146,8 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   // Reverse drag collapses the sheet.
   await dragHandle(page, 270, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
-  // The physical panel needs to finish spring-snapping before another gesture.
-  await page.waitForTimeout(700)
+  // The sheet finishes its deliberate, non-jelly snap before a new gesture.
+  await page.waitForTimeout(420)
 
   // Right means LIKE, left means DISLIKE; not the reversed direction from v1.
   await dragCover(page, 'right')
