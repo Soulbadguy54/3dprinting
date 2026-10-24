@@ -37,7 +37,7 @@
 .discover-cover__poster{position:absolute;inset:0;overflow:hidden}
 .discover-cover__poster .cover{height:100%;width:100%;min-height:0;background:transparent}
 .discover-cover__poster .cover::after{content:none}
-.discover-cover__poster .cover__image{display:block;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center center}
+.discover-cover__poster .cover__image{display:block;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center top}
 .discover-cover__fade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 65%,rgba(5,10,22,.16) 100%)}
 .discover-cover__gesture{position:absolute;inset:0;z-index:1;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
 .discover-cover__gesture:active{cursor:grabbing}
@@ -83,23 +83,26 @@
 .discover-hint--right{top:40%;right:7px;color:#91ffd0}
 @keyframes discover-hint-breathe{0%,3%{opacity:0}11%{opacity:1}19%{opacity:.86}27%{opacity:1}33%,100%{opacity:0}}
 
-/* Tutorial appears over the actual first poster, not before the deck renders. */
-.discover-guide{position:absolute;z-index:10;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#fff}
-.discover-guide__backdrop{position:absolute;inset:0;background:rgba(5,10,22,.52);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-.discover-guide__panel{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:11px;width:min(89%,340px);margin:5px 0;padding:19px 16px 16px;border:1px solid rgba(244,247,255,.46);border-radius:22px;background:linear-gradient(145deg,rgba(224,230,252,.22),rgba(84,104,159,.14));-webkit-backdrop-filter:blur(26px) saturate(160%);backdrop-filter:blur(26px) saturate(160%);box-shadow:inset 0 1px rgba(255,255,255,.25),0 12px 34px rgba(0,0,0,.24);text-align:center}
-.discover-guide__eyebrow{font-size:9px;letter-spacing:.16em;color:#e9d7ff;font-weight:850}
-.discover-guide__panel h2{margin:0;font-size:22px;letter-spacing:-.04em;line-height:1.14}
-.discover-guide__panel p{margin:0;color:#f6f5ff;font-size:12px;line-height:1.6}
-.discover-guide__panel .discover-guide__sheet-tip{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.22);background:rgba(13,20,41,.28);font-size:11px}
-.discover-guide__panel button{display:grid;place-items:center;width:100%;min-height:42px;margin-top:2px;border-radius:12px;background:linear-gradient(115deg,#668cf1,#a675e2);color:#fff;font-size:13px;font-weight:900}
-.discover-guide__directions{position:absolute;z-index:3;inset:0;pointer-events:none}
-.discover-guide__direction{position:absolute;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 8px;border:1px solid currentColor;border-radius:11px;background:rgba(7,13,27,.64);box-shadow:0 0 16px rgba(9,15,28,.19);text-align:center;animation:discover-guide-breathe 3.8s ease-in-out infinite}
-.discover-guide__direction strong{font-size:11px;line-height:1.13;white-space:nowrap}
-.discover-guide__direction span{font-size:9px;line-height:1.18;color:#fff}
-.discover-guide__direction--up{top:4%;left:50%;transform:translateX(-50%);color:#e8b2ff}
-.discover-guide__direction--left{top:29%;left:2%;color:#ffa2b0}
-.discover-guide__direction--right{top:29%;right:2%;color:#9affe1}
-@keyframes discover-guide-breathe{0%,100%{opacity:.88;filter:brightness(.95)}50%{opacity:1;filter:brightness(1.18)}}
+/* The first poster remains behind one blurred, unframed onboarding layer.
+   All labels are plain text — no panels, chips, borders or visible buttons. */
+.discover-guide{position:absolute;z-index:10;inset:0;overflow:hidden;color:#fff;text-align:center}
+.discover-guide__backdrop{position:absolute;inset:0;background:rgba(6,10,23,.43);-webkit-backdrop-filter:blur(17px) saturate(80%);backdrop-filter:blur(17px) saturate(80%);pointer-events:none}
+.discover-guide__dismiss{position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;padding:0;margin:0;border:0;border-radius:0;background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.discover-guide__dismiss:focus-visible{outline:2px solid rgba(255,255,255,.75);outline-offset:-4px}
+.discover-guide__intro{position:absolute;z-index:2;top:51%;left:50%;transform:translate(-50%,-50%);width:min(83%,350px);pointer-events:none}
+.discover-guide__intro h2{margin:0 0 14px;font-size:clamp(21px,6vw,28px);font-weight:850;line-height:1.13;letter-spacing:-.045em;text-wrap:balance;text-shadow:0 2px 15px rgba(0,0,0,.7)}
+.discover-guide__intro p{margin:0;font-size:clamp(12px,3.5vw,14px);font-weight:550;line-height:1.55;color:#f8f8ff;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+.discover-guide__intro .discover-guide__detail-tip{margin-top:17px;font-size:clamp(11px,3vw,12px);font-weight:600;color:#e3e6f2}
+.discover-guide__directions{position:absolute;z-index:2;inset:0;pointer-events:none}
+.discover-guide__direction{position:absolute;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0;margin:0;border:0;background:none;box-shadow:none;text-align:center;text-shadow:0 2px 12px rgba(0,0,0,.8);animation:discover-guide-breathe 3.8s ease-in-out infinite}
+.discover-guide__direction strong{font-size:clamp(11px,3.1vw,13px);line-height:1.15;white-space:nowrap}
+.discover-guide__direction span{font-size:clamp(9px,2.6vw,11px);line-height:1.25;color:#fafaff}
+.discover-guide__direction--up{top:clamp(12px,3.5%,24px);left:50%;transform:translateX(-50%);color:#e8b2ff}
+.discover-guide__direction--left{top:22%;left:12px;color:#ffa2b0}
+.discover-guide__direction--right{top:22%;right:12px;color:#9affe1}
+.discover-guide__tap-hint{position:absolute;z-index:2;bottom:clamp(18px,5%,38px);left:0;right:0;margin:0;padding:0 12px;font-size:11px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.78);text-shadow:0 2px 10px rgba(0,0,0,.7);pointer-events:none}
+@keyframes discover-guide-breathe{0%,100%{opacity:.88;filter:brightness(.95)}50%{opacity:1;filter:brightness(1.12)}}
+@media(max-height:510px){.discover-guide__intro{top:54%}.discover-guide__intro h2{margin-bottom:9px}.discover-guide__intro .discover-guide__detail-tip{margin-top:8px}.discover-guide__direction--left,.discover-guide__direction--right{top:19%}.discover-guide__tap-hint{bottom:10px}}
 
 .discover-state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:25px;text-align:center;background:linear-gradient(135deg,#19243e,#0b0f19)}
 .discover-state__icon{font-size:46px;color:#cfadfa}
@@ -109,5 +112,5 @@
 .discover-loader{width:28px;height:28px;border-radius:50%;border:2px solid rgba(180,160,244,.35);border-top-color:#fff;animation:discover-spin .85s linear infinite}
 @keyframes discover-spin{to{transform:rotate(360deg)}}
 .discover-error{position:absolute;z-index:9;top:8px;left:9px;right:9px;padding:10px;border:1px solid rgba(255,160,180,.42);border-radius:10px;background:rgba(48,18,28,.91);color:#ffc8cc;text-align:center;font-size:11px}
-@media(max-width:365px){.game-database-discovery-button{padding:9px;font-size:11px}.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__panel{width:90%;gap:8px;padding:15px 12px}.discover-guide__panel h2{font-size:19px}.discover-guide__panel p{font-size:11px}.discover-guide__direction{padding:6px}.discover-guide__direction strong{font-size:10px}}
+@media(max-width:365px){.game-database-discovery-button{padding:9px;font-size:11px}.discover-sheet__body{padding-left:9px;padding-right:9px}.discover-sheet__identity h2{font-size:17px}.discover-rating{min-width:87px;padding:6px}.discover-rating small{font-size:9px}.discover-rating strong{font-size:12px}.discover-guide__intro{width:88%}.discover-guide__direction strong{font-size:11px}.discover-guide__direction span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.discover-sheet__chevron{animation:none!important}.discover-hint{animation:none;opacity:.75}.discover-guide__direction{animation:none}.discover-loader{animation:none}.discover-sheet__chevron{transition:none}}
