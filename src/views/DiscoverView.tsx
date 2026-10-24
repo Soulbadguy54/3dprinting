@@ -102,7 +102,7 @@ export default function DiscoverView({
     pullRef.current = { pointerId: event.pointerId, startY: event.clientY, initial: reveal.get() }
     // Captured pointers can be lost when a transformed handle moves in WebKit.
     // Window listeners below also follow the gesture until it ends.
-    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* Window fallback */ }
+    // Drag is tracked globally; avoid pointer-capture cancellation in Safari.
   }
   const updatePull = (pointerId: number, clientY: number) => {
     const pointer = pullRef.current
@@ -256,13 +256,38 @@ export default function DiscoverView({
       pullRef.current = null
       settleSheet(expanded)
     }
+    // Safari and Playwright's emulated mouse/touch events may lose a pointer
+    // event when the panel itself moves. Use the last reported position.
+    const mouseMove = (event: MouseEvent) => {
+      if (pullRef.current) updatePull(pullRef.current.pointerId, event.clientY)
+    }
+    const mouseUp = (event: MouseEvent) => {
+      if (pullRef.current) finishPull(pullRef.current.pointerId, event.clientY)
+    }
+    const touchMove = (event: TouchEvent) => {
+      if (!pullRef.current || !event.touches.length) return
+      if (event.cancelable) event.preventDefault()
+      updatePull(pullRef.current.pointerId, event.touches[0].clientY)
+    }
+    const touchEnd = (event: TouchEvent) => {
+      if (pullRef.current && event.changedTouches.length)
+        finishPull(pullRef.current.pointerId, event.changedTouches[0].clientY)
+    }
     window.addEventListener('pointermove', move, { passive: false })
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', cancel)
+    window.addEventListener('mousemove', mouseMove)
+    window.addEventListener('mouseup', mouseUp)
+    window.addEventListener('touchmove', touchMove, { passive: false })
+    window.addEventListener('touchend', touchEnd)
     return () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('mousemove', mouseMove)
+      window.removeEventListener('mouseup', mouseUp)
+      window.removeEventListener('touchmove', touchMove)
+      window.removeEventListener('touchend', touchEnd)
     }
   })
 
