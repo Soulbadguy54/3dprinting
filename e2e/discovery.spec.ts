@@ -52,7 +52,7 @@ async function dragHandle(page: Page, delta: number, simulateTouch = false) {
   await movePointer(page, x, y, x, y + delta)
 }
 
-test('integrated discovery: fitted poster, calm glass, tutorial, directions and undo', async ({ page }) => {
+test('discovery: continuous poster beneath content-sized transparent glass and independent gestures', async ({ page }) => {
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const onIPhone = test.info().project.name.includes('WebKit')
   const game = (id: number, title: string) => ({
@@ -109,7 +109,10 @@ test('integrated discovery: fitted poster, calm glass, tutorial, directions and 
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(0)
   await expect(page.getByText('Discovery One')).toBeVisible()
   await expect(page.locator('.discover-cover__poster .cover')).toBeVisible()
-  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-fit', 'contain')
+  await expect(page.locator('.discover-cover__poster .cover__image')).toHaveCSS('object-fit', 'cover')
+  await expect(page.locator('.discover-stage')).toHaveCSS('border-top-left-radius', '22px')
+  await expect(page.locator('.discover-stage')).toHaveCSS('border-top-right-radius', '22px')
+  await expect(page.locator('.discover-cover__ambient')).toHaveCount(0)
   const stageRect = await page.locator('.discover-stage').boundingBox()
   const coverRect = await page.locator('.discover-cover__poster').boundingBox()
   const sheetRect = await page.locator('.discover-sheet').boundingBox()
@@ -129,9 +132,26 @@ test('integrated discovery: fitted poster, calm glass, tutorial, directions and 
   expect(Math.abs(coverRect.x - stageRect.x)).toBeLessThan(2)
   expect(sheetRect.height / stageRect.height).toBeGreaterThan(.78)
   expect(sheetRect.height / stageRect.height).toBeLessThan(.82)
-  // Collapsed glass occupies only a short portion of the visible poster.
-  const visibleGlass = stageRect.y + stageRect.height - sheetRect.y
-  expect(visibleGlass).toBeLessThan(170)
+  // Glass is a real translucent overlay over one continuous poster.
+  const sheetStyle = await page.locator('.discover-sheet').evaluate(element => {
+    const style = getComputedStyle(element)
+    return { background: style.backgroundImage, backdrop: style.backdropFilter }
+  })
+  expect(sheetStyle.background).toContain('0.055')
+  expect(sheetStyle.backdrop).toContain('blur(10px)')
+  const coverImage = await page.locator('.discover-cover__poster .cover__image').boundingBox()
+  if (!coverImage) throw new Error('Poster image absent')
+  expect(Math.abs(coverImage.height - stageRect.height)).toBeLessThan(2)
+  expect(Math.abs((coverImage.y + coverImage.height) - (stageRect.y + stageRect.height))).toBeLessThan(2)
+  // Collapsed height is derived from text + rating chips + chevron, not a fixed band.
+  await expect.poll(async () => {
+    const stage = await page.locator('.discover-stage').boundingBox()
+    const glass = await page.locator('.discover-sheet').boundingBox()
+    const summary = await page.locator('.discover-sheet__summary-row').boundingBox()
+    if (!stage || !glass || !summary) return 100
+    const actualPeek = stage.y + stage.height - glass.y
+    return Math.abs(actualPeek - (summary.height + 33 + 8))
+  }, { timeout: 4000 }).toBeLessThan(3)
   // Hints share one synchronized 7.5-second fade cycle, not a blinking garland.
   for (const hint of await page.locator('.discover-hint').all()) {
     await expect(hint).toHaveCSS('animation-duration', '7.5s')
