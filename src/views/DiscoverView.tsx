@@ -472,7 +472,7 @@ export default function DiscoverView({
               {/* Full-screen invisible dismissal target: no framed card or visible
                   action button. First poster stays in place behind the blur. */}
               <button type="button" className="discover-guide__dismiss"
-                aria-label="Закрыть обучение" onClick={dismissHelp} autoFocus />
+                aria-label="Закрыть обучение" onClick={dismissHelp} />
               <div className="discover-guide__directions" aria-hidden="true">
                 <div className="discover-guide__direction discover-guide__direction--up">
                   <strong>↑ Хочу поиграть</strong><span>В список желаемого</span>
