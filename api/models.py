@@ -176,3 +176,16 @@ class ReleasePushDelivery(Base):
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"))
     release_date: Mapped[date] = mapped_column(Date, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DiscoveryFeedback(Base):
+    """Latest intentional discovery decision; can be undone without touching ratings."""
+    __tablename__ = "discovery_feedback"
+    __table_args__ = (UniqueConstraint("user_id", "game_id", name="uq_discovery_feedback_user_game"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    wishlist_added: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
