@@ -54,7 +54,9 @@ export default function DiscoverView({
   const [artworkReady, setArtworkReady] = useState(false)
 
   const stageRef = useRef<HTMLDivElement>(null)
+  const summaryRef = useRef<HTMLDivElement>(null)
   const [stageHeight, setStageHeight] = useState(550)
+  const [summaryHeight, setSummaryHeight] = useState(74)
   const mountedRef = useRef(true)
   const loadingRef = useRef(false)
   const pullRef = useRef<Pull | null>(null)
@@ -77,7 +79,9 @@ export default function DiscoverView({
   // Only a short strip of the sheet is visible before the chevron is pulled.
   // The expanded glass occludes 80% of the SAME full-bleed poster.
   const fullSheetHeight = Math.min(stageHeight * .8, stageHeight - 8)
-  const peekHeight = Math.min(149, Math.max(125, stageHeight * .25))
+  // The collapsed glass wraps the visible metadata: handle + measured text/ratings + 8px.
+  // No fixed 125–149px strip and no unused blank space on compact titles.
+  const peekHeight = Math.min(fullSheetHeight - 16, 33 + summaryHeight + 8)
   const travel = Math.max(1, fullSheetHeight - peekHeight)
   const sheetY = useTransform(reveal, n => travel * (1 - n))
   const detailOpacity = useTransform(reveal, [0, .32, .98], [0, 0, 1])
@@ -215,6 +219,18 @@ export default function DiscoverView({
   }, [loadFeed])
 
   const game = cards[index]
+  useEffect(() => {
+    const summary = summaryRef.current
+    if (!summary) return
+    const measure = () => {
+      const height = summary.getBoundingClientRect().height
+      if (height > 0) setSummaryHeight(previous => Math.abs(previous - height) > .5 ? height : previous)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(summary)
+    return () => observer.disconnect()
+  }, [game?.id])
   useEffect(() => {
     if (!game) return
     setArtworkReady(false)
@@ -356,7 +372,6 @@ export default function DiscoverView({
               transition={{ duration: .36, ease: [0.22, 1, 0.36, 1] }}>
               <motion.div className="discover-card" style={{ x: cardShift, rotate: cardTilt }}>
                 <div className="discover-cover" aria-hidden="true">
-                  {game.coverUrl && <img className="discover-cover__ambient" src={game.coverUrl} alt="" />}
                   <div className="discover-cover__poster">
                     <Cover game={game} priority />
                   </div>
@@ -387,7 +402,7 @@ export default function DiscoverView({
                     <span className={expanded ? 'discover-sheet__chevron discover-sheet__chevron--down' : 'discover-sheet__chevron'} />
                   </button>
                   <div className="discover-sheet__body">
-                    <div className="discover-sheet__summary-row">
+                    <div className="discover-sheet__summary-row" ref={summaryRef}>
                       <div className="discover-sheet__identity">
                         <h2>{game.title}</h2>
                         <p>{releaseLabel(game)}</p>
