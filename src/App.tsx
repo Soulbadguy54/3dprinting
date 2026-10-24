@@ -3187,7 +3187,9 @@ function App() {
         ref={viewportPageRef}
         className={activeTab === 'library' && selectedGameId == null
           ? 'page page--library'
-          : 'page page--viewport'}
+          : activeTab === 'discovery' && selectedGameId == null
+            ? 'page page--viewport page--discovery'
+            : 'page page--viewport'}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
