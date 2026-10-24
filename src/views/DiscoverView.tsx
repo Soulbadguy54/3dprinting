@@ -16,8 +16,7 @@ const getHelpKey = (nickname: string) => HELP_KEY + ':' + nickname.toLowerCase()
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 
 function heroCoverUrl(url?: string): string | undefined {
-  // Keep all thumbnail/catalog artwork unchanged. Request a larger IGDB asset
-  // only for the one active Discovery poster, including its background layer.
+  // Request a larger IGDB image for this poster only, never for catalog tiles.
   if (!url?.startsWith('https://images.igdb.com/igdb/image/upload/')) return url
   return url.replace(/\/t_cover_big_2x\//, '/t_1080p/')
 }
@@ -78,8 +77,8 @@ export default function DiscoverView({
     return () => observer.disconnect()
   }, [])
 
-  // Only a short strip of the sheet is visible before the chevron is pulled.
-  // The expanded glass occludes 80% of the SAME full-bleed poster.
+  // The sheet belongs to the bottom of the viewport; the natural-sized,
+  // rounded poster belongs to the top. The two may overlap when expanded.
   const fullSheetHeight = Math.min(stageHeight * .8, stageHeight - 8)
   // The collapsed glass wraps the visible metadata: handle + measured text/ratings + 8px.
   // No fixed 125–149px strip and no unused blank space on compact titles.
@@ -380,14 +379,15 @@ export default function DiscoverView({
               }}
               exit="exit"
               transition={{ duration: .36, ease: [0.22, 1, 0.36, 1] }}>
-              <motion.div className="discover-card"
+              <motion.div className="discover-artwork"
                 style={{ x: cardShift, y: cardLift, scale: cardScale, rotate: cardTilt }}>
                 <div className="discover-cover" aria-hidden="true">
-                  {game.coverUrl && <img className="discover-cover__ambient" src={heroCoverUrl(game.coverUrl)} alt="" loading="eager" />}
-                  <div className="discover-cover__poster">
-                    <Cover game={{ ...game, coverUrl: heroCoverUrl(game.coverUrl) }} priority />
-                  </div>
-                  <div className="discover-cover__fade" />
+                  {game.coverUrl ? (
+                    <img className="discover-cover__image" src={heroCoverUrl(game.coverUrl)}
+                      alt="" loading="eager" fetchPriority="high" decoding="async" />
+                  ) : (
+                    <div className="discover-cover__fallback"><Cover game={game} priority /></div>
+                  )}
                 </div>
                 <motion.div
                   className="discover-cover__gesture"
@@ -402,8 +402,9 @@ export default function DiscoverView({
                     <span className="discover-hint discover-hint--right">Нравится →</span>
                   </div>
                 )}
+              </motion.div>
 
-                <motion.div className={expanded ? 'discover-sheet discover-sheet--expanded' : 'discover-sheet'}
+              <motion.div className={expanded ? 'discover-sheet discover-sheet--expanded' : 'discover-sheet'}
                   style={{ height: fullSheetHeight, y: sheetY }}
                   onPointerDown={onPointerStart}
                   onMouseDown={onMouseStart}
@@ -457,7 +458,6 @@ export default function DiscoverView({
                     </motion.div>
                   </div>
                 </motion.div>
-              </motion.div>
             </motion.div>
           </AnimatePresence>
         )}
