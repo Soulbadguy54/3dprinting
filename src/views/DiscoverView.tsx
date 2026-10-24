@@ -469,7 +469,11 @@ export default function DiscoverView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }} transition={{ duration: .32 }}>
               <div className="discover-guide__backdrop" />
-              <div className="discover-guide__directions">
+              {/* Full-screen invisible dismissal target: no framed card or visible
+                  action button. First poster stays in place behind the blur. */}
+              <button type="button" className="discover-guide__dismiss"
+                aria-label="Закрыть обучение" onClick={dismissHelp} />
+              <div className="discover-guide__directions" aria-hidden="true">
                 <div className="discover-guide__direction discover-guide__direction--up">
                   <strong>↑ Хочу поиграть</strong><span>В список желаемого</span>
                 </div>
@@ -480,13 +484,12 @@ export default function DiscoverView({
                   <strong>Нравится →</strong><span>Больше похожих</span>
                 </div>
               </div>
-              <div className="discover-guide__panel">
-                <span className="discover-guide__eyebrow">RATE APP · DISCOVERY</span>
+              <div className="discover-guide__intro">
                 <h2>Новые игры для тебя</h2>
-                <p>Мы подбираем игры по твоим оценкам и предпочтениям. Проводи пальцем по обложке в нужную сторону — каждый выбор поможет сделать рекомендации точнее.</p>
-                <p className="discover-guide__sheet-tip">Чтобы узнать об игре больше, потяни шеврон на стеклянной панели вверх.</p>
-                <button type="button" aria-label="Закрыть обучение" onClick={dismissHelp}>Начать</button>
+                <p>Подбираем игры по твоим оценкам и предпочтениям. Листай обложки жестами — так рекомендации становятся точнее.</p>
+                <p className="discover-guide__detail-tip">Потяни стеклянную панель вверх, чтобы узнать об игре больше.</p>
               </div>
+              <p className="discover-guide__tap-hint" aria-hidden="true">Коснись экрана, чтобы продолжить</p>
             </motion.div>
           )}
         </AnimatePresence>
