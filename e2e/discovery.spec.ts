@@ -99,6 +99,8 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   // Reverse drag collapses the sheet.
   await dragHandle(page, 270)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
+  // The physical panel needs to finish spring-snapping before another gesture.
+  await page.waitForTimeout(700)
 
   // Right means LIKE, left means DISLIKE; not the reversed direction from v1.
   await dragCover(page, 'right')
