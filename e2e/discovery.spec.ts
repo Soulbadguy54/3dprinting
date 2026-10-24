@@ -114,7 +114,7 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   await expect(page.locator('.discover-guide__direction--up')).toContainText('В список желаемого')
   await expect(page.locator('.discover-guide__direction--left')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.discover-guide__intro')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('backdrop-filter', /blur\\(17px\\)/)
+  await expect(page.locator('.discover-guide__backdrop')).toHaveCSS('backdrop-filter', /blur\(17px\)/)
   await expect(page.getByText('Хочу поиграть').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(1)
   // The invisible full-surface hit target accepts a tap away from all text.
