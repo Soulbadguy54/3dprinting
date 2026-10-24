@@ -20,7 +20,38 @@ async function dragCover(page: Page, direction: 'left' | 'right' | 'up') {
     y + (direction === 'up' ? -190 : 0))
 }
 
-async function dragHandle(page: Page, delta: number) {
+async function dragHandle(page: Page, delta: number, simulateTouch = false) {
+  if (simulateTouch) {
+    // WebKit's page.mouse does not emulate an iPhone finger drag. Dispatch the
+    // actual TouchEvent stream instead (the app listens to touch + pointer).
+    await page.evaluate(dy => {
+      const handle = document.querySelector<HTMLButtonElement>('.discover-sheet__handle')
+      if (!handle) throw new Error('Sheet handle absent')
+      const box = handle.getBoundingClientRect()
+      const x = box.left + box.width / 2
+      const y = box.top + box.height / 2
+      const touch = (clientY: number) => new Touch({
+        identifier: 7, target: handle, clientX: x, clientY,
+      })
+      const original = touch(y)
+      handle.dispatchEvent(new TouchEvent('touchstart', {
+        bubbles: true, cancelable: true,
+        touches: [original], targetTouches: [original], changedTouches: [original],
+      }))
+      for (let i = 1; i <= 14; i++) {
+        const current = touch(y + (dy * i / 14))
+        window.dispatchEvent(new TouchEvent('touchmove', {
+          bubbles: true, cancelable: true,
+          touches: [current], changedTouches: [current],
+        }))
+      }
+      window.dispatchEvent(new TouchEvent('touchend', {
+        bubbles: true, cancelable: true,
+        touches: [], changedTouches: [touch(y + dy)],
+      }))
+    }, delta)
+    return
+  }
   const handle = await page.getByRole('button', { name: /подробности/i }).boundingBox()
   if (!handle) throw new Error('Sheet handle absent')
   const x = handle.x + handle.width / 2
@@ -30,6 +61,7 @@ async function dragHandle(page: Page, delta: number) {
 
 test('full screen discovery: one tutorial, draggable sheet, swipe direction and undo', async ({ page }) => {
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
+  const onIPhone = test.info().project.name.includes('WebKit')
   const game = (id: number, title: string) => ({
     id, title, genres: ['Action', 'RPG'], year: 2025,
     releaseDate: '2025-06-12', developer: 'Example Studio',
@@ -86,10 +118,10 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
 
   // Short pull returns to the initial sheet position.
-  await dragHandle(page, -30)
+  await dragHandle(page, -30, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   // Long pull expands and reveals actual details.
-  await dragHandle(page, -245)
+  await dragHandle(page, -245, onIPhone)
   console.log('SHEET AFTER PULL', await page.locator('.discover-sheet__handle').getAttribute('aria-expanded'),
     await page.locator('.discover-sheet').evaluate(element => getComputedStyle(element).transform))
   await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
@@ -99,7 +131,7 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   await dragCover(page, 'right')
   expect(actions).toHaveLength(0)
   // Reverse drag collapses the sheet.
-  await dragHandle(page, 270)
+  await dragHandle(page, 270, onIPhone)
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   // The physical panel needs to finish spring-snapping before another gesture.
   await page.waitForTimeout(700)
