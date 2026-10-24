@@ -4,7 +4,6 @@ import type { PanInfo } from 'motion/react'
 import { Cover } from '../components/GameCard'
 import Icon from '../components/Icon'
 import type { Game } from '../data'
-import './DiscoverView.css'
 
 type DiscoveryAction = 'like' | 'dislike' | 'wishlist'
 type Details = {
