@@ -169,7 +169,8 @@ test('discovery: continuous poster beneath content-sized transparent glass and i
   const posterAfterPull = await page.locator('.discover-cover__poster').boundingBox()
   expect(posterAfterPull?.y).toBeCloseTo(posterBeforePull?.y ?? 0, 0)
   // Long pull expands and reveals actual details.
-  await dragHandle(page, -245, onIPhone)
+  // A smaller content-wrapped peek means a longer deliberate pull is required.
+  await dragHandle(page, -345, onIPhone)
   await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
   // The glass, not the cover, moves upward and occludes 80% of the art.
   await expect.poll(async () => {
