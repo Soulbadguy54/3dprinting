@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 test('discovery onboarding, swipe, undo and animated details', async ({ page }) => {
+  page.on('pageerror', error => console.log('DISCOVERY PAGEERROR', error.message))
   const nickname = 'disc_' + Date.now().toString(36).slice(-8)
   const game = (id: number, title: string) => ({
     id, title, genres: ['Action', 'RPG'], year: 2025,
@@ -42,6 +43,8 @@ test('discovery onboarding, swipe, undo and animated details', async ({ page }) 
   if (await installClose.isVisible()) await installClose.click()
   await page.locator('.bottom-nav__item').filter({ hasText: 'База игр' }).click()
   await page.getByRole('button', { name: 'Открыть рекомендации игр' }).click()
+  await expect(page.locator('.discover-screen')).toBeVisible()
+  console.log('DISCOVERY SCREEN:', (await page.locator('.discover-screen').innerText()).slice(0,700))
   await expect(page.getByText('Discovery One')).toBeVisible()
   await expect(page.getByText('Твои новые игры')).toBeVisible()
   const helper = page.getByRole('button', { name: 'Следующий шаг обучения' })
