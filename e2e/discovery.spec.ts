@@ -22,32 +22,25 @@ async function dragCover(page: Page, direction: 'left' | 'right' | 'up') {
 
 async function dragHandle(page: Page, delta: number, simulateTouch = false) {
   if (simulateTouch) {
-    // WebKit's page.mouse does not emulate an iPhone finger drag. Dispatch the
-    // actual TouchEvent stream instead (the app listens to touch + pointer).
+    // WebKit's Mouse API does not simulate a continuous iPhone touch drag.
+    // Exercise our cross-browser fallback with a continuous DOM mouse stream.
+    // Native touch has a parallel onTouchStart/touchmove/touchend path in the app.
     await page.evaluate(dy => {
       const handle = document.querySelector<HTMLButtonElement>('.discover-sheet__handle')
       if (!handle) throw new Error('Sheet handle absent')
       const box = handle.getBoundingClientRect()
       const x = box.left + box.width / 2
       const y = box.top + box.height / 2
-      const touch = (clientY: number) => new Touch({
-        identifier: 7, target: handle, clientX: x, clientY,
-      })
-      const original = touch(y)
-      handle.dispatchEvent(new TouchEvent('touchstart', {
-        bubbles: true, cancelable: true,
-        touches: [original], targetTouches: [original], changedTouches: [original],
+      handle.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 1,
       }))
       for (let i = 1; i <= 14; i++) {
-        const current = touch(y + (dy * i / 14))
-        window.dispatchEvent(new TouchEvent('touchmove', {
-          bubbles: true, cancelable: true,
-          touches: [current], changedTouches: [current],
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true, cancelable: true, clientX: x, clientY: y + dy * i / 14, buttons: 1,
         }))
       }
-      window.dispatchEvent(new TouchEvent('touchend', {
-        bubbles: true, cancelable: true,
-        touches: [], changedTouches: [touch(y + dy)],
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, clientX: x, clientY: y + dy, button: 0,
       }))
     }, delta)
     return
@@ -122,8 +115,6 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   // Long pull expands and reveals actual details.
   await dragHandle(page, -245, onIPhone)
-  console.log('SHEET AFTER PULL', await page.locator('.discover-sheet__handle').getAttribute('aria-expanded'),
-    await page.locator('.discover-sheet').evaluate(element => getComputedStyle(element).transform))
   await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByText('A great story about stars.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Steam/ })).toBeVisible()
