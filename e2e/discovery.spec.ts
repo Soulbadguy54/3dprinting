@@ -15,9 +15,9 @@ async function dragCover(page: Page, direction: 'left' | 'right' | 'up') {
   const stage = await page.locator('.discover-stage').boundingBox()
   if (!stage) throw new Error('Discovery stage absent')
   const x = stage.x + stage.width * .5
-  const y = stage.y + Math.min(stage.height * .27, 180)
+  const y = stage.y + (direction === 'up' ? stage.height * .48 : Math.min(stage.height * .27, 180))
   await movePointer(page, x, y, x + (direction === 'left' ? -160 : direction === 'right' ? 160 : 0),
-    y + (direction === 'up' ? -145 : 0))
+    y + (direction === 'up' ? -190 : 0))
 }
 
 async function dragHandle(page: Page, delta: number) {
@@ -90,6 +90,8 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   await expect(page.getByRole('button', { name: 'Развернуть подробности' })).toHaveAttribute('aria-expanded', 'false')
   // Long pull expands and reveals actual details.
   await dragHandle(page, -245)
+  console.log('SHEET AFTER PULL', await page.locator('.discover-sheet__handle').getAttribute('aria-expanded'),
+    await page.locator('.discover-sheet').evaluate(element => getComputedStyle(element).transform))
   await expect(page.getByRole('button', { name: 'Свернуть подробности' })).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByText('A great story about stars.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Steam/ })).toBeVisible()
@@ -115,6 +117,7 @@ test('full screen discovery: one tutorial, draggable sheet, swipe direction and 
   await page.getByRole('button', { name: 'Показать обучение' }).click()
   await expect(page.getByText('Новые игры для тебя')).toBeVisible()
   await page.getByRole('button', { name: 'Закрыть обучение' }).click()
+  await expect(page.getByRole('button', { name: 'Закрыть обучение' })).toHaveCount(0)
   await expect(page.getByText('Discovery Two')).toBeVisible()
   await dragCover(page, 'up')
   await expect(page.getByText('Пока всё просмотрено')).toBeVisible()
