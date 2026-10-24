@@ -5,6 +5,7 @@ Revises: 20261016_01
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = "20261024_02"
 down_revision = "20261016_01"
@@ -13,6 +14,10 @@ depends_on = None
 
 
 def upgrade():
+    # The legacy baseline bootstraps empty CI databases from current ORM models.
+    # On an established staging database Alembic creates the new table itself.
+    if inspect(op.get_bind()).has_table('discovery_feedback'):
+        return
     op.create_table(
         "discovery_feedback",
         sa.Column("id", sa.Integer(), primary_key=True),
