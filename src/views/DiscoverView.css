@@ -57,7 +57,7 @@
 }
 .discover-sheet__chevron{display:block;width:13px;height:13px;border-top:2.5px solid rgba(255,255,255,.94);border-left:2.5px solid rgba(255,255,255,.94);border-radius:2px;transform:translateY(4px) rotate(45deg);filter:drop-shadow(0 1px 3px rgba(5,8,18,.5));transition:transform .3s cubic-bezier(.22,1,.36,1)}
 .discover-sheet__chevron--down{transform:translateY(-3px) rotate(225deg)}
-.discover-sheet__body{position:relative;z-index:1;height:calc(100% - 33px);min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 13px 8px}
+.discover-sheet__body{position:relative;z-index:1;height:calc(100% - 33px);min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:none;padding:0 13px 8px}
 .discover-sheet__summary-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:9px}
 .discover-sheet__identity{min-width:0}
 .discover-sheet__identity h2{margin:0 0 5px;font-size:clamp(18px,5.15vw,25px);line-height:1.12;letter-spacing:-.045em;overflow-wrap:anywhere;text-wrap:balance;text-shadow:0 1px 8px rgba(5,8,19,.5)}
